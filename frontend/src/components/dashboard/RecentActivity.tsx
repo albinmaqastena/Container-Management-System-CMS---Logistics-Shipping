@@ -22,7 +22,7 @@ import {
   Archive as ArchiveIcon,
   Refresh as RefreshIcon,
 } from '@mui/icons-material';
-import { formatDistanceToNow } from 'date-fns';
+import { formatDistanceToNow } from 'date-fns/formatDistanceToNow';
 
 interface Activity {
   id: string;

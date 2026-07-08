@@ -2,7 +2,7 @@
 import axios from 'axios';
 import { toast } from 'react-toastify';
 
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3000';
+const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3000/v1';
 
 export const apiClient = axios.create({
   baseURL: API_URL,

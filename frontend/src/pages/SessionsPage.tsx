@@ -1,5 +1,5 @@
 // src/pages/SessionsPage.tsx
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import {
   Box,
@@ -19,7 +19,7 @@ import {
 } from '@mui/material';
 import { Delete as DeleteIcon, Refresh as RefreshIcon } from '@mui/icons-material';
 import { Session } from '../types';
-import { formatDistanceToNow } from 'date-fns';
+import { formatDistanceToNow } from 'date-fns/formatDistanceToNow'; // ✅ Import i rregulluar
 
 export const SessionsPage: React.FC = () => {
   const { getSessions, revokeSession } = useAuth();
@@ -27,7 +27,7 @@ export const SessionsPage: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  const loadSessions = async () => {
+  const loadSessions = useCallback(async () => {
     setLoading(true);
     setError('');
     try {
@@ -38,11 +38,11 @@ export const SessionsPage: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [getSessions]);
 
   useEffect(() => {
     loadSessions();
-  }, []);
+  }, [loadSessions]);
 
   const handleRevoke = async (sessionId: string) => {
     if (!window.confirm('Are you sure you want to revoke this session?')) return;
@@ -143,3 +143,5 @@ export const SessionsPage: React.FC = () => {
     </Box>
   );
 };
+
+export default SessionsPage;

@@ -1,5 +1,5 @@
 // src/pages/ContainerDetailPage.tsx
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useContainers } from '../contexts/ContainerContext';
 import { useItems } from '../contexts/ItemContext';
@@ -9,7 +9,6 @@ import {
   Paper,
   Typography,
   Button,
-  Grid,
   Chip,
   LinearProgress,
   IconButton,
@@ -37,7 +36,7 @@ export const ContainerDetailPage: React.FC = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { getContainer, updateContainerStatus, softDeleteContainer, loading } = useContainers();
-  const { items, fetchItems, softDeleteItem, loading: itemsLoading } = useItems(); // ✅ përdor softDeleteItem
+  const { items, fetchItems, softDeleteItem, loading: itemsLoading } = useItems();
 
   const [container, setContainer] = useState<Container | null>(null);
   const [error, setError] = useState('');
@@ -47,11 +46,22 @@ export const ContainerDetailPage: React.FC = () => {
 
   const isAdmin = user?.role === 'admin' || user?.role === 'super_admin';
 
-  useEffect(() => {
-    if (id) {
-      loadContainer();
+  // ✅ Përdor useCallback për të stabilizuar funksionin
+  const loadContainer = useCallback(async () => {
+    if (!id) return;
+    try {
+      setError('');
+      const data = await getContainer(id);
+      setContainer(data);
+      await fetchItems(id);
+    } catch (err: any) {
+      setError(err.message || 'Failed to load container');
     }
-  }, [id]);
+  }, [id, getContainer, fetchItems]);
+
+  useEffect(() => {
+    loadContainer();
+  }, [loadContainer]);
 
   useEffect(() => {
     if (items.length > 0) {
@@ -65,17 +75,6 @@ export const ContainerDetailPage: React.FC = () => {
       setFilteredItems([]);
     }
   }, [searchQuery, items]);
-
-  const loadContainer = async () => {
-    try {
-      setError('');
-      const data = await getContainer(id!);
-      setContainer(data);
-      await fetchItems(id); // fetchItems pret containerId opsional
-    } catch (err: any) {
-      setError(err.message || 'Failed to load container');
-    }
-  };
 
   const handleStatusChange = async () => {
     if (!container) return;
@@ -102,13 +101,10 @@ export const ContainerDetailPage: React.FC = () => {
     }
   };
 
-  // ✅ Përdor softDeleteItem për fshirjen e item-it
   const handleItemDeleted = async (itemId: string) => {
     try {
       await softDeleteItem(itemId);
-      // Përditëso listën lokale
       setFilteredItems((prev) => prev.filter((item) => item.id !== itemId));
-      // Riload container për të përditësuar volume
       await loadContainer();
       toast.success('Item deleted');
     } catch (error) {
@@ -265,11 +261,13 @@ export const ContainerDetailPage: React.FC = () => {
         ) : (
           <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
             {filteredItems.map((item) => (
-              <Box key={item.id} sx={{ width: { xs: '100%', sm: 'calc(50% - 12px)', md: 'calc(33.33% - 16px)' } }}>
-                <ItemCard 
-                  item={item} 
-                  onDelete={handleItemDeleted}
-                />
+              <Box
+                key={item.id}
+                sx={{
+                  width: { xs: '100%', sm: 'calc(50% - 12px)', md: 'calc(33.33% - 16px)' },
+                }}
+              >
+                <ItemCard item={item} onDelete={handleItemDeleted} />
               </Box>
             ))}
           </Box>
@@ -281,10 +279,10 @@ export const ContainerDetailPage: React.FC = () => {
         open={isCreateItemModalOpen}
         onClose={() => setIsCreateItemModalOpen(false)}
         containerId={container.id}
-        onItemCreated={() => {
-          loadContainer();
-        }}
+        onItemCreated={loadContainer}
       />
     </Box>
   );
 };
+
+export default ContainerDetailPage;

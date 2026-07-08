@@ -32,6 +32,7 @@ import { HealthController } from './health/health.controller';
 import authConfig from './config/auth.config';
 import { RefreshToken } from './modules/auth/entities/refresh-token.entity';
 import { AuditModule } from './modules/audits/audit.module';
+import { AuditLog } from './modules/audits/entities/audit-log.entity';
 
 @Module({
   imports: [
@@ -110,7 +111,7 @@ import { AuditModule } from './modules/audits/audit.module';
           password: configService.getOrThrow<string>('DB_PASSWORD'),
           database: configService.getOrThrow<string>('DB_DATABASE'),
 
-          entities: [User, Container, Item, RefreshToken],
+          entities: [User, Container, Item, RefreshToken, AuditLog],
 
           synchronize: false,
           dropSchema: false,
