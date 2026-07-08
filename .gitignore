@@ -27,6 +27,11 @@ frontend/.next/
 frontend/out/
 frontend/*.tsbuildinfo
 
+# Root builds
+dist/
+build/
+out/
+
 # ============================================
 # ENVIRONMENT FILES
 # ============================================
@@ -36,14 +41,20 @@ frontend/*.tsbuildinfo
 .env.test.local
 .env.production.local
 .env.*.local
-backend/.env
-backend/.env.*
-frontend/.env
-frontend/.env.*
 *.env
 *.env.*
 !.env.example
 !.env.test
+
+# Backend env
+backend/.env
+backend/.env.*
+backend/.env.production
+
+# Frontend env
+frontend/.env
+frontend/.env.*
+frontend/.env.production
 
 # ============================================
 # LOGS
@@ -144,6 +155,7 @@ $RECYCLE.BIN/
 *.pid
 *.pid.lock
 docker-compose.override.yml
+docker-compose.prod.override.yml
 
 # ============================================
 # DATABASE
@@ -157,7 +169,7 @@ postgres_data/
 redis_data/
 
 # ============================================
-# SECURITY
+# SECURITY & SSL
 # ============================================
 *.pem
 *.key
@@ -170,6 +182,9 @@ redis_data/
 *.cer
 *.der
 *.jks
+*.pem
+*.key
+*.crt
 
 # ============================================
 # MISC
@@ -185,6 +200,34 @@ out/
 storybook-static/
 .sentryclirc
 *.tsbuildinfo
+
+# ============================================
+# SECRETS & CREDENTIALS
+# ============================================
+.secrets
+.secrets.*
+credentials.json
+client_secret.json
+service_account.json
+*.secret
+*.secret.*
+secrets/
+
+# ============================================
+# DEPLOYMENT
+# ============================================
+.deploy/
+.aws/
+.elasticbeanstalk/
+.serverless/
+.github/deploy_key
+deploy_key.pem
+terraform.tfstate
+terraform.tfstate.backup
+*.tfvars
+*.tfstate
+*.tfstate.backup
+.terraform/
 
 # ============================================
 # VS CODE SPECIFIC
@@ -210,36 +253,43 @@ out/
 .idea/dictionaries/
 
 # ============================================
-# SECRETS & CREDENTIALS
+# BACKUP FILES
 # ============================================
-*.pem
-*.key
-*.crt
-*.csr
-*.p12
-*.pfx
-*.p8
-*.p7b
-*.cer
-*.der
-*.jks
-.secrets
-.secrets.*
-credentials.json
-client_secret.json
-service_account.json
+*.backup
+*.bak
+*.old
+*.orig
 
 # ============================================
-# DEPLOYMENT
+# NPM / YARN
 # ============================================
-.deploy/
-.aws/
-.elasticbeanstalk/
-.serverless/
-.github/deploy_key
-deploy_key.pem
-terraform.tfstate
-terraform.tfstate.backup
-*.tfvars
-*.tfstate
-*.tfstate.backup
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+.pnpm-debug.log*
+
+# ============================================
+# MISCELLANEOUS
+# ============================================
+*.swo
+*.swp
+*~
+.DS_Store
+*.local
+*.code-workspace
+
+# ============================================
+# PROJECT SPECIFIC
+# ============================================
+# Uploads directory (nëse ka të dhëna lokale)
+uploads/
+uploads/*
+
+# Coverage reports
+coverage/
+.nyc_output/
+
+# TypeScript build info
+*.tsbuildinfo
