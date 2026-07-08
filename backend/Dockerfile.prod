@@ -1,0 +1,48 @@
+# backend/Dockerfile.prod
+# ============================================
+# STAGE 1: BUILD
+# ============================================
+FROM node:18-alpine AS builder
+
+WORKDIR /app
+
+# Kopjo package files
+COPY package*.json ./
+COPY yarn.lock ./
+
+# Instalo dependencies (pa dev dependencies)
+RUN npm ci --only=production && npm cache clean --force
+
+# Kopjo kodin burimor
+COPY . .
+
+# Build aplikacionin
+RUN npm run build
+
+# ============================================
+# STAGE 2: PRODUCTION
+# ============================================
+FROM node:18-alpine
+
+WORKDIR /app
+
+# Krijo user jo-root për siguri
+RUN addgroup -g 1001 -S nodejs && \
+    adduser -S nodejs -u 1001
+
+# Kopjo built files nga stage 1
+COPY --from=builder --chown=nodejs:nodejs /app/dist ./dist
+COPY --from=builder --chown=nodejs:nodejs /app/node_modules ./node_modules
+COPY --from=builder --chown=nodejs:nodejs /app/package*.json ./
+
+# Kopjo skedarët statikë (nëse ka)
+# duhet hjekur commenti # COPY --from=builder --chown=nodejs:nodejs /app/src/public ./src/public 2>/dev/null || true
+
+# Porti i aplikacionit
+EXPOSE 3000
+
+# Kaloj te user-i jo-root
+USER nodejs
+
+# Komanda për të nisur aplikacionin
+CMD ["node", "dist/main.js"]

@@ -1,0 +1,300 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites name="jest tests" tests="75" failures="7" errors="0" time="13.999">
+  <testsuite name="AppController (e2e) - Full Test Suite" errors="0" failures="7" skipped="0" timestamp="2026-07-07T08:03:18" time="13.3" tests="75">
+    <testcase classname="AppController (e2e) - Full Test Suite Authentication POST /auth/login should login with valid credentials (admin)" name="AppController (e2e) - Full Test Suite Authentication POST /auth/login should login with valid credentials (admin)" time="0.246">
+    </testcase>
+    <testcase classname="AppController (e2e) - Full Test Suite Authentication POST /auth/login should login with valid credentials (user)" name="AppController (e2e) - Full Test Suite Authentication POST /auth/login should login with valid credentials (user)" time="0.155">
+    </testcase>
+    <testcase classname="AppController (e2e) - Full Test Suite Authentication POST /auth/login should fail with invalid password" name="AppController (e2e) - Full Test Suite Authentication POST /auth/login should fail with invalid password" time="0.14">
+    </testcase>
+    <testcase classname="AppController (e2e) - Full Test Suite Authentication POST /auth/login should fail with non-existent email" name="AppController (e2e) - Full Test Suite Authentication POST /auth/login should fail with non-existent email" time="0.034">
+    </testcase>
+    <testcase classname="AppController (e2e) - Full Test Suite Authentication POST /auth/login should fail with missing email" name="AppController (e2e) - Full Test Suite Authentication POST /auth/login should fail with missing email" time="0.027">
+    </testcase>
+    <testcase classname="AppController (e2e) - Full Test Suite Authentication POST /auth/login should fail with missing password" name="AppController (e2e) - Full Test Suite Authentication POST /auth/login should fail with missing password" time="0.027">
+    </testcase>
+    <testcase classname="AppController (e2e) - Full Test Suite Authentication POST /auth/register should register a new user (admin only)" name="AppController (e2e) - Full Test Suite Authentication POST /auth/register should register a new user (admin only)" time="0.229">
+    </testcase>
+    <testcase classname="AppController (e2e) - Full Test Suite Authentication POST /auth/register should fail to register user with existing email" name="AppController (e2e) - Full Test Suite Authentication POST /auth/register should fail to register user with existing email" time="0.05">
+    </testcase>
+    <testcase classname="AppController (e2e) - Full Test Suite Authentication POST /auth/register should fail to register user with existing username" name="AppController (e2e) - Full Test Suite Authentication POST /auth/register should fail to register user with existing username" time="0.032">
+    </testcase>
+    <testcase classname="AppController (e2e) - Full Test Suite Authentication POST /auth/register should fail to register without token" name="AppController (e2e) - Full Test Suite Authentication POST /auth/register should fail to register without token" time="0.023">
+    </testcase>
+    <testcase classname="AppController (e2e) - Full Test Suite Authentication POST /auth/register should fail to register with invalid token" name="AppController (e2e) - Full Test Suite Authentication POST /auth/register should fail to register with invalid token" time="0.018">
+    </testcase>
+    <testcase classname="AppController (e2e) - Full Test Suite Authentication POST /auth/register should fail to register with missing fields" name="AppController (e2e) - Full Test Suite Authentication POST /auth/register should fail to register with missing fields" time="0.037">
+    </testcase>
+    <testcase classname="AppController (e2e) - Full Test Suite Authentication POST /auth/logout should logout successfully" name="AppController (e2e) - Full Test Suite Authentication POST /auth/logout should logout successfully" time="0.185">
+    </testcase>
+    <testcase classname="AppController (e2e) - Full Test Suite Authentication POST /auth/logout should fail logout without token" name="AppController (e2e) - Full Test Suite Authentication POST /auth/logout should fail logout without token" time="0.022">
+    </testcase>
+    <testcase classname="AppController (e2e) - Full Test Suite Authentication POST /auth/logout should fail logout with invalid token" name="AppController (e2e) - Full Test Suite Authentication POST /auth/logout should fail logout with invalid token" time="0.021">
+    </testcase>
+    <testcase classname="AppController (e2e) - Full Test Suite Authentication GET /auth/sessions should get active sessions for authenticated user" name="AppController (e2e) - Full Test Suite Authentication GET /auth/sessions should get active sessions for authenticated user" time="0.21">
+    </testcase>
+    <testcase classname="AppController (e2e) - Full Test Suite Authentication GET /auth/sessions should fail getting sessions without token" name="AppController (e2e) - Full Test Suite Authentication GET /auth/sessions should fail getting sessions without token" time="0.017">
+    </testcase>
+    <testcase classname="AppController (e2e) - Full Test Suite Containers POST /containers should create a container (admin)" name="AppController (e2e) - Full Test Suite Containers POST /containers should create a container (admin)" time="0.065">
+    </testcase>
+    <testcase classname="AppController (e2e) - Full Test Suite Containers POST /containers should create a container with only required fields" name="AppController (e2e) - Full Test Suite Containers POST /containers should create a container with only required fields" time="0.034">
+    </testcase>
+    <testcase classname="AppController (e2e) - Full Test Suite Containers POST /containers should fail to create container without token" name="AppController (e2e) - Full Test Suite Containers POST /containers should fail to create container without token" time="0.018">
+    </testcase>
+    <testcase classname="AppController (e2e) - Full Test Suite Containers POST /containers should fail to create container with user role" name="AppController (e2e) - Full Test Suite Containers POST /containers should fail to create container with user role" time="0.02">
+    </testcase>
+    <testcase classname="AppController (e2e) - Full Test Suite Containers POST /containers should fail to create container with negative volume" name="AppController (e2e) - Full Test Suite Containers POST /containers should fail to create container with negative volume" time="0.028">
+    </testcase>
+    <testcase classname="AppController (e2e) - Full Test Suite Containers POST /containers should fail to create container with missing name" name="AppController (e2e) - Full Test Suite Containers POST /containers should fail to create container with missing name" time="0.028">
+    </testcase>
+    <testcase classname="AppController (e2e) - Full Test Suite Containers POST /containers should fail to create container with missing volume" name="AppController (e2e) - Full Test Suite Containers POST /containers should fail to create container with missing volume" time="0.025">
+    </testcase>
+    <testcase classname="AppController (e2e) - Full Test Suite Containers GET /containers should get all containers (admin)" name="AppController (e2e) - Full Test Suite Containers GET /containers should get all containers (admin)" time="0.067">
+    </testcase>
+    <testcase classname="AppController (e2e) - Full Test Suite Containers GET /containers should get all containers (user)" name="AppController (e2e) - Full Test Suite Containers GET /containers should get all containers (user)" time="0.03">
+    </testcase>
+    <testcase classname="AppController (e2e) - Full Test Suite Containers GET /containers should filter containers by status (active)" name="AppController (e2e) - Full Test Suite Containers GET /containers should filter containers by status (active)" time="0.069">
+    </testcase>
+    <testcase classname="AppController (e2e) - Full Test Suite Containers GET /containers should filter containers by status (archived)" name="AppController (e2e) - Full Test Suite Containers GET /containers should filter containers by status (archived)" time="0.048">
+    </testcase>
+    <testcase classname="AppController (e2e) - Full Test Suite Containers GET /containers should fail with invalid status value" name="AppController (e2e) - Full Test Suite Containers GET /containers should fail with invalid status value" time="0.037">
+    </testcase>
+    <testcase classname="AppController (e2e) - Full Test Suite Containers GET /containers/active should get active containers" name="AppController (e2e) - Full Test Suite Containers GET /containers/active should get active containers" time="0.044">
+    </testcase>
+    <testcase classname="AppController (e2e) - Full Test Suite Containers GET /containers/active should return 200 even if no active containers" name="AppController (e2e) - Full Test Suite Containers GET /containers/active should return 200 even if no active containers" time="0.027">
+    </testcase>
+    <testcase classname="AppController (e2e) - Full Test Suite Containers GET /containers/archived should get archived containers" name="AppController (e2e) - Full Test Suite Containers GET /containers/archived should get archived containers" time="0.027">
+    </testcase>
+    <testcase classname="AppController (e2e) - Full Test Suite Containers GET /containers/search should search containers by name" name="AppController (e2e) - Full Test Suite Containers GET /containers/search should search containers by name" time="0.052">
+    </testcase>
+    <testcase classname="AppController (e2e) - Full Test Suite Containers GET /containers/search should search containers by containerCode" name="AppController (e2e) - Full Test Suite Containers GET /containers/search should search containers by containerCode" time="0.09">
+    </testcase>
+    <testcase classname="AppController (e2e) - Full Test Suite Containers GET /containers/search should return empty array for non-existent search" name="AppController (e2e) - Full Test Suite Containers GET /containers/search should return empty array for non-existent search" time="0.039">
+    </testcase>
+    <testcase classname="AppController (e2e) - Full Test Suite Containers GET /containers/search should fail with missing query parameter" name="AppController (e2e) - Full Test Suite Containers GET /containers/search should fail with missing query parameter" time="0.028">
+    </testcase>
+    <testcase classname="AppController (e2e) - Full Test Suite Containers GET /containers/:id should get a container by ID" name="AppController (e2e) - Full Test Suite Containers GET /containers/:id should get a container by ID" time="0.056">
+    </testcase>
+    <testcase classname="AppController (e2e) - Full Test Suite Containers GET /containers/:id should return 404 for non-existent container" name="AppController (e2e) - Full Test Suite Containers GET /containers/:id should return 404 for non-existent container" time="0.035">
+    </testcase>
+    <testcase classname="AppController (e2e) - Full Test Suite Containers GET /containers/:id should fail with invalid UUID format" name="AppController (e2e) - Full Test Suite Containers GET /containers/:id should fail with invalid UUID format" time="0.031">
+    </testcase>
+    <testcase classname="AppController (e2e) - Full Test Suite Containers PUT /containers/:id should update a container (admin)" name="AppController (e2e) - Full Test Suite Containers PUT /containers/:id should update a container (admin)" time="0.067">
+    </testcase>
+    <testcase classname="AppController (e2e) - Full Test Suite Containers PUT /containers/:id should update container status to archived" name="AppController (e2e) - Full Test Suite Containers PUT /containers/:id should update container status to archived" time="0.068">
+    </testcase>
+    <testcase classname="AppController (e2e) - Full Test Suite Containers PUT /containers/:id should update container status back to active" name="AppController (e2e) - Full Test Suite Containers PUT /containers/:id should update container status back to active" time="0.068">
+    </testcase>
+    <testcase classname="AppController (e2e) - Full Test Suite Containers PUT /containers/:id should fail to update container (user)" name="AppController (e2e) - Full Test Suite Containers PUT /containers/:id should fail to update container (user)" time="0.021">
+    </testcase>
+    <testcase classname="AppController (e2e) - Full Test Suite Containers PUT /containers/:id should fail to update non-existent container" name="AppController (e2e) - Full Test Suite Containers PUT /containers/:id should fail to update non-existent container" time="0.033">
+    </testcase>
+    <testcase classname="AppController (e2e) - Full Test Suite Containers DELETE /containers/:id should delete an empty container" name="AppController (e2e) - Full Test Suite Containers DELETE /containers/:id should delete an empty container" time="0.093">
+    </testcase>
+    <testcase classname="AppController (e2e) - Full Test Suite Containers DELETE /containers/:id should fail to delete a container with items" name="AppController (e2e) - Full Test Suite Containers DELETE /containers/:id should fail to delete a container with items" time="0.16">
+    </testcase>
+    <testcase classname="AppController (e2e) - Full Test Suite Containers DELETE /containers/:id should fail to delete container (user)" name="AppController (e2e) - Full Test Suite Containers DELETE /containers/:id should fail to delete container (user)" time="0.062">
+    </testcase>
+    <testcase classname="AppController (e2e) - Full Test Suite Items POST /items should create an item (admin)" name="AppController (e2e) - Full Test Suite Items POST /items should create an item (admin)" time="0.05">
+    </testcase>
+    <testcase classname="AppController (e2e) - Full Test Suite Items POST /items should create an item with photo" name="AppController (e2e) - Full Test Suite Items POST /items should create an item with photo" time="0.048">
+    </testcase>
+    <testcase classname="AppController (e2e) - Full Test Suite Items POST /items should fail to create item without token" name="AppController (e2e) - Full Test Suite Items POST /items should fail to create item without token" time="0.02">
+    </testcase>
+    <testcase classname="AppController (e2e) - Full Test Suite Items POST /items should fail to create item with user role" name="AppController (e2e) - Full Test Suite Items POST /items should fail to create item with user role" time="0.019">
+    </testcase>
+    <testcase classname="AppController (e2e) - Full Test Suite Items POST /items should fail to create item with duplicate uniqueNumber" name="AppController (e2e) - Full Test Suite Items POST /items should fail to create item with duplicate uniqueNumber" time="0.258">
+      <failure>Error: expected 409 &quot;Conflict&quot;, got 500 &quot;Internal Server Error&quot;
+    at Object.&lt;anonymous&gt; (C:\Users\hp\Desktop\container-management-system\backend\test\app.e2e-spec.ts:729:12)
+    at processTicksAndRejections (node:internal/process/task_queues:105:5)
+----
+    at Test._assertStatus (C:\Users\hp\Desktop\container-management-system\backend\node_modules\supertest\lib\test.js:309:14)
+    at C:\Users\hp\Desktop\container-management-system\backend\node_modules\supertest\lib\test.js:365:13
+    at Test._assertFunction (C:\Users\hp\Desktop\container-management-system\backend\node_modules\supertest\lib\test.js:342:13)
+    at Test.assert (C:\Users\hp\Desktop\container-management-system\backend\node_modules\supertest\lib\test.js:195:23)
+    at localAssert (C:\Users\hp\Desktop\container-management-system\backend\node_modules\supertest\lib\test.js:138:14)
+    at Server.&lt;anonymous&gt; (C:\Users\hp\Desktop\container-management-system\backend\node_modules\supertest\lib\test.js:152:11)
+    at Object.onceWrapper (node:events:633:28)
+    at Server.emit (node:events:519:28)
+    at emitCloseNT (node:net:2419:8)
+    at processTicksAndRejections (node:internal/process/task_queues:89:21)</failure>
+    </testcase>
+    <testcase classname="AppController (e2e) - Full Test Suite Items POST /items should fail to create item with insufficient volume" name="AppController (e2e) - Full Test Suite Items POST /items should fail to create item with insufficient volume" time="0.089">
+    </testcase>
+    <testcase classname="AppController (e2e) - Full Test Suite Items POST /items should fail to create item with missing required fields" name="AppController (e2e) - Full Test Suite Items POST /items should fail to create item with missing required fields" time="0.038">
+    </testcase>
+    <testcase classname="AppController (e2e) - Full Test Suite Items GET /items should get all items (admin)" name="AppController (e2e) - Full Test Suite Items GET /items should get all items (admin)" time="0.05">
+    </testcase>
+    <testcase classname="AppController (e2e) - Full Test Suite Items GET /items should get items by containerId" name="AppController (e2e) - Full Test Suite Items GET /items should get items by containerId" time="0.038">
+    </testcase>
+    <testcase classname="AppController (e2e) - Full Test Suite Items GET /items should return empty array for non-existent containerId" name="AppController (e2e) - Full Test Suite Items GET /items should return empty array for non-existent containerId" time="0.034">
+    </testcase>
+    <testcase classname="AppController (e2e) - Full Test Suite Items GET /items/search should search items by name" name="AppController (e2e) - Full Test Suite Items GET /items/search should search items by name" time="0.046">
+    </testcase>
+    <testcase classname="AppController (e2e) - Full Test Suite Items GET /items/search should search items by uniqueNumber" name="AppController (e2e) - Full Test Suite Items GET /items/search should search items by uniqueNumber" time="0.045">
+      <failure>Error: expect(received).toBeGreaterThan(expected)
+
+Expected: &gt; 0
+Received:   0
+    at Object.&lt;anonymous&gt; (C:\Users\hp\Desktop\container-management-system\backend\test\app.e2e-spec.ts:819:38)
+    at processTicksAndRejections (node:internal/process/task_queues:105:5)</failure>
+    </testcase>
+    <testcase classname="AppController (e2e) - Full Test Suite Items GET /items/search should search items in specific container" name="AppController (e2e) - Full Test Suite Items GET /items/search should search items in specific container" time="0.038">
+      <failure>Error: expect(received).toBe(expected) // Object.is equality
+
+Expected: true
+Received: false
+    at Object.&lt;anonymous&gt; (C:\Users\hp\Desktop\container-management-system\backend\test\app.e2e-spec.ts:830:124)
+    at processTicksAndRejections (node:internal/process/task_queues:105:5)</failure>
+    </testcase>
+    <testcase classname="AppController (e2e) - Full Test Suite Items GET /items/search should return empty array for non-existent search" name="AppController (e2e) - Full Test Suite Items GET /items/search should return empty array for non-existent search" time="0.041">
+    </testcase>
+    <testcase classname="AppController (e2e) - Full Test Suite Items GET /items/:id should get an item by ID" name="AppController (e2e) - Full Test Suite Items GET /items/:id should get an item by ID" time="0.038">
+    </testcase>
+    <testcase classname="AppController (e2e) - Full Test Suite Items GET /items/:id should fail for non-existent item" name="AppController (e2e) - Full Test Suite Items GET /items/:id should fail for non-existent item" time="0.032">
+    </testcase>
+    <testcase classname="AppController (e2e) - Full Test Suite Items PUT /items/:id should update an item (admin)" name="AppController (e2e) - Full Test Suite Items PUT /items/:id should update an item (admin)" time="0.078">
+      <failure>Error: expected 200 &quot;OK&quot;, got 500 &quot;Internal Server Error&quot;
+    at Object.&lt;anonymous&gt; (C:\Users\hp\Desktop\container-management-system\backend\test\app.e2e-spec.ts:872:12)
+    at Promise.finally.completed (C:\Users\hp\Desktop\container-management-system\backend\node_modules\jest-circus\build\jestAdapterInit.js:1561:28)
+    at new Promise (&lt;anonymous&gt;)
+    at callAsyncCircusFn (C:\Users\hp\Desktop\container-management-system\backend\node_modules\jest-circus\build\jestAdapterInit.js:1501:10)
+    at _callCircusTest (C:\Users\hp\Desktop\container-management-system\backend\node_modules\jest-circus\build\jestAdapterInit.js:1011:40)
+    at processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at _runTest (C:\Users\hp\Desktop\container-management-system\backend\node_modules\jest-circus\build\jestAdapterInit.js:951:3)
+    at C:\Users\hp\Desktop\container-management-system\backend\node_modules\jest-circus\build\jestAdapterInit.js:853:7
+    at _runTestsForDescribeBlock (C:\Users\hp\Desktop\container-management-system\backend\node_modules\jest-circus\build\jestAdapterInit.js:866:11)
+    at _runTestsForDescribeBlock (C:\Users\hp\Desktop\container-management-system\backend\node_modules\jest-circus\build\jestAdapterInit.js:861:11)
+    at _runTestsForDescribeBlock (C:\Users\hp\Desktop\container-management-system\backend\node_modules\jest-circus\build\jestAdapterInit.js:861:11)
+    at _runTestsForDescribeBlock (C:\Users\hp\Desktop\container-management-system\backend\node_modules\jest-circus\build\jestAdapterInit.js:861:11)
+    at run (C:\Users\hp\Desktop\container-management-system\backend\node_modules\jest-circus\build\jestAdapterInit.js:765:3)
+    at runAndTransformResultsToJestFormat (C:\Users\hp\Desktop\container-management-system\backend\node_modules\jest-circus\build\jestAdapterInit.js:1993:21)
+    at jestAdapter (C:\Users\hp\Desktop\container-management-system\backend\node_modules\jest-circus\build\runner.js:111:19)
+    at runTestInternal (C:\Users\hp\Desktop\container-management-system\backend\node_modules\jest-runner\build\index.js:276:16)
+    at runTest (C:\Users\hp\Desktop\container-management-system\backend\node_modules\jest-runner\build\index.js:344:7)
+----
+    at Test._assertStatus (C:\Users\hp\Desktop\container-management-system\backend\node_modules\supertest\lib\test.js:309:14)
+    at C:\Users\hp\Desktop\container-management-system\backend\node_modules\supertest\lib\test.js:365:13
+    at Test._assertFunction (C:\Users\hp\Desktop\container-management-system\backend\node_modules\supertest\lib\test.js:342:13)
+    at Test.assert (C:\Users\hp\Desktop\container-management-system\backend\node_modules\supertest\lib\test.js:195:23)
+    at localAssert (C:\Users\hp\Desktop\container-management-system\backend\node_modules\supertest\lib\test.js:138:14)
+    at Server.&lt;anonymous&gt; (C:\Users\hp\Desktop\container-management-system\backend\node_modules\supertest\lib\test.js:152:11)
+    at Object.onceWrapper (node:events:633:28)
+    at Server.emit (node:events:519:28)
+    at emitCloseNT (node:net:2419:8)
+    at processTicksAndRejections (node:internal/process/task_queues:89:21)</failure>
+    </testcase>
+    <testcase classname="AppController (e2e) - Full Test Suite Items PUT /items/:id should update item volume and recalculate totalVolume" name="AppController (e2e) - Full Test Suite Items PUT /items/:id should update item volume and recalculate totalVolume" time="0.119">
+      <failure>Error: expected 200 &quot;OK&quot;, got 500 &quot;Internal Server Error&quot;
+    at Object.&lt;anonymous&gt; (C:\Users\hp\Desktop\container-management-system\backend\test\app.e2e-spec.ts:886:12)
+    at Promise.finally.completed (C:\Users\hp\Desktop\container-management-system\backend\node_modules\jest-circus\build\jestAdapterInit.js:1561:28)
+    at new Promise (&lt;anonymous&gt;)
+    at callAsyncCircusFn (C:\Users\hp\Desktop\container-management-system\backend\node_modules\jest-circus\build\jestAdapterInit.js:1501:10)
+    at _callCircusTest (C:\Users\hp\Desktop\container-management-system\backend\node_modules\jest-circus\build\jestAdapterInit.js:1011:40)
+    at processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at _runTest (C:\Users\hp\Desktop\container-management-system\backend\node_modules\jest-circus\build\jestAdapterInit.js:951:3)
+    at C:\Users\hp\Desktop\container-management-system\backend\node_modules\jest-circus\build\jestAdapterInit.js:853:7
+    at _runTestsForDescribeBlock (C:\Users\hp\Desktop\container-management-system\backend\node_modules\jest-circus\build\jestAdapterInit.js:866:11)
+    at _runTestsForDescribeBlock (C:\Users\hp\Desktop\container-management-system\backend\node_modules\jest-circus\build\jestAdapterInit.js:861:11)
+    at _runTestsForDescribeBlock (C:\Users\hp\Desktop\container-management-system\backend\node_modules\jest-circus\build\jestAdapterInit.js:861:11)
+    at _runTestsForDescribeBlock (C:\Users\hp\Desktop\container-management-system\backend\node_modules\jest-circus\build\jestAdapterInit.js:861:11)
+    at run (C:\Users\hp\Desktop\container-management-system\backend\node_modules\jest-circus\build\jestAdapterInit.js:765:3)
+    at runAndTransformResultsToJestFormat (C:\Users\hp\Desktop\container-management-system\backend\node_modules\jest-circus\build\jestAdapterInit.js:1993:21)
+    at jestAdapter (C:\Users\hp\Desktop\container-management-system\backend\node_modules\jest-circus\build\runner.js:111:19)
+    at runTestInternal (C:\Users\hp\Desktop\container-management-system\backend\node_modules\jest-runner\build\index.js:276:16)
+    at runTest (C:\Users\hp\Desktop\container-management-system\backend\node_modules\jest-runner\build\index.js:344:7)
+----
+    at Test._assertStatus (C:\Users\hp\Desktop\container-management-system\backend\node_modules\supertest\lib\test.js:309:14)
+    at C:\Users\hp\Desktop\container-management-system\backend\node_modules\supertest\lib\test.js:365:13
+    at Test._assertFunction (C:\Users\hp\Desktop\container-management-system\backend\node_modules\supertest\lib\test.js:342:13)
+    at Test.assert (C:\Users\hp\Desktop\container-management-system\backend\node_modules\supertest\lib\test.js:195:23)
+    at localAssert (C:\Users\hp\Desktop\container-management-system\backend\node_modules\supertest\lib\test.js:138:14)
+    at Server.&lt;anonymous&gt; (C:\Users\hp\Desktop\container-management-system\backend\node_modules\supertest\lib\test.js:152:11)
+    at Object.onceWrapper (node:events:633:28)
+    at Server.emit (node:events:519:28)
+    at emitCloseNT (node:net:2419:8)
+    at processTicksAndRejections (node:internal/process/task_queues:89:21)</failure>
+    </testcase>
+    <testcase classname="AppController (e2e) - Full Test Suite Items PUT /items/:id should fail to update item (user)" name="AppController (e2e) - Full Test Suite Items PUT /items/:id should fail to update item (user)" time="0.028">
+    </testcase>
+    <testcase classname="AppController (e2e) - Full Test Suite Items PUT /items/:id should fail to update non-existent item" name="AppController (e2e) - Full Test Suite Items PUT /items/:id should fail to update non-existent item" time="0.041">
+    </testcase>
+    <testcase classname="AppController (e2e) - Full Test Suite Items DELETE /items/:id should delete an item (admin)" name="AppController (e2e) - Full Test Suite Items DELETE /items/:id should delete an item (admin)" time="0.072">
+      <failure>Error: expected 201 &quot;Created&quot;, got 500 &quot;Internal Server Error&quot;
+    at Object.&lt;anonymous&gt; (C:\Users\hp\Desktop\container-management-system\backend\test\app.e2e-spec.ts:927:12)
+    at Promise.finally.completed (C:\Users\hp\Desktop\container-management-system\backend\node_modules\jest-circus\build\jestAdapterInit.js:1561:28)
+    at new Promise (&lt;anonymous&gt;)
+    at callAsyncCircusFn (C:\Users\hp\Desktop\container-management-system\backend\node_modules\jest-circus\build\jestAdapterInit.js:1501:10)
+    at _callCircusTest (C:\Users\hp\Desktop\container-management-system\backend\node_modules\jest-circus\build\jestAdapterInit.js:1011:40)
+    at processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at _runTest (C:\Users\hp\Desktop\container-management-system\backend\node_modules\jest-circus\build\jestAdapterInit.js:951:3)
+    at C:\Users\hp\Desktop\container-management-system\backend\node_modules\jest-circus\build\jestAdapterInit.js:853:7
+    at _runTestsForDescribeBlock (C:\Users\hp\Desktop\container-management-system\backend\node_modules\jest-circus\build\jestAdapterInit.js:866:11)
+    at _runTestsForDescribeBlock (C:\Users\hp\Desktop\container-management-system\backend\node_modules\jest-circus\build\jestAdapterInit.js:861:11)
+    at _runTestsForDescribeBlock (C:\Users\hp\Desktop\container-management-system\backend\node_modules\jest-circus\build\jestAdapterInit.js:861:11)
+    at _runTestsForDescribeBlock (C:\Users\hp\Desktop\container-management-system\backend\node_modules\jest-circus\build\jestAdapterInit.js:861:11)
+    at run (C:\Users\hp\Desktop\container-management-system\backend\node_modules\jest-circus\build\jestAdapterInit.js:765:3)
+    at runAndTransformResultsToJestFormat (C:\Users\hp\Desktop\container-management-system\backend\node_modules\jest-circus\build\jestAdapterInit.js:1993:21)
+    at jestAdapter (C:\Users\hp\Desktop\container-management-system\backend\node_modules\jest-circus\build\runner.js:111:19)
+    at runTestInternal (C:\Users\hp\Desktop\container-management-system\backend\node_modules\jest-runner\build\index.js:276:16)
+    at runTest (C:\Users\hp\Desktop\container-management-system\backend\node_modules\jest-runner\build\index.js:344:7)
+----
+    at Test._assertStatus (C:\Users\hp\Desktop\container-management-system\backend\node_modules\supertest\lib\test.js:309:14)
+    at C:\Users\hp\Desktop\container-management-system\backend\node_modules\supertest\lib\test.js:365:13
+    at Test._assertFunction (C:\Users\hp\Desktop\container-management-system\backend\node_modules\supertest\lib\test.js:342:13)
+    at Test.assert (C:\Users\hp\Desktop\container-management-system\backend\node_modules\supertest\lib\test.js:195:23)
+    at localAssert (C:\Users\hp\Desktop\container-management-system\backend\node_modules\supertest\lib\test.js:138:14)
+    at Server.&lt;anonymous&gt; (C:\Users\hp\Desktop\container-management-system\backend\node_modules\supertest\lib\test.js:152:11)
+    at Object.onceWrapper (node:events:633:28)
+    at Server.emit (node:events:519:28)
+    at emitCloseNT (node:net:2419:8)
+    at processTicksAndRejections (node:internal/process/task_queues:89:21)</failure>
+    </testcase>
+    <testcase classname="AppController (e2e) - Full Test Suite Items DELETE /items/:id should fail to delete item (user)" name="AppController (e2e) - Full Test Suite Items DELETE /items/:id should fail to delete item (user)" time="0.087">
+      <failure>Error: expected 201 &quot;Created&quot;, got 500 &quot;Internal Server Error&quot;
+    at Object.&lt;anonymous&gt; (C:\Users\hp\Desktop\container-management-system\backend\test\app.e2e-spec.ts:949:12)
+    at Promise.finally.completed (C:\Users\hp\Desktop\container-management-system\backend\node_modules\jest-circus\build\jestAdapterInit.js:1561:28)
+    at new Promise (&lt;anonymous&gt;)
+    at callAsyncCircusFn (C:\Users\hp\Desktop\container-management-system\backend\node_modules\jest-circus\build\jestAdapterInit.js:1501:10)
+    at _callCircusTest (C:\Users\hp\Desktop\container-management-system\backend\node_modules\jest-circus\build\jestAdapterInit.js:1011:40)
+    at processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at _runTest (C:\Users\hp\Desktop\container-management-system\backend\node_modules\jest-circus\build\jestAdapterInit.js:951:3)
+    at C:\Users\hp\Desktop\container-management-system\backend\node_modules\jest-circus\build\jestAdapterInit.js:853:7
+    at _runTestsForDescribeBlock (C:\Users\hp\Desktop\container-management-system\backend\node_modules\jest-circus\build\jestAdapterInit.js:866:11)
+    at _runTestsForDescribeBlock (C:\Users\hp\Desktop\container-management-system\backend\node_modules\jest-circus\build\jestAdapterInit.js:861:11)
+    at _runTestsForDescribeBlock (C:\Users\hp\Desktop\container-management-system\backend\node_modules\jest-circus\build\jestAdapterInit.js:861:11)
+    at _runTestsForDescribeBlock (C:\Users\hp\Desktop\container-management-system\backend\node_modules\jest-circus\build\jestAdapterInit.js:861:11)
+    at run (C:\Users\hp\Desktop\container-management-system\backend\node_modules\jest-circus\build\jestAdapterInit.js:765:3)
+    at runAndTransformResultsToJestFormat (C:\Users\hp\Desktop\container-management-system\backend\node_modules\jest-circus\build\jestAdapterInit.js:1993:21)
+    at jestAdapter (C:\Users\hp\Desktop\container-management-system\backend\node_modules\jest-circus\build\runner.js:111:19)
+    at runTestInternal (C:\Users\hp\Desktop\container-management-system\backend\node_modules\jest-runner\build\index.js:276:16)
+    at runTest (C:\Users\hp\Desktop\container-management-system\backend\node_modules\jest-runner\build\index.js:344:7)
+----
+    at Test._assertStatus (C:\Users\hp\Desktop\container-management-system\backend\node_modules\supertest\lib\test.js:309:14)
+    at C:\Users\hp\Desktop\container-management-system\backend\node_modules\supertest\lib\test.js:365:13
+    at Test._assertFunction (C:\Users\hp\Desktop\container-management-system\backend\node_modules\supertest\lib\test.js:342:13)
+    at Test.assert (C:\Users\hp\Desktop\container-management-system\backend\node_modules\supertest\lib\test.js:195:23)
+    at localAssert (C:\Users\hp\Desktop\container-management-system\backend\node_modules\supertest\lib\test.js:138:14)
+    at Server.&lt;anonymous&gt; (C:\Users\hp\Desktop\container-management-system\backend\node_modules\supertest\lib\test.js:152:11)
+    at Object.onceWrapper (node:events:633:28)
+    at Server.emit (node:events:519:28)
+    at emitCloseNT (node:net:2419:8)
+    at processTicksAndRejections (node:internal/process/task_queues:89:21)</failure>
+    </testcase>
+    <testcase classname="AppController (e2e) - Full Test Suite Items DELETE /items/:id should fail to delete non-existent item" name="AppController (e2e) - Full Test Suite Items DELETE /items/:id should fail to delete non-existent item" time="0.042">
+    </testcase>
+    <testcase classname="AppController (e2e) - Full Test Suite Authorization should allow admin to access admin-only endpoints" name="AppController (e2e) - Full Test Suite Authorization should allow admin to access admin-only endpoints" time="0.047">
+    </testcase>
+    <testcase classname="AppController (e2e) - Full Test Suite Authorization should deny user access to admin-only endpoints" name="AppController (e2e) - Full Test Suite Authorization should deny user access to admin-only endpoints" time="0.026">
+    </testcase>
+    <testcase classname="AppController (e2e) - Full Test Suite Authorization should allow user to view containers" name="AppController (e2e) - Full Test Suite Authorization should allow user to view containers" time="0.039">
+    </testcase>
+    <testcase classname="AppController (e2e) - Full Test Suite Authorization should allow user to view items" name="AppController (e2e) - Full Test Suite Authorization should allow user to view items" time="0.036">
+    </testcase>
+    <testcase classname="AppController (e2e) - Full Test Suite Authorization should deny user to create items" name="AppController (e2e) - Full Test Suite Authorization should deny user to create items" time="0.073">
+    </testcase>
+    <testcase classname=" Test execution failure: could be caused by test hooks like &apos;afterAll&apos;." name=" Test execution failure: could be caused by test hooks like &apos;afterAll&apos;." time="0">
+      <failure>{&quot;message&quot;:&quot;&quot;,&quot;stack&quot;:&quot;Error: expected 204 \&quot;No Content\&quot;, got 400 \&quot;Bad Request\&quot;\n    at Object.&lt;anonymous&gt; (C:\\Users\\hp\\Desktop\\container-management-system\\backend\\test\\app.e2e-spec.ts:969:10)\n    at Promise.finally.completed (C:\\Users\\hp\\Desktop\\container-management-system\\backend\\node_modules\\jest-circus\\build\\jestAdapterInit.js:1561:28)\n    at new Promise (&lt;anonymous&gt;)\n    at callAsyncCircusFn (C:\\Users\\hp\\Desktop\\container-management-system\\backend\\node_modules\\jest-circus\\build\\jestAdapterInit.js:1501:10)\n    at _callCircusHook (C:\\Users\\hp\\Desktop\\container-management-system\\backend\\node_modules\\jest-circus\\build\\jestAdapterInit.js:980:40)\n    at processTicksAndRejections (node:internal/process/task_queues:105:5)\n    at _runTestsForDescribeBlock (C:\\Users\\hp\\Desktop\\container-management-system\\backend\\node_modules\\jest-circus\\build\\jestAdapterInit.js:895:7)\n    at _runTestsForDescribeBlock (C:\\Users\\hp\\Desktop\\container-management-system\\backend\\node_modules\\jest-circus\\build\\jestAdapterInit.js:861:11)\n    at _runTestsForDescribeBlock (C:\\Users\\hp\\Desktop\\container-management-system\\backend\\node_modules\\jest-circus\\build\\jestAdapterInit.js:861:11)\n    at run (C:\\Users\\hp\\Desktop\\container-management-system\\backend\\node_modules\\jest-circus\\build\\jestAdapterInit.js:765:3)\n    at runAndTransformResultsToJestFormat (C:\\Users\\hp\\Desktop\\container-management-system\\backend\\node_modules\\jest-circus\\build\\jestAdapterInit.js:1993:21)\n    at jestAdapter (C:\\Users\\hp\\Desktop\\container-management-system\\backend\\node_modules\\jest-circus\\build\\runner.js:111:19)\n    at runTestInternal (C:\\Users\\hp\\Desktop\\container-management-system\\backend\\node_modules\\jest-runner\\build\\index.js:276:16)\n    at runTest (C:\\Users\\hp\\Desktop\\container-management-system\\backend\\node_modules\\jest-runner\\build\\index.js:344:7)\n----\n    at Test._assertStatus (C:\\Users\\hp\\Desktop\\container-management-system\\backend\\node_modules\\supertest\\lib\\test.js:309:14)\n    at C:\\Users\\hp\\Desktop\\container-management-system\\backend\\node_modules\\supertest\\lib\\test.js:365:13\n    at Test._assertFunction (C:\\Users\\hp\\Desktop\\container-management-system\\backend\\node_modules\\supertest\\lib\\test.js:342:13)\n    at Test.assert (C:\\Users\\hp\\Desktop\\container-management-system\\backend\\node_modules\\supertest\\lib\\test.js:195:23)\n    at localAssert (C:\\Users\\hp\\Desktop\\container-management-system\\backend\\node_modules\\supertest\\lib\\test.js:138:14)\n    at Server.&lt;anonymous&gt; (C:\\Users\\hp\\Desktop\\container-management-system\\backend\\node_modules\\supertest\\lib\\test.js:152:11)\n    at Object.onceWrapper (node:events:633:28)\n    at Server.emit (node:events:519:28)\n    at emitCloseNT (node:net:2419:8)\n    at processTicksAndRejections (node:internal/process/task_queues:89:21)&quot;}</failure>
+    </testcase>
+  </testsuite>
+</testsuites>
