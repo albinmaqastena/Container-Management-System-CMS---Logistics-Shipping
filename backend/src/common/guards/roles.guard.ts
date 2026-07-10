@@ -1,5 +1,5 @@
 // src/common/guards/roles.guard.ts
-import { Injectable, CanActivate, ExecutionContext, UnauthorizedException } from '@nestjs/common';
+import { Injectable, CanActivate, ExecutionContext, UnauthorizedException, ForbiddenException } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { UserRole } from '../../modules/auth/entities/user.entity';
 
@@ -18,19 +18,19 @@ export class RolesGuard implements CanActivate {
     }
 
     const { user } = context.switchToHttp().getRequest();
-    
+
     // ✅ Nëse user-i nuk është i autentikuar, kthe 401
     if (!user) {
       throw new UnauthorizedException('User not authenticated');
     }
 
     const hasRole = requiredRoles.some((role) => user?.role === role);
-    
+
     // ✅ Nëse nuk ka rolin e duhur, kthe 403
     if (!hasRole) {
-      throw new UnauthorizedException('Insufficient permissions');
+      throw new ForbiddenException('Insufficient permissions');
     }
-    
+
     return true;
   }
 }

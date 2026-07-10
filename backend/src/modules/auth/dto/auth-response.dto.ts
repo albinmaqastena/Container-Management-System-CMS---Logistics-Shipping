@@ -1,20 +1,27 @@
-// dto/auth-response.dto.ts
-import { ApiProperty } from '@nestjs/swagger';
-import { User } from '../entities/user.entity';
+// src/modules/auth/dto/auth-response.dto.ts
+
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { UserResponseDto } from './user-response.dto';
 
 export class AuthResponseDto {
-  @ApiProperty()
-  accessToken: string;
+  @ApiProperty({
+    description: 'JWT access token',
+  })
+  accessToken!: string;
 
-  @ApiProperty({ type: () => User })
-  user: Partial<User>;
+  @ApiProperty({
+    type: () => UserResponseDto,
+  })
+  user!: Partial<UserResponseDto>;
 
-  @ApiProperty({ required: false })
+  @ApiPropertyOptional({
+    description: 'Refresh token used to obtain a new access token',
+  })
   refreshToken?: string;
 
   constructor(
     accessToken: string,
-    user: Partial<User>,
+    user: Partial<UserResponseDto>,
     refreshToken?: string,
   ) {
     this.accessToken = accessToken;

@@ -1,9 +1,9 @@
 // items.module.ts
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { CacheModule } from '@nestjs/cache-manager'; // ✅ Shto këtë
-import { ConfigModule, ConfigService } from '@nestjs/config'; // ✅ Shto këtë
-import * as redisStore from 'cache-manager-redis-store'; // ✅ Shto këtë
+import { CacheModule } from '@nestjs/cache-manager';
+import { ConfigModule, ConfigService } from '@nestjs/config';
+import * as redisStore from 'cache-manager-redis-store';
 import { ItemsController } from './items.controller';
 import { ItemsService } from './items.service';
 import { Item } from './entities/item.entity';
@@ -13,7 +13,6 @@ import { ContainersModule } from '../containers/containers.module';
   imports: [
     TypeOrmModule.forFeature([Item]),
     ContainersModule,
-    // ✅ Shto CacheModule me të njëjtin konfigurim
     CacheModule.registerAsync({
       imports: [ConfigModule],
       useFactory: (configService: ConfigService) => ({

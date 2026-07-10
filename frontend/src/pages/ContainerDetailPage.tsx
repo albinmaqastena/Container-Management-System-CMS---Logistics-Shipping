@@ -46,7 +46,6 @@ export const ContainerDetailPage: React.FC = () => {
 
   const isAdmin = user?.role === 'admin' || user?.role === 'super_admin';
 
-  // ✅ Përdor useCallback për të stabilizuar funksionin
   const loadContainer = useCallback(async () => {
     if (!id) return;
     try {
@@ -120,8 +119,11 @@ export const ContainerDetailPage: React.FC = () => {
     );
   }
 
-  const usagePercentage = (container.usedVolume / container.totalVolume) * 100;
-  const availableVolume = container.totalVolume - container.usedVolume;
+  // ✅ Konverto vlerat në numër për të shmangur gabimet
+  const totalVolume = Number(container.totalVolume) || 1;
+  const usedVolume = Number(container.usedVolume) || 0;
+  const availableVolume = totalVolume - usedVolume;
+  const usagePercentage = totalVolume > 0 ? (usedVolume / totalVolume) * 100 : 0;
 
   return (
     <Box sx={{ p: 3 }}>
@@ -162,7 +164,7 @@ export const ContainerDetailPage: React.FC = () => {
         </Alert>
       )}
 
-      {/* Container Info - Përdor Box me flex në vend të Grid */}
+      {/* Container Info */}
       <Paper sx={{ p: 3, mb: 3 }}>
         <Box sx={{ display: 'flex', flexDirection: { xs: 'column', md: 'row' }, gap: 3 }}>
           <Box sx={{ flex: 1 }}>
@@ -197,7 +199,7 @@ export const ContainerDetailPage: React.FC = () => {
             </Typography>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 1 }}>
               <Typography variant="body2">
-                {container.usedVolume.toFixed(2)} / {container.totalVolume.toFixed(2)} m³
+                {usedVolume.toFixed(2)} / {totalVolume.toFixed(2)} m³
               </Typography>
               <Typography variant="body2" color="textSecondary">
                 {usagePercentage.toFixed(1)}%

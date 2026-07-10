@@ -1,18 +1,65 @@
 // test/setup.ts
 import { Test, TestingModule } from '@nestjs/testing';
-import { INestApplication, ValidationPipe } from '@nestjs/common';
+import { INestApplication, ValidationPipe, VersioningType } from '@nestjs/common';
 import { AppModule } from '../src/app.module';
 import { DataSource } from 'typeorm';
 import request from 'supertest';
 
+// ✅ MOCK I REDIS
+const redisStore = new Map<string, string>();
+
+const mockRedis = {
+  async set(key: string, value: string, ..._args: any[]) {
+    redisStore.set(key, value);
+    return 'OK';
+  },
+
+  async get(key: string) {
+    return redisStore.get(key) ?? null;
+  },
+
+  async del(key: string) {
+    redisStore.delete(key);
+    return 1;
+  },
+
+  async exists(key: string) {
+    return redisStore.has(key) ? 1 : 0;
+  },
+
+  async scan(cursor: string, ...args: any[]) {
+    const pattern = args[1];
+    const prefix = pattern.replace('*', '');
+
+    const keys = [...redisStore.keys()].filter((k) =>
+      k.startsWith(prefix),
+    );
+
+    return ['0', keys];
+  },
+
+  async keys(pattern: string) {
+    const prefix = pattern.replace('*', '');
+
+    return [...redisStore.keys()].filter((k) =>
+      k.startsWith(prefix),
+    );
+  },
+};
+
 let app: INestApplication;
 let dataSource: DataSource;
+let isSetupDone = false;
 
 /**
  * Setup që ekzekutohet para të gjitha testeve
- * ⚠️ NUK prek databazën fare - vetëm lexon të dhënat ekzistuese
  */
 beforeAll(async () => {
+  if (isSetupDone) {
+    console.log('✅ Setup already done, skipping...');
+    return;
+  }
+
   console.log('========================================');
   console.log('🧪 Setting up E2E Test Environment');
   console.log(`🔧 NODE_ENV: ${process.env.NODE_ENV}`);
@@ -30,31 +77,44 @@ beforeAll(async () => {
   console.log('✅ Environment check passed');
   console.log('========================================');
 
-  // ✅ KRIJO APP-IN (NUK PREK DATABAZËN)
+  console.log('TYPEORM PATH:', require.resolve('typeorm'));
+  console.log('PG PATH:', require.resolve('pg'));
+
+  // ✅ KRIJO APP-IN DHE MBISHKRUAJ REDIS-IN ME MOCK
   const moduleFixture: TestingModule = await Test.createTestingModule({
     imports: [AppModule],
-  }).compile();
+  })
+    .overrideProvider('REDIS_CLIENT')
+    .useValue(mockRedis)
+    .compile();
 
   app = moduleFixture.createNestApplication();
-  app.useGlobalPipes(new ValidationPipe({
-    whitelist: true,
-    transform: true,
-    forbidNonWhitelisted: true,
-  }));
+
+  app.useGlobalPipes(
+    new ValidationPipe({
+      whitelist: true,
+      transform: true,
+      forbidNonWhitelisted: true,
+    }),
+  );
+
+  app.enableVersioning({
+    type: VersioningType.URI,
+    defaultVersion: '1',
+  });
 
   await app.init();
 
-  // ✅ MER DATASOURCE (VETËM PËR LEXIM)
   dataSource = app.get(DataSource);
 
   if (!dataSource || !dataSource.isInitialized) {
     await dataSource.initialize();
   }
 
-  // ✅ VETËM KONTROLLO NËSE ADMINI EKZISTON (LEXIM, JO NDRYSHIM)
+  // Kontrollo admin-in
   const admin = await dataSource.query(
     'SELECT id, username, email FROM users WHERE email = $1',
-    ['admin@example.com']
+    ['admin@example.com'],
   );
 
   if (admin.length === 0) {
@@ -64,15 +124,17 @@ beforeAll(async () => {
     console.log(`✅ Admin found: ${admin[0].username} (${admin[0].id})`);
   }
 
-  // ✅ STATISTIKAT E DATABAZËS (VETËM LEXIM)
   const stats = await getDatabaseStats();
-  console.log(`📊 Database stats: ${stats.users} users, ${stats.containers} containers, ${stats.items} items`);
+  console.log(
+    `📊 Database stats: ${stats.users} users, ${stats.containers} containers, ${stats.items} items`,
+  );
   console.log('========================================');
+
+  isSetupDone = true;
 }, 60000);
 
 /**
- * Setup që ekzekutohet pas të gjitha testeve
- * ⚠️ NUK prek databazën - vetëm mbyll lidhjet
+ * Pastrimi pas të gjitha testeve
  */
 afterAll(async () => {
   console.log('🧹 Cleaning up test environment...');
@@ -96,9 +158,6 @@ afterAll(async () => {
   console.log('✅ Test environment cleaned up');
 }, 30000);
 
-/**
- * Merr statistikat e database-it (VETËM LEXIM)
- */
 async function getDatabaseStats() {
   const userCount = await dataSource.query('SELECT COUNT(*) FROM users');
   const containerCount = await dataSource.query('SELECT COUNT(*) FROM containers');
@@ -111,17 +170,13 @@ async function getDatabaseStats() {
   };
 }
 
-/**
- * Helper për të marrë token-in e autentikimit
- * ⚠️ VETËM LEXIM - merr token nga admin-i ekzistues
- */
 export const getAuthToken = async (email: string, password: string): Promise<string> => {
   if (!app) {
     throw new Error('❌ App is not initialized!');
   }
 
   const response = await request(app.getHttpServer())
-    .post('/auth/login')
+    .post('/v1/auth/login')
     .send({ email, password });
 
   console.log(`📝 Login attempt: ${email}`);
@@ -136,5 +191,16 @@ export const getAuthToken = async (email: string, password: string): Promise<str
   return response.body.accessToken;
 };
 
-export const getApp = () => app;
-export const getDataSource = () => dataSource;
+export const getApp = () => {
+  if (!app) {
+    throw new Error('❌ App is not initialized! Call beforeAll first.');
+  }
+  return app;
+};
+
+export const getDataSource = () => {
+  if (!dataSource) {
+    throw new Error('❌ DataSource is not initialized!');
+  }
+  return dataSource;
+};

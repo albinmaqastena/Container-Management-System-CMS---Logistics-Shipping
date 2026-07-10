@@ -1,4 +1,4 @@
-// src/modules/auth/auth.service.ts
+// src/modules/auth/auth.service.ts (versioni i plotë me të gjitha ndryshimet)
 import {
   Injectable,
   UnauthorizedException,
@@ -6,25 +6,31 @@ import {
   Inject,
   NotFoundException,
   BadRequestException,
+  Logger,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, IsNull, Not } from 'typeorm';
-import { CACHE_MANAGER } from '@nestjs/cache-manager';
-import type { Cache } from 'cache-manager';
+import { Repository } from 'typeorm';
 import { v4 as uuidv4 } from 'uuid';
 import { ConfigService } from '@nestjs/config';
+import Redis from 'ioredis';
+import { randomBytes } from 'crypto';
+
 import { User, UserRole } from './entities/user.entity';
 import { RefreshToken } from './entities/refresh-token.entity';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
 import { AuthResponseDto } from './dto/auth-response.dto';
-import { randomBytes } from 'crypto';
+import { SessionDto } from './dto/session.dto';
 import { PaginationDto, PaginatedResponseDto } from '../../common/dto/pagination.dto';
 import { buildSortObject, ALLOWED_SORT_FIELDS } from '../../common/utils/sort.utils';
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
+  private readonly SESSION_TTL = 604800; // 7 ditë
+  private readonly MAX_SESSIONS = 10;
+
   constructor(
     @InjectRepository(User)
     private userRepository: Repository<User>,
@@ -32,13 +38,13 @@ export class AuthService {
     private refreshTokenRepository: Repository<RefreshToken>,
     private jwtService: JwtService,
     private configService: ConfigService,
-    @Inject(CACHE_MANAGER)
-    private cacheManager: Cache,
+    @Inject('REDIS_CLIENT')
+    private redis: Redis,
   ) {}
 
-  // ------------------------------------------------------------------
+  // ================================================================
   // LOGIN
-  // ------------------------------------------------------------------
+  // ================================================================
   async login(
     loginDto: LoginDto,
     ip?: string,
@@ -90,20 +96,41 @@ export class AuthService {
     user.lastLoginUserAgent = userAgent || 'unknown';
     await this.userRepository.save(user);
 
+    const sessionId = uuidv4();
+    const sessionKey = `session:${user.id}:${sessionId}`;
+    const now = new Date();
+    const expiresAt = new Date(now.getTime() + this.SESSION_TTL * 1000);
+
     const accessToken = this.generateAccessToken(user);
-    const refreshToken = await this.generateRefreshToken(user);
+    const refreshToken = await this.generateRefreshToken(user, ip, userAgent, sessionId);
 
-    const sessionKey = `session:${user.id}:${Date.now()}`;
-    await this.cacheManager.set(sessionKey, accessToken, 604800);
+    // ✅ Kontrollo dhe kufizo session-et
+    await this.enforceSessionLimit(user.id);
 
-    const { password: _, ...userWithoutPassword } = user;
+    await this.redis.set(
+      sessionKey,
+      JSON.stringify({
+        accessToken,
+        refreshToken,
+        userAgent: userAgent || 'unknown',
+        ip: ip || 'unknown',
+        createdAt: now.toISOString(),
+        expiresAt: expiresAt.toISOString(),
+      }),
+      'EX',
+      this.SESSION_TTL,
+    );
 
-    return new AuthResponseDto(accessToken, userWithoutPassword, refreshToken);
+    return new AuthResponseDto(
+      accessToken,
+      this.sanitizeUser(user),
+      refreshToken,
+    );
   }
 
-  // ------------------------------------------------------------------
+  // ================================================================
   // REFRESH ACCESS TOKEN
-  // ------------------------------------------------------------------
+  // ================================================================
   async refreshAccessToken(refreshToken: string): Promise<{
     accessToken: string;
     refreshToken: string;
@@ -121,9 +148,67 @@ export class AuthService {
       throw new UnauthorizedException('User account is deactivated');
     }
 
-    const newAccessToken = this.generateAccessToken(storedToken.user);
-    const newRefreshToken = await this.generateRefreshToken(storedToken.user);
+    // ✅ Merr session-id dhe metadata nga Redis
+    let ip: string | undefined;
+    let userAgent: string | undefined;
+    let sessionId: string | undefined;
 
+    try {
+      const keys = await this.scanKeys(`session:${storedToken.user.id}:*`);
+      for (const key of keys) {
+        const data = await this.redis.get(key);
+        if (data) {
+          const session = JSON.parse(data);
+          if (session.refreshToken === refreshToken) {
+            ip = session.ip;
+            userAgent = session.userAgent;
+            sessionId = key.split(':')[2];
+            break;
+          }
+        }
+      }
+    } catch (error) {
+      this.logger.error('Error retrieving session for refresh:', error);
+    }
+
+    if (!sessionId) {
+      throw new UnauthorizedException('Session not found for this refresh token');
+    }
+
+    const newAccessToken = this.generateAccessToken(storedToken.user);
+    const newRefreshToken = await this.generateRefreshToken(
+      storedToken.user,
+      ip,
+      userAgent,
+      sessionId,
+    );
+
+    // ✅ Përditëso session-in në Redis
+    try {
+      const keys = await this.scanKeys(`session:${storedToken.user.id}:*`);
+      for (const key of keys) {
+        const data = await this.redis.get(key);
+        if (data) {
+          const session = JSON.parse(data);
+          if (session.refreshToken === refreshToken) {
+            session.accessToken = newAccessToken;
+            session.refreshToken = newRefreshToken;
+            await this.redis.set(
+              key,
+              JSON.stringify(session),
+              'EX',
+              this.SESSION_TTL,
+            );
+            this.logger.debug(`Session updated with new refresh token`);
+            break;
+          }
+        }
+      }
+    } catch (error) {
+      this.logger.error('Error updating Redis session during refresh:', error);
+    }
+
+    // ✅ Revoko refresh token-in e vjetër
     storedToken.isActive = false;
     storedToken.revokedAt = new Date();
     storedToken.revokedReason = 'rotated';
@@ -135,37 +220,61 @@ export class AuthService {
     };
   }
 
-  // ------------------------------------------------------------------
-  // LOGOUT
-  // ------------------------------------------------------------------
+  // ================================================================
+  // LOGOUT – vetëm session-in aktual
+  // ================================================================
   async logout(userId: string, refreshToken: string): Promise<void> {
     const token = await this.refreshTokenRepository.findOne({
       where: { token: refreshToken, userId, isActive: true },
     });
 
-    if (token) {
-      token.isActive = false;
-      token.revokedAt = new Date();
-      token.revokedReason = 'logout';
-      await this.refreshTokenRepository.save(token);
+    if (!token) {
+      throw new UnauthorizedException('Invalid refresh token');
+    }
 
-      try {
-        const cacheStore = (this.cacheManager as any).store;
-        if (cacheStore && typeof cacheStore.keys === 'function') {
-          const keys = await cacheStore.keys(`session:${userId}:*`);
-          for (const key of keys) {
-            await this.cacheManager.del(key);
+    token.isActive = false;
+    token.revokedAt = new Date();
+    token.revokedReason = 'logout';
+    await this.refreshTokenRepository.save(token);
+
+    try {
+      const keys = await this.scanKeys(`session:${userId}:*`);
+      for (const key of keys) {
+        const data = await this.redis.get(key);
+        if (data) {
+          const session = JSON.parse(data);
+          if (session.refreshToken === refreshToken) {
+            await this.redis.del(key);
+            this.logger.debug(`Session deleted for user ${userId}`);
+            break;
           }
         }
-      } catch (error) {
-        console.error('Error clearing cache sessions:', error);
       }
+    } catch (error) {
+      this.logger.error('Error clearing Redis session during logout:', error);
     }
   }
 
-  // ------------------------------------------------------------------
+  // ================================================================
+  // LOGOUT ALL
+  // ================================================================
+  async logoutAll(userId: string): Promise<void> {
+    await this.refreshTokenRepository.update(
+      { userId, isActive: true },
+      {
+        isActive: false,
+        revokedAt: new Date(),
+        revokedReason: 'logout_all',
+      },
+    );
+
+    await this.invalidateAllSessions(userId);
+    this.logger.debug(`All sessions and refresh tokens revoked for user ${userId}`);
+  }
+
+  // ================================================================
   // REGISTER
-  // ------------------------------------------------------------------
+  // ================================================================
   async register(registerDto: RegisterDto, currentUser?: User): Promise<User> {
     const existingUser = await this.userRepository.findOne({
       where: [{ email: registerDto.email }, { username: registerDto.username }],
@@ -212,12 +321,15 @@ export class AuthService {
       role,
     });
 
-    return this.userRepository.save(user);
+    const savedUser =
+      await this.userRepository.save(user);
+
+    return this.sanitizeUser(savedUser) as User;
   }
 
-  // ------------------------------------------------------------------
+  // ================================================================
   // CHANGE PASSWORD
-  // ------------------------------------------------------------------
+  // ================================================================
   async changePassword(
     userId: string,
     currentPassword: string,
@@ -248,9 +360,9 @@ export class AuthService {
     await this.invalidateAllSessions(userId);
   }
 
-  // ------------------------------------------------------------------
+  // ================================================================
   // FORGOT & RESET PASSWORD
-  // ------------------------------------------------------------------
+  // ================================================================
   async forgotPassword(email: string): Promise<{ message: string }> {
     const user = await this.userRepository.findOne({
       where: { email },
@@ -267,7 +379,7 @@ export class AuthService {
     user.setResetToken(token, expiresInMs);
     await this.userRepository.save(user);
 
-    console.log(`🔑 Reset token for ${email}: ${token}`);
+    this.logger.log(`Password reset requested`);
 
     return { message: 'If this email exists, a reset link has been sent' };
   }
@@ -292,63 +404,77 @@ export class AuthService {
     return { message: 'Password reset successfully' };
   }
 
-  // ------------------------------------------------------------------
+  // ================================================================
   // SESSIONS
-  // ------------------------------------------------------------------
+  // ================================================================
   async getUserSessions(userId: string): Promise<string[]> {
     const sessions: string[] = [];
     try {
-      const cacheStore = (this.cacheManager as any).store;
-      if (cacheStore && typeof cacheStore.keys === 'function') {
-        const keys = await cacheStore.keys(`session:${userId}:*`);
-        for (const key of keys) {
-          const token = await this.cacheManager.get(key);
-          if (token) sessions.push(token as string);
+      const keys = await this.scanKeys(`session:${userId}:*`);
+      for (const key of keys) {
+        const data = await this.redis.get(key);
+        if (data) {
+          const session = JSON.parse(data);
+          sessions.push(session.accessToken);
         }
       }
     } catch (error) {
-      console.error('Error getting user sessions:', error);
+      this.logger.error('Error fetching sessions:', error);
     }
-    return sessions; // ✅ return i shtuar
+    return sessions;
   }
 
-  async getUserSessionsDetailed(userId: string): Promise<any[]> {
-    const sessions: any[] = [];
+  async getUserSessionsDetailed(userId: string): Promise<SessionDto[]> {
+    const sessions: SessionDto[] = [];
     try {
-      const cacheStore = (this.cacheManager as any).store;
-      if (cacheStore && typeof cacheStore.keys === 'function') {
-        const keys = await cacheStore.keys(`session:${userId}:*`);
-        for (const key of keys) {
-          const token = await this.cacheManager.get(key);
-          if (token) {
-            sessions.push({
-              id: key.split(':').pop(),
-              token: token,
-              createdAt: new Date(parseInt(key.split(':')[2])),
-              expiresAt: new Date(Date.now() + 604800000),
-              isActive: true,
-            });
-          }
+      const keys = await this.scanKeys(`session:${userId}:*`);
+      for (const key of keys) {
+        const data = await this.redis.get(key);
+        if (data) {
+          const session = JSON.parse(data);
+          sessions.push({
+            userId: userId,
+            id: key.split(':')[2],
+            createdAt: new Date(session.createdAt),
+            expiresAt: new Date(session.expiresAt),
+            ip: session.ip,
+            userAgent: session.userAgent,
+            isActive: true,
+          });
         }
       }
     } catch (error) {
-      console.error('Error getting user sessions:', error);
+      this.logger.error('Error fetching detailed sessions:', error);
     }
-    return sessions; // ✅ return i shtuar
+    return sessions;
   }
 
   async revokeSession(userId: string, sessionId: string): Promise<void> {
     const key = `session:${userId}:${sessionId}`;
-    const exists = await this.cacheManager.get(key);
-    if (!exists) {
+    const data = await this.redis.get(key);
+
+    if (!data) {
       throw new NotFoundException('Session not found');
     }
-    await this.cacheManager.del(key);
+
+    const session = JSON.parse(data);
+
+    await this.refreshTokenRepository.update(
+      { token: session.refreshToken },
+      {
+        isActive: false,
+        revokedAt: new Date(),
+        revokedReason: 'session_revoked',
+      },
+    );
+
+    await this.redis.del(key);
+    this.logger.debug(`Session ${sessionId} revoked for user ${userId}`);
   }
 
-  // ------------------------------------------------------------------
+  // ================================================================
   // VALIDATE USER
-  // ------------------------------------------------------------------
+  // ================================================================
   async validateUser(userId: string): Promise<User> {
     const user = await this.userRepository.findOne({
       where: { id: userId },
@@ -367,12 +493,32 @@ export class AuthService {
       throw new UnauthorizedException('User account is deactivated');
     }
 
-    return user; // ✅ tani `user` nuk është `null`
+    return user;
   }
 
-  // ------------------------------------------------------------------
-  // SOFT DELETE FOR USERS
-  // ------------------------------------------------------------------
+  // ================================================================
+  // PROFILE
+  // ================================================================
+  async getProfile(userId: string): Promise<Partial<User>> {
+    return this.findUserById(userId, false);
+  }
+
+  async findUserById(id: string, includeDeleted = false): Promise<Partial<User>> {
+    const user = await this.userRepository.findOne({
+      where: { id },
+      withDeleted: includeDeleted,
+    });
+
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    return this.sanitizeUser(user);
+  }
+
+  // ================================================================
+  // SOFT DELETE USERS
+  // ================================================================
   async softDeleteUser(userId: string): Promise<void> {
     const user = await this.userRepository.findOne({
       where: { id: userId },
@@ -417,10 +563,19 @@ export class AuthService {
 
     await this.userRepository.restore(userId);
 
-    const restored = await this.userRepository.findOne({ where: { id: userId } });
+    const restored = await this.userRepository.findOne({
+      where: { id: userId },
+    });
+
     if (!restored) {
       throw new NotFoundException('User not found after restore');
     }
+
+    if (!restored.isActive) {
+      restored.isActive = true;
+      await this.userRepository.save(restored);
+    }
+
     return restored;
   }
 
@@ -437,6 +592,8 @@ export class AuthService {
     if (user.role === UserRole.SUPER_ADMIN) {
       throw new BadRequestException('Cannot delete Super Admin user');
     }
+
+    await this.invalidateAllSessions(userId);
 
     await this.userRepository.remove(user);
 
@@ -455,30 +612,55 @@ export class AuthService {
 
     const queryBuilder = this.userRepository
       .createQueryBuilder('user')
+      .withDeleted()
       .where('user.deletedAt IS NOT NULL');
 
     const sortObject = buildSortObject(sort, ALLOWED_SORT_FIELDS.users);
-    Object.keys(sortObject).forEach((key) => {
-      queryBuilder.addOrderBy(`user.${key}`, sortObject[key]);
-    });
+
+    if (Object.keys(sortObject).length > 0) {
+      Object.entries(sortObject).forEach(([field, direction]) => {
+        queryBuilder.addOrderBy(`user.${field}`, direction);
+      });
+    } else {
+      queryBuilder.orderBy('user.deletedAt', 'DESC');
+    }
 
     queryBuilder.skip(offset).take(limit);
 
-    const [data, total] = await queryBuilder.getManyAndCount();
+    const [users, total] = await queryBuilder.getManyAndCount();
 
-    // ✅ Sanitizo të dhënat
-    const sanitizedData = data.map((user) => {
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      const { password, resetPasswordToken, resetPasswordExpires, ...safeUser } = user;
-      return safeUser;
-    });
+    const sanitizedUsers = users.map((user) =>
+      this.sanitizeUser(user),
+    );
 
-    return new PaginatedResponseDto<Partial<User>>(sanitizedData, total, limit, offset);
+    return new PaginatedResponseDto<Partial<User>>(
+      sanitizedUsers,
+      total,
+      limit,
+      offset,
+    );
   }
 
-  // ------------------------------------------------------------------
+  // ================================================================
   // PRIVATE HELPERS
-  // ------------------------------------------------------------------
+  // ================================================================
+
+
+  private sanitizeUser(
+    user: User,
+  ): Partial<User> {
+    const {
+      password,
+      resetPasswordToken,
+      resetPasswordExpires,
+      failedLoginAttempts,
+      lockedUntil,
+      ...safeUser
+    } = user;
+
+    return safeUser;
+  }
+
   private generateAccessToken(user: User): string {
     const payload = { sub: user.id, email: user.email, role: user.role };
     return this.jwtService.sign(payload, {
@@ -487,7 +669,12 @@ export class AuthService {
     });
   }
 
-  private async generateRefreshToken(user: User): Promise<string> {
+  private async generateRefreshToken(
+    user: User,
+    ip?: string,
+    userAgent?: string,
+    sessionId?: string,
+  ): Promise<string> {
     const token = uuidv4();
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + 7);
@@ -498,23 +685,58 @@ export class AuthService {
       user,
       expiresAt,
       isActive: true,
+      ip,
+      userAgent,
+      sessionId,
     });
 
     await this.refreshTokenRepository.save(refreshToken);
     return token;
   }
 
-  private async invalidateAllSessions(userId: string): Promise<void> {
+  private async enforceSessionLimit(userId: string): Promise<void> {
     try {
-      const cacheStore = (this.cacheManager as any).store;
-      if (cacheStore && typeof cacheStore.keys === 'function') {
-        const keys = await cacheStore.keys(`session:${userId}:*`);
-        for (const key of keys) {
-          await this.cacheManager.del(key);
-        }
+      const keys = await this.scanKeys(`session:${userId}:*`);
+      if (keys.length >= this.MAX_SESSIONS) {
+        const oldestKey = keys[0];
+        await this.redis.del(oldestKey);
+        this.logger.debug(
+          `Removed oldest session for user ${userId} (limit: ${this.MAX_SESSIONS})`,
+        );
       }
     } catch (error) {
-      console.error('Error invalidating sessions:', error);
+      this.logger.warn('Could not enforce session limit:', error);
     }
+  }
+
+  private async invalidateAllSessions(userId: string): Promise<void> {
+    try {
+      const keys = await this.scanKeys(`session:${userId}:*`);
+      if (keys.length > 0) {
+        await this.redis.del(...keys);
+        this.logger.debug(`Invalidated ${keys.length} sessions for user ${userId}`);
+      }
+    } catch (error) {
+      this.logger.error('Error invalidating sessions with Redis:', error);
+    }
+  }
+
+  private async scanKeys(pattern: string): Promise<string[]> {
+    const keys: string[] = [];
+    let cursor = '0';
+
+    do {
+      const result = await this.redis.scan(
+        cursor,
+        'MATCH',
+        pattern,
+        'COUNT',
+        100,
+      );
+      cursor = result[0];
+      keys.push(...result[1]);
+    } while (cursor !== '0');
+
+    return keys;
   }
 }

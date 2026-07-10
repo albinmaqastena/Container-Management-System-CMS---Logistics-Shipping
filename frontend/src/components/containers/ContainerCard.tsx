@@ -8,18 +8,16 @@ import {
   Box,
   Chip,
   LinearProgress,
-  Button,
   IconButton,
 } from '@mui/material';
 import {
   Delete as DeleteIcon,
   Archive as ArchiveIcon,
   Unarchive as UnarchiveIcon,
-  Edit as EditIcon,
 } from '@mui/icons-material';
 import { Container } from '../../types';
-import { useAuth } from '../../contexts/AuthContext';
-import { useContainers } from '../../contexts/ContainerContext';
+import { useAuth } from '../../hooks/useAuth';
+import { useContainers } from '../../hooks/useContainers';
 import { toast } from 'react-toastify';
 
 interface ContainerCardProps {
@@ -37,7 +35,11 @@ export const ContainerCard: React.FC<ContainerCardProps> = ({
   const { updateContainerStatus, softDeleteContainer } = useContainers();
   const isAdmin = user?.role === 'admin' || user?.role === 'super_admin';
 
-  const usagePercentage = (container.usedVolume / container.totalVolume) * 100;
+  // ✅ Konverto vlerat në numër për të shmangur gabimet
+  const usedVolume = Number(container.usedVolume) || 0;
+  const totalVolume = Number(container.totalVolume) || 1;
+  const availableVolume = Number(container.availableVolume) || 0;
+  const usagePercentage = (usedVolume / totalVolume) * 100;
 
   const handleStatusChange = async (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -105,7 +107,7 @@ export const ContainerCard: React.FC<ContainerCardProps> = ({
               Volume
             </Typography>
             <Typography variant="body2">
-              {container.usedVolume.toFixed(1)} / {container.totalVolume.toFixed(1)} m³
+              {usedVolume.toFixed(1)} / {totalVolume.toFixed(1)} m³
             </Typography>
           </Box>
           <LinearProgress
@@ -115,7 +117,7 @@ export const ContainerCard: React.FC<ContainerCardProps> = ({
             color={usagePercentage > 90 ? 'error' : usagePercentage > 70 ? 'warning' : 'primary'}
           />
           <Typography variant="caption" color="textSecondary">
-            {container.availableVolume.toFixed(2)} m³ available
+            {availableVolume.toFixed(2)} m³ available
           </Typography>
         </Box>
 
@@ -152,3 +154,5 @@ export const ContainerCard: React.FC<ContainerCardProps> = ({
     </Card>
   );
 };
+
+export default ContainerCard;

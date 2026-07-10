@@ -19,18 +19,19 @@ interface StatItem {
 export const DashboardStats: React.FC = () => {
   const { activeContainers, archivedContainers, loading } = useContainers();
 
+  // ✅ Konverto vlerat në numër para llogaritjes
   const totalItems = activeContainers.reduce(
     (sum, container) => sum + (container.items?.length || 0),
     0
   );
 
   const totalVolume = activeContainers.reduce(
-    (sum, container) => sum + container.totalVolume,
+    (sum, container) => sum + Number(container.totalVolume),
     0
   );
 
   const usedVolume = activeContainers.reduce(
-    (sum, container) => sum + container.usedVolume,
+    (sum, container) => sum + Number(container.usedVolume),
     0
   );
 

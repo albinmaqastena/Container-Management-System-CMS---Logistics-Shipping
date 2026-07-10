@@ -1,18 +1,17 @@
 // src/modules/containers/entities/container.entity.ts
 import {
-  Entity,
   Column,
-  PrimaryGeneratedColumn,
   CreateDateColumn,
-  UpdateDateColumn,
   DeleteDateColumn,
+  Entity,
+  JoinColumn,
   ManyToOne,
   OneToMany,
-  BeforeInsert,
-  BeforeUpdate,
-  JoinColumn,
+  PrimaryGeneratedColumn,
+  UpdateDateColumn,
+  ValueTransformer,
 } from 'typeorm';
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { User } from '../../auth/entities/user.entity';
 import { Item } from '../../items/entities/item.entity';
 
@@ -22,6 +21,11 @@ export enum ContainerStatus {
   ARCHIVED = 'archived',
 }
 
+const decimalTransformer: ValueTransformer = {
+  to: (value: number): number => value,
+  from: (value: string | number): number => Number(value),
+};
+
 @Entity('containers')
 export class Container {
   @ApiProperty()
@@ -29,22 +33,40 @@ export class Container {
   id!: string;
 
   @ApiProperty()
-  @Column()
+  @Column({
+    type: 'varchar',
+    length: 100,
+  })
   name!: string;
 
   @ApiProperty()
-  @Column({ unique: true })
+  @Column({
+    type: 'varchar',
+    length: 50,
+    unique: true,
+  })
   containerCode!: string;
 
   @ApiProperty()
-  @Column('decimal', { precision: 10, scale: 2 })
+  @Column('decimal', {
+    precision: 12,
+    scale: 2,
+    transformer: decimalTransformer,
+  })
   totalVolume!: number;
 
   @ApiProperty()
-  @Column('decimal', { precision: 10, scale: 2, default: 0 })
+  @Column('decimal', {
+    precision: 12,
+    scale: 2,
+    default: 0,
+    transformer: decimalTransformer,
+  })
   usedVolume!: number;
 
-  @ApiProperty({ enum: ContainerStatus })
+  @ApiProperty({
+    enum: ContainerStatus,
+  })
   @Column({
     type: 'varchar',
     length: 50,
@@ -52,21 +74,43 @@ export class Container {
   })
   status!: ContainerStatus;
 
-  @ApiProperty()
-  @Column({ nullable: true })
+  @ApiPropertyOptional()
+  @Column({
+    type: 'varchar',
+    length: 500,
+    default: '',
+  })
   description!: string;
 
-  @ApiProperty({ type: () => User })
-  @ManyToOne(() => User, (user) => user.containers)
-  @JoinColumn({ name: 'createdById' })
+  @ApiProperty({
+    type: () => User,
+  })
+  @ManyToOne(
+    () => User,
+    (user) => user.containers,
+    {
+      nullable: false,
+      onDelete: 'RESTRICT',
+    },
+  )
+  @JoinColumn({
+    name: 'createdById',
+  })
   createdBy!: User;
 
   @ApiProperty()
-  @Column()
+  @Column({
+    type: 'uuid',
+  })
   createdById!: string;
 
-  @ApiProperty({ type: () => [Item] })
-  @OneToMany(() => Item, (item) => item.container)
+  @ApiProperty({
+    type: () => [Item],
+  })
+  @OneToMany(
+    () => Item,
+    (item) => item.container,
+  )
   items!: Item[];
 
   @ApiProperty()
@@ -77,29 +121,25 @@ export class Container {
   @UpdateDateColumn()
   updatedAt!: Date;
 
-  @ApiProperty()
-  @DeleteDateColumn({ nullable: true })
+  @ApiPropertyOptional()
+  @DeleteDateColumn({
+    nullable: true,
+  })
   deletedAt?: Date | null;
 
-  @BeforeInsert()
-  generateContainerCode() {
-    const timestamp = Date.now();
-    const shortName = this.name.substring(0, 3).toUpperCase();
-    this.containerCode = `${timestamp}-${shortName}`;
-  }
-
-  @BeforeUpdate()
-  updateUsedVolume() {
-    if (this.items) {
-      this.usedVolume = this.items.reduce((sum, item) => sum + item.totalVolume, 0);
-    }
-  }
-
+  @ApiProperty({
+    description: 'Remaining available volume',
+  })
   get availableVolume(): number {
-    return this.totalVolume - this.usedVolume;
+    return Math.max(
+      0,
+      Number(this.totalVolume) - Number(this.usedVolume),
+    );
   }
 
-  constructor(partial: Partial<Container>) {
-    Object.assign(this, partial);
+  constructor(partial?: Partial<Container>) {
+    if (partial) {
+      Object.assign(this, partial);
+    }
   }
 }

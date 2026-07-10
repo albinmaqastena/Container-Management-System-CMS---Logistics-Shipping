@@ -1,9 +1,7 @@
 // test/app.e2e-spec.ts
-import { Test, TestingModule } from '@nestjs/testing';
-import { INestApplication, ValidationPipe } from '@nestjs/common';
+import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
-import { AppModule } from '../src/app.module';
-import { getAuthToken } from './setup';
+import { getApp, getAuthToken } from './setup';
 
 describe('AppController (e2e) - Full Test Suite', () => {
   let app: INestApplication;
@@ -13,57 +11,46 @@ describe('AppController (e2e) - Full Test Suite', () => {
   let testItemId: string;
 
   // ============================================
-  // SETUP - KRIJO USER-A DHE TOKEN-A
+  // SETUP - PËRDOR APP-IN E KRIJUAR NGA SETUP
   // ============================================
   beforeAll(async () => {
-    const moduleFixture: TestingModule = await Test.createTestingModule({
-      imports: [AppModule],
-    }).compile();
-
-    app = moduleFixture.createNestApplication();
-    app.useGlobalPipes(new ValidationPipe({
-      whitelist: true,
-      transform: true,
-      forbidNonWhitelisted: true,
-    }));
-
-    await app.init();
+    // ✅ Përdor app-in e inicializuar nga setup.ts
+    app = getApp();
+    if (!app) {
+      throw new Error('App not initialized. Make sure setup.ts runs first.');
+    }
 
     // Marrim token-in e admin-it ekzistues
     adminToken = await getAuthToken('admin@example.com', 'Admin@123');
 
     // Krijojmë një user normal për testim
     try {
-      userToken = await getAuthToken('testuser@example.com', 'password123');
+      userToken = await getAuthToken('testuser@example.com', 'Password@123');
     } catch {
       await request(app.getHttpServer())
-        .post('/auth/register')
+        .post('/v1/auth/register')
         .set('Authorization', `Bearer ${adminToken}`)
         .send({
           username: 'testuser',
           email: 'testuser@example.com',
-          password: 'password123',
+          password: 'Password@123',
           role: 'user',
         })
         .expect(201);
-      userToken = await getAuthToken('testuser@example.com', 'password123');
+      userToken = await getAuthToken('testuser@example.com', 'Password@123');
     }
 
     console.log('✅ Test setup complete');
   }, 60000);
 
-  afterAll(async () => {
-    await app.close();
-  }, 30000);
-
   // ============================================
   // 1. AUTHENTICATION TESTS
   // ============================================
   describe('Authentication', () => {
-    describe('POST /auth/login', () => {
+    describe('POST /v1/auth/login', () => {
       it('should login with valid credentials (admin)', async () => {
         const response = await request(app.getHttpServer())
-          .post('/auth/login')
+          .post('/v1/auth/login')
           .send({ email: 'admin@example.com', password: 'Admin@123' })
           .expect(200);
 
@@ -74,8 +61,8 @@ describe('AppController (e2e) - Full Test Suite', () => {
 
       it('should login with valid credentials (user)', async () => {
         const response = await request(app.getHttpServer())
-          .post('/auth/login')
-          .send({ email: 'testuser@example.com', password: 'password123' })
+          .post('/v1/auth/login')
+          .send({ email: 'testuser@example.com', password: 'Password@123' })
           .expect(200);
 
         expect(response.body).toHaveProperty('accessToken');
@@ -85,7 +72,7 @@ describe('AppController (e2e) - Full Test Suite', () => {
 
       it('should fail with invalid password', async () => {
         await request(app.getHttpServer())
-          .post('/auth/login')
+          .post('/v1/auth/login')
           .send({ email: 'admin@example.com', password: 'wrongpassword' })
           .expect(401)
           .expect((res) => {
@@ -95,36 +82,36 @@ describe('AppController (e2e) - Full Test Suite', () => {
 
       it('should fail with non-existent email', async () => {
         await request(app.getHttpServer())
-          .post('/auth/login')
+          .post('/v1/auth/login')
           .send({ email: 'nonexistent@example.com', password: 'password' })
           .expect(401);
       });
 
       it('should fail with missing email', async () => {
         await request(app.getHttpServer())
-          .post('/auth/login')
+          .post('/v1/auth/login')
           .send({ password: 'password123' })
           .expect(400);
       });
 
       it('should fail with missing password', async () => {
         await request(app.getHttpServer())
-          .post('/auth/login')
+          .post('/v1/auth/login')
           .send({ email: 'admin@example.com' })
           .expect(400);
       });
     });
 
-    describe('POST /auth/register', () => {
+    describe('POST /v1/auth/register', () => {
       it('should register a new user (admin only)', async () => {
         const uniqueEmail = `newuser_${Date.now()}@example.com`;
         const response = await request(app.getHttpServer())
-          .post('/auth/register')
+          .post('/v1/auth/register')
           .set('Authorization', `Bearer ${adminToken}`)
           .send({
             username: `newuser_${Date.now()}`,
             email: uniqueEmail,
-            password: 'password123',
+            password: 'Password@123',
             role: 'user',
           })
           .expect(201);
@@ -136,12 +123,12 @@ describe('AppController (e2e) - Full Test Suite', () => {
 
       it('should fail to register user with existing email', async () => {
         await request(app.getHttpServer())
-          .post('/auth/register')
+          .post('/v1/auth/register')
           .set('Authorization', `Bearer ${adminToken}`)
           .send({
             username: 'anotheruser',
             email: 'admin@example.com',
-            password: 'password123',
+            password: 'Password@123',
             role: 'user',
           })
           .expect(409);
@@ -149,12 +136,12 @@ describe('AppController (e2e) - Full Test Suite', () => {
 
       it('should fail to register user with existing username', async () => {
         await request(app.getHttpServer())
-          .post('/auth/register')
+          .post('/v1/auth/register')
           .set('Authorization', `Bearer ${adminToken}`)
           .send({
             username: 'admin',
             email: 'unique@example.com',
-            password: 'password123',
+            password: 'Password@123',
             role: 'user',
           })
           .expect(409);
@@ -162,11 +149,11 @@ describe('AppController (e2e) - Full Test Suite', () => {
 
       it('should fail to register without token', async () => {
         await request(app.getHttpServer())
-          .post('/auth/register')
+          .post('/v1/auth/register')
           .send({
             username: 'unauthorized',
             email: 'unauth@example.com',
-            password: 'password123',
+            password: 'Password@123',
             role: 'user',
           })
           .expect(401);
@@ -174,12 +161,12 @@ describe('AppController (e2e) - Full Test Suite', () => {
 
       it('should fail to register with invalid token', async () => {
         await request(app.getHttpServer())
-          .post('/auth/register')
+          .post('/v1/auth/register')
           .set('Authorization', 'Bearer invalidtoken')
           .send({
             username: 'invalidtokenuser',
             email: 'invalid@example.com',
-            password: 'password123',
+            password: 'Password@123',
             role: 'user',
           })
           .expect(401);
@@ -187,18 +174,18 @@ describe('AppController (e2e) - Full Test Suite', () => {
 
       it('should fail to register with missing fields', async () => {
         await request(app.getHttpServer())
-          .post('/auth/register')
+          .post('/v1/auth/register')
           .set('Authorization', `Bearer ${adminToken}`)
-          .send({ email: 'missing@example.com', password: 'password123' })
+          .send({ email: 'missing@example.com', password: 'Password@123' })
           .expect(400);
       });
     });
 
-    describe('POST /auth/logout', () => {
+    describe('POST /v1/auth/logout', () => {
       it('should logout successfully', async () => {
         const token = await getAuthToken('admin@example.com', 'Admin@123');
         await request(app.getHttpServer())
-          .post('/auth/logout')
+          .post('/v1/auth/logout')
           .set('Authorization', `Bearer ${token}`)
           .expect(200)
           .expect((res) => {
@@ -208,23 +195,23 @@ describe('AppController (e2e) - Full Test Suite', () => {
 
       it('should fail logout without token', async () => {
         await request(app.getHttpServer())
-          .post('/auth/logout')
+          .post('/v1/auth/logout')
           .expect(401);
       });
 
       it('should fail logout with invalid token', async () => {
         await request(app.getHttpServer())
-          .post('/auth/logout')
+          .post('/v1/auth/logout')
           .set('Authorization', 'Bearer invalidtoken')
           .expect(401);
       });
     });
 
-    describe('GET /auth/sessions', () => {
+    describe('GET /v1/auth/sessions', () => {
       it('should get active sessions for authenticated user', async () => {
         const token = await getAuthToken('admin@example.com', 'Admin@123');
         const response = await request(app.getHttpServer())
-          .get('/auth/sessions')
+          .get('/v1/auth/sessions')
           .set('Authorization', `Bearer ${token}`)
           .expect(200);
 
@@ -234,20 +221,20 @@ describe('AppController (e2e) - Full Test Suite', () => {
 
       it('should fail getting sessions without token', async () => {
         await request(app.getHttpServer())
-          .get('/auth/sessions')
+          .get('/v1/auth/sessions')
           .expect(401);
       });
     });
   });
 
-  // ============================================
+  // ================================================================
   // 2. CONTAINER TESTS
-  // ============================================
+  // ================================================================
   describe('Containers', () => {
-    describe('POST /containers', () => {
+    describe('POST /v1/containers', () => {
       it('should create a container (admin)', async () => {
         const response = await request(app.getHttpServer())
-          .post('/containers')
+          .post('/v1/containers')
           .set('Authorization', `Bearer ${adminToken}`)
           .send({
             customName: 'Test Container Alpha',
@@ -266,7 +253,7 @@ describe('AppController (e2e) - Full Test Suite', () => {
 
       it('should create a container with only required fields', async () => {
         const response = await request(app.getHttpServer())
-          .post('/containers')
+          .post('/v1/containers')
           .set('Authorization', `Bearer ${adminToken}`)
           .send({
             customName: 'Minimal Container',
@@ -280,7 +267,7 @@ describe('AppController (e2e) - Full Test Suite', () => {
 
       it('should fail to create container without token', async () => {
         await request(app.getHttpServer())
-          .post('/containers')
+          .post('/v1/containers')
           .send({
             customName: 'No Token Container',
             totalVolume: 100,
@@ -290,18 +277,18 @@ describe('AppController (e2e) - Full Test Suite', () => {
 
       it('should fail to create container with user role', async () => {
         await request(app.getHttpServer())
-          .post('/containers')
+          .post('/v1/containers')
           .set('Authorization', `Bearer ${userToken}`)
           .send({
             customName: 'User Container',
             totalVolume: 100,
           })
-          .expect(401);
+          .expect(403);
       });
 
       it('should fail to create container with negative volume', async () => {
         await request(app.getHttpServer())
-          .post('/containers')
+          .post('/v1/containers')
           .set('Authorization', `Bearer ${adminToken}`)
           .send({
             customName: 'Negative Volume Container',
@@ -312,7 +299,7 @@ describe('AppController (e2e) - Full Test Suite', () => {
 
       it('should fail to create container with missing name', async () => {
         await request(app.getHttpServer())
-          .post('/containers')
+          .post('/v1/containers')
           .set('Authorization', `Bearer ${adminToken}`)
           .send({
             totalVolume: 100,
@@ -322,7 +309,7 @@ describe('AppController (e2e) - Full Test Suite', () => {
 
       it('should fail to create container with missing volume', async () => {
         await request(app.getHttpServer())
-          .post('/containers')
+          .post('/v1/containers')
           .set('Authorization', `Bearer ${adminToken}`)
           .send({
             customName: 'Missing Volume',
@@ -331,10 +318,10 @@ describe('AppController (e2e) - Full Test Suite', () => {
       });
     });
 
-    describe('GET /containers', () => {
+    describe('GET /v1/containers', () => {
       it('should get all containers (admin)', async () => {
         const response = await request(app.getHttpServer())
-          .get('/containers')
+          .get('/v1/containers')
           .set('Authorization', `Bearer ${adminToken}`)
           .expect(200);
 
@@ -344,7 +331,7 @@ describe('AppController (e2e) - Full Test Suite', () => {
 
       it('should get all containers (user)', async () => {
         const response = await request(app.getHttpServer())
-          .get('/containers')
+          .get('/v1/containers')
           .set('Authorization', `Bearer ${userToken}`)
           .expect(200);
 
@@ -353,7 +340,7 @@ describe('AppController (e2e) - Full Test Suite', () => {
 
       it('should filter containers by status (active)', async () => {
         const response = await request(app.getHttpServer())
-          .get('/containers?status=active')
+          .get('/v1/containers?status=active')
           .set('Authorization', `Bearer ${adminToken}`)
           .expect(200);
 
@@ -363,7 +350,7 @@ describe('AppController (e2e) - Full Test Suite', () => {
 
       it('should filter containers by status (archived)', async () => {
         const response = await request(app.getHttpServer())
-          .get('/containers?status=archived')
+          .get('/v1/containers?status=archived')
           .set('Authorization', `Bearer ${adminToken}`)
           .expect(200);
 
@@ -373,16 +360,16 @@ describe('AppController (e2e) - Full Test Suite', () => {
 
       it('should fail with invalid status value', async () => {
         await request(app.getHttpServer())
-          .get('/containers?status=invalid')
+          .get('/v1/containers?status=invalid')
           .set('Authorization', `Bearer ${adminToken}`)
           .expect(400);
       });
     });
 
-    describe('GET /containers/active', () => {
+    describe('GET /v1/containers/active', () => {
       it('should get active containers', async () => {
         const response = await request(app.getHttpServer())
-          .get('/containers/active')
+          .get('/v1/containers/active')
           .set('Authorization', `Bearer ${adminToken}`)
           .expect(200);
 
@@ -392,17 +379,17 @@ describe('AppController (e2e) - Full Test Suite', () => {
 
       it('should return 200 even if no active containers', async () => {
         const response = await request(app.getHttpServer())
-          .get('/containers/active')
+          .get('/v1/containers/active')
           .set('Authorization', `Bearer ${adminToken}`)
           .expect(200);
         expect(Array.isArray(response.body)).toBe(true);
       });
     });
 
-    describe('GET /containers/archived', () => {
+    describe('GET /v1/containers/archived', () => {
       it('should get archived containers', async () => {
         const response = await request(app.getHttpServer())
-          .get('/containers/archived')
+          .get('/v1/containers/archived')
           .set('Authorization', `Bearer ${adminToken}`)
           .expect(200);
 
@@ -411,10 +398,10 @@ describe('AppController (e2e) - Full Test Suite', () => {
       });
     });
 
-    describe('GET /containers/search', () => {
+    describe('GET /v1/containers/search', () => {
       it('should search containers by name', async () => {
         const response = await request(app.getHttpServer())
-          .get('/containers/search?query=Alpha')
+          .get('/v1/containers/search?query=Alpha')
           .set('Authorization', `Bearer ${adminToken}`)
           .expect(200);
 
@@ -424,14 +411,14 @@ describe('AppController (e2e) - Full Test Suite', () => {
 
       it('should search containers by containerCode', async () => {
         const containerList = await request(app.getHttpServer())
-          .get('/containers')
+          .get('/v1/containers')
           .set('Authorization', `Bearer ${adminToken}`)
           .expect(200);
 
         if (containerList.body.length > 0) {
           const code = containerList.body[0].containerCode;
           const response = await request(app.getHttpServer())
-            .get(`/containers/search?query=${code}`)
+            .get(`/v1/containers/search?query=${code}`)
             .set('Authorization', `Bearer ${adminToken}`)
             .expect(200);
 
@@ -442,7 +429,7 @@ describe('AppController (e2e) - Full Test Suite', () => {
 
       it('should return empty array for non-existent search', async () => {
         const response = await request(app.getHttpServer())
-          .get('/containers/search?query=NonExistentContainer')
+          .get('/v1/containers/search?query=NonExistentContainer')
           .set('Authorization', `Bearer ${adminToken}`)
           .expect(200);
 
@@ -452,16 +439,16 @@ describe('AppController (e2e) - Full Test Suite', () => {
 
       it('should fail with missing query parameter', async () => {
         await request(app.getHttpServer())
-          .get('/containers/search')
+          .get('/v1/containers/search')
           .set('Authorization', `Bearer ${adminToken}`)
           .expect(400);
       });
     });
 
-    describe('GET /containers/:id', () => {
+    describe('GET /v1/containers/:id', () => {
       it('should get a container by ID', async () => {
         const response = await request(app.getHttpServer())
-          .get(`/containers/${testContainerId}`)
+          .get(`/v1/containers/${testContainerId}`)
           .set('Authorization', `Bearer ${adminToken}`)
           .expect(200);
 
@@ -472,23 +459,23 @@ describe('AppController (e2e) - Full Test Suite', () => {
 
       it('should return 404 for non-existent container', async () => {
         await request(app.getHttpServer())
-          .get('/containers/00000000-0000-0000-0000-000000000000')
+          .get('/v1/containers/00000000-0000-0000-0000-000000000000')
           .set('Authorization', `Bearer ${adminToken}`)
           .expect(404);
       });
 
       it('should fail with invalid UUID format', async () => {
         await request(app.getHttpServer())
-          .get('/containers/not-a-uuid')
+          .get('/v1/containers/not-a-uuid')
           .set('Authorization', `Bearer ${adminToken}`)
           .expect(400);
       });
     });
 
-    describe('PUT /containers/:id', () => {
+    describe('PUT /v1/containers/:id', () => {
       it('should update a container (admin)', async () => {
         const response = await request(app.getHttpServer())
-          .put(`/containers/${testContainerId}`)
+          .put(`/v1/containers/${testContainerId}`)
           .set('Authorization', `Bearer ${adminToken}`)
           .send({
             name: 'Updated Container Name',
@@ -502,7 +489,7 @@ describe('AppController (e2e) - Full Test Suite', () => {
 
       it('should update container status to archived', async () => {
         const response = await request(app.getHttpServer())
-          .put(`/containers/${testContainerId}/status?status=archived`)
+          .put(`/v1/containers/${testContainerId}/status?status=archived`)
           .set('Authorization', `Bearer ${adminToken}`)
           .expect(200);
 
@@ -511,7 +498,7 @@ describe('AppController (e2e) - Full Test Suite', () => {
 
       it('should update container status back to active', async () => {
         const response = await request(app.getHttpServer())
-          .put(`/containers/${testContainerId}/status?status=active`)
+          .put(`/v1/containers/${testContainerId}/status?status=active`)
           .set('Authorization', `Bearer ${adminToken}`)
           .expect(200);
 
@@ -520,17 +507,17 @@ describe('AppController (e2e) - Full Test Suite', () => {
 
       it('should fail to update container (user)', async () => {
         await request(app.getHttpServer())
-          .put(`/containers/${testContainerId}`)
+          .put(`/v1/containers/${testContainerId}`)
           .set('Authorization', `Bearer ${userToken}`)
           .send({
             name: 'Hacked Name',
           })
-          .expect(401);
+          .expect(403);
       });
 
       it('should fail to update non-existent container', async () => {
         await request(app.getHttpServer())
-          .put('/containers/00000000-0000-0000-0000-000000000000')
+          .put('/v1/containers/00000000-0000-0000-0000-000000000000')
           .set('Authorization', `Bearer ${adminToken}`)
           .send({
             name: 'Non Existent',
@@ -539,10 +526,10 @@ describe('AppController (e2e) - Full Test Suite', () => {
       });
     });
 
-    describe('DELETE /containers/:id', () => {
+    describe('DELETE /v1/containers/:id', () => {
       it('should delete an empty container', async () => {
         const newContainer = await request(app.getHttpServer())
-          .post('/containers')
+          .post('/v1/containers')
           .set('Authorization', `Bearer ${adminToken}`)
           .send({
             customName: 'To Delete',
@@ -551,14 +538,14 @@ describe('AppController (e2e) - Full Test Suite', () => {
           .expect(201);
 
         await request(app.getHttpServer())
-          .delete(`/containers/${newContainer.body.id}`)
+          .delete(`/v1/containers/${newContainer.body.id}`)
           .set('Authorization', `Bearer ${adminToken}`)
           .expect(204);
       });
 
       it('should fail to delete a container with items', async () => {
         const container = await request(app.getHttpServer())
-          .post('/containers')
+          .post('/v1/containers')
           .set('Authorization', `Bearer ${adminToken}`)
           .send({
             customName: 'Container With Items',
@@ -568,7 +555,7 @@ describe('AppController (e2e) - Full Test Suite', () => {
 
         const itemSuffix = Date.now();
         await request(app.getHttpServer())
-          .post('/items')
+          .post('/v1/items')
           .set('Authorization', `Bearer ${adminToken}`)
           .send({
             uniqueNumber: `ITEM-DELETE-TEST-${itemSuffix}`,
@@ -582,14 +569,14 @@ describe('AppController (e2e) - Full Test Suite', () => {
           .expect(201);
 
         await request(app.getHttpServer())
-          .delete(`/containers/${container.body.id}`)
+          .delete(`/v1/containers/${container.body.id}`)
           .set('Authorization', `Bearer ${adminToken}`)
           .expect(400);
       }, 15000);
 
       it('should fail to delete container (user)', async () => {
         const container = await request(app.getHttpServer())
-          .post('/containers')
+          .post('/v1/containers')
           .set('Authorization', `Bearer ${adminToken}`)
           .send({
             customName: 'User Delete Attempt',
@@ -598,23 +585,23 @@ describe('AppController (e2e) - Full Test Suite', () => {
           .expect(201);
 
         await request(app.getHttpServer())
-          .delete(`/containers/${container.body.id}`)
+          .delete(`/v1/containers/${container.body.id}`)
           .set('Authorization', `Bearer ${userToken}`)
-          .expect(401);
+          .expect(403);
       });
     });
   });
 
-  // ============================================
+  // ================================================================
   // 3. ITEM TESTS
-  // ============================================
+  // ================================================================
   describe('Items', () => {
     let containerId: string;
     let itemId: string;
 
     beforeAll(async () => {
       const container = await request(app.getHttpServer())
-        .post('/containers')
+        .post('/v1/containers')
         .set('Authorization', `Bearer ${adminToken}`)
         .send({
           customName: 'Item Test Container',
@@ -624,11 +611,11 @@ describe('AppController (e2e) - Full Test Suite', () => {
       containerId = container.body.id;
     });
 
-    describe('POST /items', () => {
+    describe('POST /v1/items', () => {
       it('should create an item (admin)', async () => {
         const itemSuffix = Date.now();
         const response = await request(app.getHttpServer())
-          .post('/items')
+          .post('/v1/items')
           .set('Authorization', `Bearer ${adminToken}`)
           .send({
             uniqueNumber: `ITEM-${itemSuffix}`,
@@ -650,7 +637,7 @@ describe('AppController (e2e) - Full Test Suite', () => {
       it('should create an item with photo', async () => {
         const photoSuffix = Date.now();
         const response = await request(app.getHttpServer())
-          .post('/items')
+          .post('/v1/items')
           .set('Authorization', `Bearer ${adminToken}`)
           .send({
             uniqueNumber: `ITEM-PHOTO-${photoSuffix}`,
@@ -669,7 +656,7 @@ describe('AppController (e2e) - Full Test Suite', () => {
 
       it('should fail to create item without token', async () => {
         await request(app.getHttpServer())
-          .post('/items')
+          .post('/v1/items')
           .send({
             uniqueNumber: 'ITEM-003',
             name: 'No Token Item',
@@ -684,7 +671,7 @@ describe('AppController (e2e) - Full Test Suite', () => {
 
       it('should fail to create item with user role', async () => {
         await request(app.getHttpServer())
-          .post('/items')
+          .post('/v1/items')
           .set('Authorization', `Bearer ${userToken}`)
           .send({
             uniqueNumber: 'ITEM-004',
@@ -695,13 +682,13 @@ describe('AppController (e2e) - Full Test Suite', () => {
             volume: 1,
             containerId: containerId,
           })
-          .expect(401);
+          .expect(403);
       });
 
       it('should fail to create item with duplicate uniqueNumber', async () => {
         const dupSuffix = Date.now();
         await request(app.getHttpServer())
-          .post('/items')
+          .post('/v1/items')
           .set('Authorization', `Bearer ${adminToken}`)
           .send({
             uniqueNumber: `ITEM-DUP-${dupSuffix}`,
@@ -715,7 +702,7 @@ describe('AppController (e2e) - Full Test Suite', () => {
           .expect(201);
 
         await request(app.getHttpServer())
-          .post('/items')
+          .post('/v1/items')
           .set('Authorization', `Bearer ${adminToken}`)
           .send({
             uniqueNumber: `ITEM-DUP-${dupSuffix}`,
@@ -731,7 +718,7 @@ describe('AppController (e2e) - Full Test Suite', () => {
 
       it('should fail to create item with insufficient volume', async () => {
         const smallContainer = await request(app.getHttpServer())
-          .post('/containers')
+          .post('/v1/containers')
           .set('Authorization', `Bearer ${adminToken}`)
           .send({
             customName: 'Small Container',
@@ -740,7 +727,7 @@ describe('AppController (e2e) - Full Test Suite', () => {
           .expect(201);
 
         await request(app.getHttpServer())
-          .post('/items')
+          .post('/v1/items')
           .set('Authorization', `Bearer ${adminToken}`)
           .send({
             uniqueNumber: 'ITEM-005',
@@ -756,7 +743,7 @@ describe('AppController (e2e) - Full Test Suite', () => {
 
       it('should fail to create item with missing required fields', async () => {
         await request(app.getHttpServer())
-          .post('/items')
+          .post('/v1/items')
           .set('Authorization', `Bearer ${adminToken}`)
           .send({
             name: 'Missing Fields',
@@ -766,10 +753,10 @@ describe('AppController (e2e) - Full Test Suite', () => {
       });
     });
 
-    describe('GET /items', () => {
+    describe('GET /v1/items', () => {
       it('should get all items (admin)', async () => {
         const response = await request(app.getHttpServer())
-          .get('/items')
+          .get('/v1/items')
           .set('Authorization', `Bearer ${adminToken}`)
           .expect(200);
 
@@ -779,7 +766,7 @@ describe('AppController (e2e) - Full Test Suite', () => {
 
       it('should get items by containerId', async () => {
         const response = await request(app.getHttpServer())
-          .get(`/items?containerId=${containerId}`)
+          .get(`/v1/items?containerId=${containerId}`)
           .set('Authorization', `Bearer ${adminToken}`)
           .expect(200);
 
@@ -789,7 +776,7 @@ describe('AppController (e2e) - Full Test Suite', () => {
 
       it('should return empty array for non-existent containerId', async () => {
         const response = await request(app.getHttpServer())
-          .get('/items?containerId=00000000-0000-0000-0000-000000000000')
+          .get('/v1/items?containerId=00000000-0000-0000-0000-000000000000')
           .set('Authorization', `Bearer ${adminToken}`)
           .expect(200);
 
@@ -798,10 +785,10 @@ describe('AppController (e2e) - Full Test Suite', () => {
       });
     });
 
-    describe('GET /items/search', () => {
+    describe('GET /v1/items/search', () => {
       it('should search items by name', async () => {
         const response = await request(app.getHttpServer())
-          .get('/items/search?query=Test')
+          .get('/v1/items/search?query=Test')
           .set('Authorization', `Bearer ${adminToken}`)
           .expect(200);
 
@@ -812,7 +799,7 @@ describe('AppController (e2e) - Full Test Suite', () => {
 
       it('should search items by uniqueNumber', async () => {
         const response = await request(app.getHttpServer())
-          .get('/items/search?query=ITEM-001')
+          .get('/v1/items/search?query=ITEM-001')
           .set('Authorization', `Bearer ${adminToken}`)
           .expect(200);
 
@@ -822,7 +809,7 @@ describe('AppController (e2e) - Full Test Suite', () => {
 
       it('should search items in specific container', async () => {
         const response = await request(app.getHttpServer())
-          .get(`/items/search?query=Test&containerId=${containerId}`)
+          .get(`/v1/items/search?query=Test&containerId=${containerId}`)
           .set('Authorization', `Bearer ${adminToken}`)
           .expect(200);
 
@@ -832,7 +819,7 @@ describe('AppController (e2e) - Full Test Suite', () => {
 
       it('should return empty array for non-existent search', async () => {
         const response = await request(app.getHttpServer())
-          .get('/items/search?query=NonExistentItem')
+          .get('/v1/items/search?query=NonExistentItem')
           .set('Authorization', `Bearer ${adminToken}`)
           .expect(200);
 
@@ -840,10 +827,10 @@ describe('AppController (e2e) - Full Test Suite', () => {
       });
     });
 
-    describe('GET /items/:id', () => {
+    describe('GET /v1/items/:id', () => {
       it('should get an item by ID', async () => {
         const response = await request(app.getHttpServer())
-          .get(`/items/${itemId}`)
+          .get(`/v1/items/${itemId}`)
           .set('Authorization', `Bearer ${adminToken}`)
           .expect(200);
 
@@ -854,16 +841,16 @@ describe('AppController (e2e) - Full Test Suite', () => {
 
       it('should fail for non-existent item', async () => {
         await request(app.getHttpServer())
-          .get('/items/00000000-0000-0000-0000-000000000000')
+          .get('/v1/items/00000000-0000-0000-0000-000000000000')
           .set('Authorization', `Bearer ${adminToken}`)
           .expect(404);
       });
     });
 
-    describe('PUT /items/:id', () => {
+    describe('PUT /v1/items/:id', () => {
       it('should update an item (admin)', async () => {
         const response = await request(app.getHttpServer())
-          .put(`/items/${itemId}`)
+          .put(`/v1/items/${itemId}`)
           .set('Authorization', `Bearer ${adminToken}`)
           .send({
             name: 'Updated Item Name',
@@ -877,7 +864,7 @@ describe('AppController (e2e) - Full Test Suite', () => {
 
       it('should update item volume and recalculate totalVolume', async () => {
         const response = await request(app.getHttpServer())
-          .put(`/items/${itemId}`)
+          .put(`/v1/items/${itemId}`)
           .set('Authorization', `Bearer ${adminToken}`)
           .send({
             volume: 5.0,
@@ -890,17 +877,17 @@ describe('AppController (e2e) - Full Test Suite', () => {
 
       it('should fail to update item (user)', async () => {
         await request(app.getHttpServer())
-          .put(`/items/${itemId}`)
+          .put(`/v1/items/${itemId}`)
           .set('Authorization', `Bearer ${userToken}`)
           .send({
             name: 'Hacked Name',
           })
-          .expect(401);
+          .expect(403);
       });
 
       it('should fail to update non-existent item', async () => {
         await request(app.getHttpServer())
-          .put('/items/00000000-0000-0000-0000-000000000000')
+          .put('/v1/items/00000000-0000-0000-0000-000000000000')
           .set('Authorization', `Bearer ${adminToken}`)
           .send({
             name: 'Non Existent',
@@ -909,11 +896,11 @@ describe('AppController (e2e) - Full Test Suite', () => {
       });
     });
 
-    describe('DELETE /items/:id', () => {
+    describe('DELETE /v1/items/:id', () => {
       it('should delete an item (admin)', async () => {
         const deleteSuffix = Date.now();
         const newItem = await request(app.getHttpServer())
-          .post('/items')
+          .post('/v1/items')
           .set('Authorization', `Bearer ${adminToken}`)
           .send({
             uniqueNumber: `ITEM-DELETE-${deleteSuffix}`,
@@ -927,7 +914,7 @@ describe('AppController (e2e) - Full Test Suite', () => {
           .expect(201);
 
         await request(app.getHttpServer())
-          .delete(`/items/${newItem.body.id}`)
+          .delete(`/v1/items/${newItem.body.id}`)
           .set('Authorization', `Bearer ${adminToken}`)
           .expect(204);
       });
@@ -935,7 +922,7 @@ describe('AppController (e2e) - Full Test Suite', () => {
       it('should fail to delete item (user)', async () => {
         const deleteSuffix = Date.now() + 1;
         const newItem = await request(app.getHttpServer())
-          .post('/items')
+          .post('/v1/items')
           .set('Authorization', `Bearer ${adminToken}`)
           .send({
             uniqueNumber: `ITEM-USER-DELETE-${deleteSuffix}`,
@@ -949,14 +936,14 @@ describe('AppController (e2e) - Full Test Suite', () => {
           .expect(201);
 
         await request(app.getHttpServer())
-          .delete(`/items/${newItem.body.id}`)
+          .delete(`/v1/items/${newItem.body.id}`)
           .set('Authorization', `Bearer ${userToken}`)
-          .expect(401);
+          .expect(403);
       });
 
       it('should fail to delete non-existent item', async () => {
         await request(app.getHttpServer())
-          .delete('/items/00000000-0000-0000-0000-000000000000')
+          .delete('/v1/items/00000000-0000-0000-0000-000000000000')
           .set('Authorization', `Bearer ${adminToken}`)
           .expect(404);
       });
@@ -964,19 +951,19 @@ describe('AppController (e2e) - Full Test Suite', () => {
 
     afterAll(async () => {
       await request(app.getHttpServer())
-        .delete(`/containers/${containerId}`)
+        .delete(`/v1/containers/${containerId}`)
         .set('Authorization', `Bearer ${adminToken}`)
         .expect(204);
     });
   });
 
-  // ============================================
+  // ================================================================
   // 4. AUTHORIZATION TESTS
-  // ============================================
+  // ================================================================
   describe('Authorization', () => {
     it('should allow admin to access admin-only endpoints', async () => {
       await request(app.getHttpServer())
-        .post('/containers')
+        .post('/v1/containers')
         .set('Authorization', `Bearer ${adminToken}`)
         .send({
           customName: 'Admin Container',
@@ -987,32 +974,32 @@ describe('AppController (e2e) - Full Test Suite', () => {
 
     it('should deny user access to admin-only endpoints', async () => {
       await request(app.getHttpServer())
-        .post('/containers')
+        .post('/v1/containers')
         .set('Authorization', `Bearer ${userToken}`)
         .send({
           customName: 'User Admin Endpoint',
           totalVolume: 100,
         })
-        .expect(401);
+        .expect(403);
     });
 
     it('should allow user to view containers', async () => {
       await request(app.getHttpServer())
-        .get('/containers')
+        .get('/v1/containers')
         .set('Authorization', `Bearer ${userToken}`)
         .expect(200);
     });
 
     it('should allow user to view items', async () => {
       await request(app.getHttpServer())
-        .get('/items')
+        .get('/v1/items')
         .set('Authorization', `Bearer ${userToken}`)
         .expect(200);
     });
 
     it('should deny user to create items', async () => {
       const container = await request(app.getHttpServer())
-        .post('/containers')
+        .post('/v1/containers')
         .set('Authorization', `Bearer ${adminToken}`)
         .send({
           customName: 'Container for Auth Test',
@@ -1021,7 +1008,7 @@ describe('AppController (e2e) - Full Test Suite', () => {
         .expect(201);
 
       await request(app.getHttpServer())
-        .post('/items')
+        .post('/v1/items')
         .set('Authorization', `Bearer ${userToken}`)
         .send({
           uniqueNumber: 'AUTH-ITEM-001',
@@ -1032,7 +1019,7 @@ describe('AppController (e2e) - Full Test Suite', () => {
           volume: 1,
           containerId: container.body.id,
         })
-        .expect(401);
+        .expect(403);
     });
   });
 });

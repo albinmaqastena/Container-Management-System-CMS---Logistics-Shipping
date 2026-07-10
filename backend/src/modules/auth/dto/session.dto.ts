@@ -1,5 +1,6 @@
 // src/modules/auth/dto/session.dto.ts
-import { ApiProperty } from '@nestjs/swagger';
+
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class SessionDto {
   @ApiProperty()
@@ -8,10 +9,10 @@ export class SessionDto {
   @ApiProperty()
   userId!: string;
 
-  @ApiProperty()
+  @ApiPropertyOptional()
   ip?: string;
 
-  @ApiProperty()
+  @ApiPropertyOptional()
   userAgent?: string;
 
   @ApiProperty()

@@ -3,13 +3,13 @@ import {
   Entity,
   Column,
   PrimaryGeneratedColumn,
+  ManyToOne,
+  JoinColumn,
   CreateDateColumn,
   UpdateDateColumn,
   DeleteDateColumn,
-  ManyToOne,
   BeforeInsert,
   BeforeUpdate,
-  JoinColumn,
 } from 'typeorm';
 import { ApiProperty } from '@nestjs/swagger';
 import { Container } from '../../containers/entities/container.entity';
@@ -21,39 +21,41 @@ export class Item {
   id!: string;
 
   @ApiProperty()
-  @Column({ unique: true })
+  @Column({ type: 'varchar', unique: true })
   uniqueNumber!: string;
 
   @ApiProperty()
-  @Column()
+  @Column({ type: 'varchar' })
   name!: string;
 
   @ApiProperty()
-  @Column({ nullable: true })
-  photo!: string;
+  @Column({ type: 'varchar', nullable: true })
+  photo!: string | null;
 
   @ApiProperty()
-  @Column('int')
+  @Column({ type: 'int' })
   packageQuantity!: number;
 
   @ApiProperty()
-  @Column('int')
+  @Column({ type: 'int' })
   productsPerPackage!: number;
 
   @ApiProperty()
-  @Column('decimal', { precision: 10, scale: 2 })
+  @Column({ type: 'decimal', precision: 10, scale: 2 })
   packagePrice!: number;
 
   @ApiProperty()
-  @Column('decimal', { precision: 10, scale: 2 })
+  @Column({ type: 'decimal', precision: 10, scale: 2 })
   volume!: number;
 
   @ApiProperty()
-  @Column('decimal', { precision: 10, scale: 2 })
+  @Column({ type: 'decimal', precision: 10, scale: 2 })
   totalVolume!: number;
 
   @ApiProperty({ type: () => Container })
-  @ManyToOne(() => Container, (container) => container.items)
+  @ManyToOne(() => Container, (container) => container.items, {
+    onDelete: 'CASCADE',
+  })
   @JoinColumn({ name: 'containerId' })
   container!: Container;
 
@@ -71,7 +73,7 @@ export class Item {
 
   @ApiProperty()
   @DeleteDateColumn({ nullable: true })
-  deletedAt?: Date | null;
+  deletedAt!: Date | null;
 
   @BeforeInsert()
   @BeforeUpdate()

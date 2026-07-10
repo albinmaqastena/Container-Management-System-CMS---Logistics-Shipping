@@ -1,26 +1,56 @@
 // src/modules/containers/dto/update-container.dto.ts
-import { ApiProperty } from '@nestjs/swagger';
-import { IsString, IsOptional, IsEnum, MaxLength, MinLength } from 'class-validator';
+
+import { ApiPropertyOptional } from '@nestjs/swagger';
+import { Transform } from 'class-transformer';
+import {
+  IsEnum,
+  IsOptional,
+  IsString,
+  MaxLength,
+  MinLength,
+} from 'class-validator';
 import { ContainerStatus } from '../entities/container.entity';
 
 export class UpdateContainerDto {
-  @ApiProperty({ required: false })
-  @IsString({ message: 'Name must be a string' })
+  @ApiPropertyOptional({
+    example: 'Container Alpha Updated',
+    description: 'Updated container name',
+  })
+  @Transform(({ value }) =>
+    typeof value === 'string' ? value.trim() : value,
+  )
   @IsOptional()
-  @MinLength(3, { message: 'Container name must be at least 3 characters' })
-  @MaxLength(100, { message: 'Container name must not exceed 100 characters' })
+  @IsString({ message: 'Name must be a string' })
+  @MinLength(3, {
+    message: 'Container name must be at least 3 characters',
+  })
+  @MaxLength(100, {
+    message: 'Container name must not exceed 100 characters',
+  })
   name?: string;
 
-  @ApiProperty({ required: false })
-  @IsString({ message: 'Description must be a string' })
+  @ApiPropertyOptional({
+    example: 'Updated container description',
+  })
+  @Transform(({ value }) =>
+    typeof value === 'string' ? value.trim() : value,
+  )
   @IsOptional()
-  @MaxLength(500, { message: 'Description must not exceed 500 characters' })
+  @IsString({ message: 'Description must be a string' })
+  @MaxLength(500, {
+    message: 'Description must not exceed 500 characters',
+  })
   description?: string;
 
-  @ApiProperty({ enum: ContainerStatus, required: false })
-  @IsEnum(ContainerStatus, {
-    message: 'Invalid status. Must be one of: active, shipped, archived',
+  @ApiPropertyOptional({
+    enum: ContainerStatus,
+    example: ContainerStatus.ACTIVE,
   })
   @IsOptional()
+  @IsEnum(ContainerStatus, {
+    message: `Invalid status. Must be one of: ${Object.values(
+      ContainerStatus,
+    ).join(', ')}`,
+  })
   status?: ContainerStatus;
 }

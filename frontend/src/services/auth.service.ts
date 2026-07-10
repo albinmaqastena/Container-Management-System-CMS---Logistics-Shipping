@@ -10,7 +10,7 @@ import {
   ChangePasswordData,
   ForgotPasswordData,
   ResetPasswordData,
-  PaginatedResponse,
+  RefreshTokenResponse,
 } from '../types';
 
 export const authService = {
@@ -38,8 +38,8 @@ export const authService = {
     await apiClient.post(API_ENDPOINTS.AUTH.LOGOUT);
   },
 
-  refreshToken: async (refreshToken: string): Promise<{ accessToken: string; refreshToken: string }> => {
-    const response = await apiClient.post<{ accessToken: string; refreshToken: string }>(
+  refreshToken: async (refreshToken: string): Promise<RefreshTokenResponse> => {
+    const response = await apiClient.post<RefreshTokenResponse>(
       API_ENDPOINTS.AUTH.REFRESH,
       { refreshToken }
     );

@@ -1,122 +1,307 @@
 // src/modules/items/items.controller.ts
+
 import {
-  Controller,
-  Get,
-  Post,
-  Put,
-  Delete,
   Body,
-  Param,
-  Query,
-  UseGuards,
+  Controller,
+  Delete,
+  Get,
   HttpCode,
   HttpStatus,
-  BadRequestException,
+  Param,
+  ParseBoolPipe,
+  Post,
+  Put,
+  Query,
+  UseGuards,
+  ValidationPipe,
 } from '@nestjs/common';
 import {
-  ApiTags,
-  ApiOperation,
-  ApiResponse,
   ApiBearerAuth,
+  ApiOperation,
   ApiQuery,
+  ApiResponse,
+  ApiTags,
 } from '@nestjs/swagger';
+
 import { ItemsService } from './items.service';
 import { CreateItemDto } from './dto/create-item.dto';
 import { UpdateItemDto } from './dto/update-item.dto';
+import { ItemQueryDto } from './dto/item-query.dto';
+import { SearchItemQueryDto } from './dto/search-item-query.dto';
 import { Item } from './entities/item.entity';
+
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
-import { UserRole } from '../auth/entities/user.entity';
-import { PaginationDto, PaginatedResponseDto } from '../../common/dto/pagination.dto';
 import { UUIDValidationPipe } from '../../common/pipes/uuid-validation.pipe';
 
+import { UserRole } from '../auth/entities/user.entity';
+import {
+  PaginatedResponseDto,
+  PaginationDto,
+} from '../../common/dto/pagination.dto';
+
 @ApiTags('Items')
+@ApiBearerAuth()
 @Controller('items')
 @UseGuards(JwtAuthGuard, RolesGuard)
-@ApiBearerAuth()
 export class ItemsController {
   constructor(private readonly itemsService: ItemsService) {}
 
   @Post()
   @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)
-  @ApiOperation({ summary: 'Create a new item in a container' })
-  @ApiResponse({ status: 201, description: 'Item created', type: Item })
-  @ApiResponse({ status: 400, description: 'Not enough volume' })
-  @ApiResponse({ status: 404, description: 'Container not found' })
-  async create(@Body() createItemDto: CreateItemDto): Promise<Item> {
+  @ApiOperation({
+    summary: 'Create a new item in a container',
+  })
+  @ApiResponse({
+    status: HttpStatus.CREATED,
+    description: 'Item created successfully',
+    type: Item,
+  })
+  @ApiResponse({
+    status: HttpStatus.BAD_REQUEST,
+    description: 'Invalid data or not enough available volume',
+  })
+  @ApiResponse({
+    status: HttpStatus.NOT_FOUND,
+    description: 'Container not found',
+  })
+  @ApiResponse({
+    status: HttpStatus.CONFLICT,
+    description: 'An item with the same unique number already exists',
+  })
+  async create(
+    @Body() createItemDto: CreateItemDto,
+  ): Promise<Item> {
     return this.itemsService.create(createItemDto);
   }
 
   @Get()
-  @ApiOperation({ summary: 'Get all items with pagination and sorting' })
-  @ApiQuery({ name: 'containerId', required: false })
-  @ApiQuery({ name: 'limit', type: Number, required: false, example: 10 })
-  @ApiQuery({ name: 'offset', type: Number, required: false, example: 0 })
-  @ApiQuery({ name: 'sort', type: String, required: false, example: 'createdAt:DESC' })
-  @ApiQuery({ name: 'includeDeleted', type: Boolean, required: false, example: false })
-  @ApiResponse({ status: 200, description: 'Items retrieved', type: PaginatedResponseDto })
+  @ApiOperation({
+    summary: 'Get all items with pagination and sorting',
+  })
+  @ApiQuery({
+    name: 'containerId',
+    type: String,
+    required: false,
+    description: 'Filter items by container ID',
+  })
+  @ApiQuery({
+    name: 'limit',
+    type: Number,
+    required: false,
+    example: 10,
+  })
+  @ApiQuery({
+    name: 'offset',
+    type: Number,
+    required: false,
+    example: 0,
+  })
+  @ApiQuery({
+    name: 'sort',
+    type: String,
+    required: false,
+    example: 'createdAt:DESC',
+  })
+  @ApiQuery({
+    name: 'includeDeleted',
+    type: Boolean,
+    required: false,
+    example: false,
+  })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: 'Items retrieved successfully',
+    type: PaginatedResponseDto,
+  })
   async findAll(
-    @Query() paginationDto: PaginationDto,
-    @Query('containerId') containerId?: string,
-    @Query('includeDeleted') includeDeleted?: boolean,
+    @Query(
+      new ValidationPipe({
+        transform: true,
+        whitelist: true,
+        forbidNonWhitelisted: true,
+      }),
+    )
+    query: ItemQueryDto,
   ): Promise<PaginatedResponseDto<Item>> {
-    return this.itemsService.findAll(paginationDto, containerId, includeDeleted);
+    const paginationDto = this.createPaginationDto(query);
+
+    const includeDeleted = query.includeDeleted === 'true';
+
+    return this.itemsService.findAll(
+      paginationDto,
+      query.containerId,
+      includeDeleted,
+    );
   }
 
   @Get('deleted')
   @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)
-  @ApiOperation({ summary: 'Get all soft-deleted items' })
-  @ApiQuery({ name: 'limit', type: Number, required: false, example: 10 })
-  @ApiQuery({ name: 'offset', type: Number, required: false, example: 0 })
-  @ApiQuery({ name: 'sort', type: String, required: false, example: 'deletedAt:DESC' })
-  @ApiResponse({ status: 200, description: 'Deleted items retrieved', type: PaginatedResponseDto })
+  @ApiOperation({
+    summary: 'Get all soft-deleted items',
+  })
+  @ApiQuery({
+    name: 'limit',
+    type: Number,
+    required: false,
+    example: 10,
+  })
+  @ApiQuery({
+    name: 'offset',
+    type: Number,
+    required: false,
+    example: 0,
+  })
+  @ApiQuery({
+    name: 'sort',
+    type: String,
+    required: false,
+    example: 'deletedAt:DESC',
+  })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: 'Deleted items retrieved successfully',
+    type: PaginatedResponseDto,
+  })
   async findDeleted(
-    @Query() paginationDto: PaginationDto,
+    @Query(
+      new ValidationPipe({
+        transform: true,
+        whitelist: true,
+        forbidNonWhitelisted: true,
+      }),
+    )
+    query: PaginationDto,
   ): Promise<PaginatedResponseDto<Item>> {
+    const paginationDto = this.createPaginationDto(query);
+
     return this.itemsService.findDeleted(paginationDto);
   }
 
   @Get('search')
-  @ApiOperation({ summary: 'Search items with pagination and sorting' })
-  @ApiQuery({ name: 'query', type: String, required: true })
-  @ApiQuery({ name: 'containerId', required: false })
-  @ApiQuery({ name: 'limit', type: Number, required: false, example: 10 })
-  @ApiQuery({ name: 'offset', type: Number, required: false, example: 0 })
-  @ApiQuery({ name: 'sort', type: String, required: false, example: 'createdAt:DESC' })
-  @ApiResponse({ status: 200, description: 'Search results', type: PaginatedResponseDto })
-  @ApiResponse({ status: 400, description: 'Query parameter is required' })
+  @ApiOperation({
+    summary: 'Search items with pagination and sorting',
+  })
+  @ApiQuery({
+    name: 'query',
+    type: String,
+    required: true,
+    example: 'Laptop',
+  })
+  @ApiQuery({
+    name: 'containerId',
+    type: String,
+    required: false,
+    description: 'Filter search results by container ID',
+  })
+  @ApiQuery({
+    name: 'limit',
+    type: Number,
+    required: false,
+    example: 10,
+  })
+  @ApiQuery({
+    name: 'offset',
+    type: Number,
+    required: false,
+    example: 0,
+  })
+  @ApiQuery({
+    name: 'sort',
+    type: String,
+    required: false,
+    example: 'createdAt:DESC',
+  })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: 'Search results retrieved successfully',
+    type: PaginatedResponseDto,
+  })
+  @ApiResponse({
+    status: HttpStatus.BAD_REQUEST,
+    description: 'Search query is missing or invalid',
+  })
   async searchItems(
-    @Query('query') query: string,
-    @Query('containerId') containerId?: string,
-    @Query() paginationDto?: PaginationDto,
+    @Query(
+      new ValidationPipe({
+        transform: true,
+        whitelist: true,
+        forbidNonWhitelisted: true,
+      }),
+    )
+    queryParams: SearchItemQueryDto,
   ): Promise<PaginatedResponseDto<Item>> {
-    if (!query || query.trim().length === 0) {
-      throw new BadRequestException('Query parameter is required');
-    }
-    const pagination = paginationDto || new PaginationDto();
-    return this.itemsService.searchItems(query.trim(), pagination, containerId);
+    const paginationDto = this.createPaginationDto(queryParams);
+
+    return this.itemsService.searchItems(
+      queryParams.query.trim(),
+      paginationDto,
+      queryParams.containerId,
+    );
   }
 
   @Get(':id')
-  @ApiOperation({ summary: 'Get an item by ID' })
-  @ApiQuery({ name: 'includeDeleted', type: Boolean, required: false, example: false })
-  @ApiResponse({ status: 200, description: 'Item retrieved', type: Item })
-  @ApiResponse({ status: 404, description: 'Item not found' })
-  @ApiResponse({ status: 400, description: 'Invalid UUID format' })
+  @ApiOperation({
+    summary: 'Get an item by ID',
+  })
+  @ApiQuery({
+    name: 'includeDeleted',
+    type: Boolean,
+    required: false,
+    example: false,
+  })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: 'Item retrieved successfully',
+    type: Item,
+  })
+  @ApiResponse({
+    status: HttpStatus.NOT_FOUND,
+    description: 'Item not found',
+  })
+  @ApiResponse({
+    status: HttpStatus.BAD_REQUEST,
+    description: 'Invalid UUID or boolean format',
+  })
   async findOne(
     @Param('id', UUIDValidationPipe) id: string,
-    @Query('includeDeleted') includeDeleted?: boolean,
+    @Query(
+      'includeDeleted',
+      new ParseBoolPipe({
+        optional: true,
+      }),
+    )
+    includeDeleted?: boolean,
   ): Promise<Item> {
-    return this.itemsService.findOne(id, includeDeleted);
+    return this.itemsService.findOne(
+      id,
+      includeDeleted ?? false,
+    );
   }
 
   @Put(':id')
   @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)
-  @ApiOperation({ summary: 'Update an item' })
-  @ApiResponse({ status: 200, description: 'Item updated', type: Item })
-  @ApiResponse({ status: 404, description: 'Item not found' })
-  @ApiResponse({ status: 400, description: 'Invalid UUID format' })
+  @ApiOperation({
+    summary: 'Update an item',
+  })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: 'Item updated successfully',
+    type: Item,
+  })
+  @ApiResponse({
+    status: HttpStatus.BAD_REQUEST,
+    description: 'Invalid data, UUID or insufficient container volume',
+  })
+  @ApiResponse({
+    status: HttpStatus.NOT_FOUND,
+    description: 'Item or container not found',
+  })
+  @ApiResponse({
+    status: HttpStatus.CONFLICT,
+    description: 'An item with the same unique number already exists',
+  })
   async update(
     @Param('id', UUIDValidationPipe) id: string,
     @Body() updateItemDto: UpdateItemDto,
@@ -124,38 +309,100 @@ export class ItemsController {
     return this.itemsService.update(id, updateItemDto);
   }
 
-  // ✅ Soft Delete - Mark as deleted
   @Delete(':id')
   @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)
   @HttpCode(HttpStatus.NO_CONTENT)
-  @ApiOperation({ summary: 'Soft delete an item' })
-  @ApiResponse({ status: 204, description: 'Item soft deleted' })
-  @ApiResponse({ status: 404, description: 'Item not found' })
-  @ApiResponse({ status: 400, description: 'Invalid UUID format' })
-  async remove(@Param('id', UUIDValidationPipe) id: string): Promise<void> {
-    return this.itemsService.softDelete(id);
+  @ApiOperation({
+    summary: 'Soft delete an item',
+  })
+  @ApiResponse({
+    status: HttpStatus.NO_CONTENT,
+    description: 'Item soft-deleted successfully',
+  })
+  @ApiResponse({
+    status: HttpStatus.NOT_FOUND,
+    description: 'Item not found',
+  })
+  @ApiResponse({
+    status: HttpStatus.BAD_REQUEST,
+    description: 'Invalid UUID format',
+  })
+  async remove(
+    @Param('id', UUIDValidationPipe) id: string,
+  ): Promise<void> {
+    await this.itemsService.softDelete(id);
   }
 
-  // ✅ Restore - Recover soft deleted item
   @Put(':id/restore')
   @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)
-  @ApiOperation({ summary: 'Restore a soft-deleted item' })
-  @ApiResponse({ status: 200, description: 'Item restored', type: Item })
-  @ApiResponse({ status: 404, description: 'Item not found' })
-  @ApiResponse({ status: 400, description: 'Item is not deleted' })
-  async restore(@Param('id', UUIDValidationPipe) id: string): Promise<Item> {
+  @ApiOperation({
+    summary: 'Restore a soft-deleted item',
+  })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: 'Item restored successfully',
+    type: Item,
+  })
+  @ApiResponse({
+    status: HttpStatus.BAD_REQUEST,
+    description:
+      'Invalid UUID, item is not deleted or container has insufficient volume',
+  })
+  @ApiResponse({
+    status: HttpStatus.NOT_FOUND,
+    description: 'Item or container not found',
+  })
+  async restore(
+    @Param('id', UUIDValidationPipe) id: string,
+  ): Promise<Item> {
     return this.itemsService.restore(id);
   }
 
-  // ✅ Permanent Delete - Hard delete
   @Delete(':id/permanent')
   @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)
   @HttpCode(HttpStatus.NO_CONTENT)
-  @ApiOperation({ summary: 'Permanently delete an item (hard delete)' })
-  @ApiResponse({ status: 204, description: 'Item permanently deleted' })
-  @ApiResponse({ status: 404, description: 'Item not found' })
-  @ApiResponse({ status: 400, description: 'Invalid UUID format' })
-  async permanentDelete(@Param('id', UUIDValidationPipe) id: string): Promise<void> {
-    return this.itemsService.permanentDelete(id);
+  @ApiOperation({
+    summary: 'Permanently delete an item',
+  })
+  @ApiResponse({
+    status: HttpStatus.NO_CONTENT,
+    description: 'Item permanently deleted successfully',
+  })
+  @ApiResponse({
+    status: HttpStatus.NOT_FOUND,
+    description: 'Item not found',
+  })
+  @ApiResponse({
+    status: HttpStatus.BAD_REQUEST,
+    description: 'Invalid UUID format',
+  })
+  async permanentDelete(
+    @Param('id', UUIDValidationPipe) id: string,
+  ): Promise<void> {
+    await this.itemsService.permanentDelete(id);
+  }
+
+  private createPaginationDto(
+    query: PaginationDto,
+  ): PaginationDto {
+    const limit = Number(query.limit);
+    const offset = Number(query.offset);
+
+    const paginationDto = new PaginationDto();
+
+    paginationDto.limit =
+      Number.isInteger(limit) && limit > 0
+        ? limit
+        : 10;
+
+    paginationDto.offset =
+      Number.isInteger(offset) && offset >= 0
+        ? offset
+        : 0;
+
+    paginationDto.sort =
+      query.sort || undefined;
+
+    return paginationDto;
   }
 }

@@ -1,16 +1,17 @@
 // src/modules/auth/entities/user.entity.ts
+
 import {
-  Entity,
-  Column,
-  PrimaryGeneratedColumn,
-  CreateDateColumn,
-  UpdateDateColumn,
-  OneToMany,
   BeforeInsert,
   BeforeUpdate,
+  Column,
+  CreateDateColumn,
   DeleteDateColumn,
+  Entity,
+  OneToMany,
+  PrimaryGeneratedColumn,
+  UpdateDateColumn,
 } from 'typeorm';
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiHideProperty, ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Exclude } from 'class-transformer';
 import * as argon2 from 'argon2';
 import { Container } from '../../containers/entities/container.entity';
@@ -28,34 +29,67 @@ export class User {
   id!: string;
 
   @ApiProperty()
-  @Column({ unique: true })
+  @Column({
+    type: 'varchar',
+    length: 50,
+    unique: true,
+  })
   username!: string;
 
   @ApiProperty()
-  @Column({ unique: true })
+  @Column({
+    type: 'varchar',
+    length: 255,
+    unique: true,
+  })
   email!: string;
 
-  @Column()
+  @ApiHideProperty()
+  @Column({
+    type: 'varchar',
+    length: 255,
+  })
   @Exclude()
   password!: string;
 
-  // ✅ Password reset fields
-  @Column({ nullable: true, name: 'reset_password_token' })
+  @ApiHideProperty()
+  @Column({
+    name: 'reset_password_token',
+    type: 'varchar',
+    length: 255,
+    nullable: true,
+  })
   @Exclude()
-  resetPasswordToken?: string;
+  resetPasswordToken?: string | null;
 
-  @Column({ nullable: true, name: 'reset_password_expires' })
+  @ApiHideProperty()
+  @Column({
+    name: 'reset_password_expires',
+    type: 'timestamp with time zone',
+    nullable: true,
+  })
   @Exclude()
-  resetPasswordExpires?: Date;
+  resetPasswordExpires?: Date | null;
 
-  // ✅ Account lock fields
-  @Column({ default: 0, name: 'failed_login_attempts' })
+  @ApiHideProperty()
+  @Column({
+    name: 'failed_login_attempts',
+    type: 'integer',
+    default: 0,
+  })
   failedLoginAttempts!: number;
 
-  @Column({ nullable: true, name: 'locked_until' })
-  lockedUntil?: Date;
+  @ApiHideProperty()
+  @Column({
+    name: 'locked_until',
+    type: 'timestamp with time zone',
+    nullable: true,
+  })
+  lockedUntil?: Date | null;
 
-  @ApiProperty({ enum: UserRole })
+  @ApiProperty({
+    enum: UserRole,
+  })
   @Column({
     type: 'varchar',
     length: 50,
@@ -64,51 +98,71 @@ export class User {
   role!: UserRole;
 
   @ApiProperty()
-  @Column({ default: true })
+  @Column({
+    type: 'boolean',
+    default: true,
+  })
   isActive!: boolean;
 
-  @ApiProperty()
-  @Column({ nullable: true })
-  lastLogin?: Date;
+  @ApiPropertyOptional()
+  @Column({
+    type: 'timestamp with time zone',
+    nullable: true,
+  })
+  lastLogin?: Date | null;
+
+  @ApiPropertyOptional()
+  @Column({
+    type: 'varchar',
+    length: 45,
+    nullable: true,
+  })
+  lastLoginIp?: string | null;
+
+  @ApiPropertyOptional()
+  @Column({
+    type: 'varchar',
+    length: 500,
+    nullable: true,
+  })
+  lastLoginUserAgent?: string | null;
 
   @ApiProperty()
-  @Column({ nullable: true })
-  lastLoginIp?: string;
-
-  @ApiProperty()
-  @Column({ nullable: true })
-  lastLoginUserAgent?: string;
-
-  @ApiProperty()
-  @CreateDateColumn()
+  @CreateDateColumn({
+    type: 'timestamp with time zone',
+  })
   createdAt!: Date;
 
   @ApiProperty()
-  @UpdateDateColumn()
+  @UpdateDateColumn({
+    type: 'timestamp with time zone',
+  })
   updatedAt!: Date;
 
-  // src/modules/auth/entities/user.entity.ts - Shto nëse dëshiron soft delete për user
-  @DeleteDateColumn({ nullable: true })
+  @ApiPropertyOptional()
+  @DeleteDateColumn({
+    type: 'timestamp with time zone',
+    nullable: true,
+  })
   deletedAt?: Date | null;
 
-  @OneToMany(() => Container, (container) => container.createdBy)
+  @OneToMany(
+    () => Container,
+    (container) => container.createdBy,
+  )
   containers!: Container[];
 
-  // ============================================
-  // PASSWORD HASHING (Argon2)
-  // ============================================
   @BeforeInsert()
   @BeforeUpdate()
-  async hashPassword() {
-    // ✅ Hash only if password is plain text (not already hashed)
-    if (this.password && !this.password.startsWith('$argon2')) {
+  async hashPassword(): Promise<void> {
+    if (
+      this.password &&
+      !this.password.startsWith('$argon2')
+    ) {
       this.password = await argon2.hash(this.password);
     }
   }
 
-  // ============================================
-  // PASSWORD VALIDATION
-  // ============================================
   async validatePassword(password: string): Promise<boolean> {
     try {
       return await argon2.verify(this.password, password);
@@ -117,12 +171,11 @@ export class User {
     }
   }
 
-  // ============================================
-  // ACCOUNT LOCK METHODS
-  // ============================================
   isLocked(): boolean {
-    if (!this.lockedUntil) return false;
-    return new Date() < this.lockedUntil;
+    return Boolean(
+      this.lockedUntil &&
+        this.lockedUntil.getTime() > Date.now(),
+    );
   }
 
   lockAccount(durationMs: number): void {
@@ -136,34 +189,35 @@ export class User {
 
   resetFailedAttempts(): void {
     this.failedLoginAttempts = 0;
-    this.lockedUntil = undefined;
+    this.lockedUntil = null;
   }
 
-  // ============================================
-  // PASSWORD RESET METHODS
-  // ============================================
-  setResetToken(token: string, expiresInMs: number): void {
+  setResetToken(
+    token: string,
+    expiresInMs: number,
+  ): void {
     this.resetPasswordToken = token;
-    this.resetPasswordExpires = new Date(Date.now() + expiresInMs);
-  }
-
-  clearResetToken(): void {
-    this.resetPasswordToken = undefined;
-    this.resetPasswordExpires = undefined;
-  }
-
-  isResetTokenValid(token: string): boolean {
-    return (
-      this.resetPasswordToken === token &&
-      this.resetPasswordExpires !== undefined &&
-      this.resetPasswordExpires > new Date()
+    this.resetPasswordExpires = new Date(
+      Date.now() + expiresInMs,
     );
   }
 
-  // ============================================
-  // CONSTRUCTOR
-  // ============================================
-  constructor(partial: Partial<User>) {
-    Object.assign(this, partial);
+  clearResetToken(): void {
+    this.resetPasswordToken = null;
+    this.resetPasswordExpires = null;
+  }
+
+  isResetTokenValid(token: string): boolean {
+    return Boolean(
+      this.resetPasswordToken === token &&
+        this.resetPasswordExpires &&
+        this.resetPasswordExpires.getTime() > Date.now(),
+    );
+  }
+
+  constructor(partial?: Partial<User>) {
+    if (partial) {
+      Object.assign(this, partial);
+    }
   }
 }
