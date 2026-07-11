@@ -12,13 +12,19 @@ import {
   MaxLength,
   MinLength,
 } from 'class-validator';
+
 import { UserRole } from '../entities/user.entity';
+
+const trimString = (value: unknown): unknown => (typeof value === 'string' ? value.trim() : value);
+
+const normalizeEmail = (value: unknown): unknown =>
+  typeof value === 'string' ? value.trim().toLowerCase() : value;
 
 export class RegisterDto {
   @ApiProperty({
     example: 'johndoe',
   })
-  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
+  @Transform(({ value }: { value: unknown }): unknown => trimString(value))
   @IsString({
     message: 'Username must be a string',
   })
@@ -39,7 +45,7 @@ export class RegisterDto {
   @ApiProperty({
     example: 'john@example.com',
   })
-  @Transform(({ value }) => (typeof value === 'string' ? value.trim().toLowerCase() : value))
+  @Transform(({ value }: { value: unknown }): unknown => normalizeEmail(value))
   @IsEmail(
     {},
     {

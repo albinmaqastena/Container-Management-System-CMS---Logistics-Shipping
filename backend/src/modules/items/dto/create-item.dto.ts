@@ -16,18 +16,29 @@ import {
   MinLength,
 } from 'class-validator';
 
+const trimString = (value: unknown): unknown => (typeof value === 'string' ? value.trim() : value);
+
+const normalizeOptionalPhoto = (value: unknown): unknown => {
+  if (value === null) {
+    return null;
+  }
+
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    return trimmed === '' ? undefined : trimmed;
+  }
+
+  return value;
+};
+
 export class CreateItemDto {
   @ApiProperty({
     example: 'ITEM-001',
     description: 'Unique item identifier',
   })
-  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
-  @IsString({
-    message: 'Unique number must be a string',
-  })
-  @IsNotEmpty({
-    message: 'Unique number is required',
-  })
+  @Transform(({ value }: { value: unknown }): unknown => trimString(value))
+  @IsString({ message: 'Unique number must be a string' })
+  @IsNotEmpty({ message: 'Unique number is required' })
   @MinLength(3, {
     message: 'Unique number must be at least 3 characters',
   })
@@ -40,13 +51,9 @@ export class CreateItemDto {
     example: 'Electronic Components',
     description: 'Item name',
   })
-  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
-  @IsString({
-    message: 'Name must be a string',
-  })
-  @IsNotEmpty({
-    message: 'Item name is required',
-  })
+  @Transform(({ value }: { value: unknown }): unknown => trimString(value))
+  @IsString({ message: 'Name must be a string' })
+  @IsNotEmpty({ message: 'Item name is required' })
   @MinLength(3, {
     message: 'Item name must be at least 3 characters',
   })
@@ -60,23 +67,9 @@ export class CreateItemDto {
     description: 'Optional item photo URL',
     nullable: true,
   })
-  @Transform(({ value }) => {
-    if (value === null) {
-      return null;
-    }
-
-    if (typeof value === 'string') {
-      const trimmed = value.trim();
-
-      return trimmed === '' ? undefined : trimmed;
-    }
-
-    return value;
-  })
+  @Transform(({ value }: { value: unknown }): unknown => normalizeOptionalPhoto(value))
   @IsOptional()
-  @IsString({
-    message: 'Photo URL must be a string',
-  })
+  @IsString({ message: 'Photo URL must be a string' })
   @MaxLength(500, {
     message: 'Photo URL must not exceed 500 characters',
   })
@@ -85,25 +78,15 @@ export class CreateItemDto {
   })
   photo?: string | null;
 
-  @ApiProperty({
-    example: 5,
-    minimum: 1,
-    description: 'Number of packages',
-  })
+  @ApiProperty({ example: 5, minimum: 1 })
   @Type(() => Number)
-  @IsInt({
-    message: 'Package quantity must be an integer',
-  })
+  @IsInt({ message: 'Package quantity must be an integer' })
   @Min(1, {
     message: 'Package quantity must be at least 1',
   })
   packageQuantity!: number;
 
-  @ApiProperty({
-    example: 100,
-    minimum: 1,
-    description: 'Number of products inside each package',
-  })
+  @ApiProperty({ example: 100, minimum: 1 })
   @Type(() => Number)
   @IsInt({
     message: 'Products per package must be an integer',
@@ -113,11 +96,7 @@ export class CreateItemDto {
   })
   productsPerPackage!: number;
 
-  @ApiProperty({
-    example: 150.5,
-    minimum: 0,
-    description: 'Price per package',
-  })
+  @ApiProperty({ example: 150.5, minimum: 0 })
   @Type(() => Number)
   @IsNumber(
     {
@@ -138,7 +117,6 @@ export class CreateItemDto {
     example: 2.5,
     minimum: 0.01,
     maximum: 10000,
-    description: 'Volume per package in cubic meters',
   })
   @Type(() => Number)
   @IsNumber(
@@ -162,13 +140,10 @@ export class CreateItemDto {
   @ApiProperty({
     example: '550e8400-e29b-41d4-a716-446655440000',
     format: 'uuid',
-    description: 'ID of the container where the item will be stored',
   })
   @IsUUID('4', {
     message: 'Container ID must be a valid UUID version 4',
   })
-  @IsNotEmpty({
-    message: 'Container ID is required',
-  })
+  @IsNotEmpty({ message: 'Container ID is required' })
   containerId!: string;
 }

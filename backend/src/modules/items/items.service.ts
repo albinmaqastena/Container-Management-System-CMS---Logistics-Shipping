@@ -107,13 +107,13 @@ export class ItemsService {
 
       try {
         createdItem = await manager.getRepository(Item).save(item);
-      } catch (error: any) {
-        if (error?.code === '23505') {
+      } catch (error: unknown) {
+        if (this.isDatabaseError(error, '23505')) {
           throw new ConflictException(
             `Item with uniqueNumber "${createItemDto.uniqueNumber}" already exists.`,
           );
         }
-        throw error;
+        this.rethrowUnknown(error);
       }
 
       containerId = container.id;
@@ -192,8 +192,8 @@ export class ItemsService {
     }
 
     const sortObject = buildSortObject(sort, ALLOWED_SORT_FIELDS.items);
-    Object.keys(sortObject).forEach((key) => {
-      queryBuilder.addOrderBy(`item.${key}`, sortObject[key]);
+    Object.entries(sortObject).forEach(([key, direction]) => {
+      queryBuilder.addOrderBy(`item.${key}`, direction);
     });
 
     queryBuilder.skip(offset).take(limit);
@@ -229,8 +229,8 @@ export class ItemsService {
       .where('item.deletedAt IS NOT NULL');
 
     const sortObject = buildSortObject(sort, ALLOWED_SORT_FIELDS.items);
-    Object.keys(sortObject).forEach((key) => {
-      queryBuilder.addOrderBy(`item.${key}`, sortObject[key]);
+    Object.entries(sortObject).forEach(([key, direction]) => {
+      queryBuilder.addOrderBy(`item.${key}`, direction);
     });
 
     queryBuilder.skip(offset).take(limit);
@@ -307,13 +307,13 @@ export class ItemsService {
 
       try {
         updatedItem = await manager.getRepository(Item).save(item);
-      } catch (error: any) {
-        if (error?.code === '23505') {
+      } catch (error: unknown) {
+        if (this.isDatabaseError(error, '23505')) {
           throw new ConflictException(
             `Item with uniqueNumber "${item.uniqueNumber}" already exists.`,
           );
         }
-        throw error;
+        this.rethrowUnknown(error);
       }
 
       containerId = item.containerId;
@@ -429,5 +429,21 @@ export class ItemsService {
 
     await this.clearContainerCache(containerId);
     await this.cacheManager.del(`items:container:${containerId}`);
+  }
+  private isDatabaseError(error: unknown, code: string): boolean {
+    return (
+      typeof error === 'object' &&
+      error !== null &&
+      'code' in error &&
+      (error as { code?: unknown }).code === code
+    );
+  }
+
+  private rethrowUnknown(error: unknown): never {
+    if (error instanceof Error) {
+      throw error;
+    }
+
+    throw new Error('Unknown database error');
   }
 }

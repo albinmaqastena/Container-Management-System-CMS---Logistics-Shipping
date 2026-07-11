@@ -4,11 +4,21 @@ import { ApiProperty } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
 import { IsEmail, IsNotEmpty, IsString, MaxLength, MinLength } from 'class-validator';
 
+const normalizeEmail = (value: unknown): unknown => {
+  if (typeof value !== 'string') {
+    return value;
+  }
+
+  return value.trim().toLowerCase();
+};
+
 export class LoginDto {
   @ApiProperty({
     example: 'admin@example.com',
   })
-  @Transform(({ value }) => (typeof value === 'string' ? value.trim().toLowerCase() : value))
+  @Transform(({ value }: { value: unknown }): unknown => normalizeEmail(value), {
+    toClassOnly: true,
+  })
   @IsEmail(
     {},
     {
@@ -24,7 +34,7 @@ export class LoginDto {
   email!: string;
 
   @ApiProperty({
-    example: 'password123',
+    example: 'Admin@123',
   })
   @IsString({
     message: 'Password must be a string',

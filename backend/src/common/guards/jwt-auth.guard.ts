@@ -1,6 +1,6 @@
 // src/common/guards/jwt-auth.guard.ts
 
-import { ExecutionContext, Injectable, UnauthorizedException } from '@nestjs/common';
+import { ExecutionContext, HttpException, Injectable, UnauthorizedException } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { AuthGuard } from '@nestjs/passport';
 
@@ -26,8 +26,12 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
   }
 
   handleRequest<TUser = unknown>(error: unknown, user: TUser | false | null, info: unknown): TUser {
-    if (error) {
+    if (error instanceof HttpException) {
       throw error;
+    }
+
+    if (error instanceof Error) {
+      throw new UnauthorizedException(error.message);
     }
 
     if (!user) {

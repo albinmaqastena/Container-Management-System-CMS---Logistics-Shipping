@@ -3,7 +3,7 @@
 import { NotFoundException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { DeleteResult, Repository } from 'typeorm';
+import { Repository } from 'typeorm';
 
 import { AuditService } from './audit.service';
 import { AuditAction, AuditLog, AuditStatus } from './entities/audit-log.entity';

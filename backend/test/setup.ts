@@ -9,7 +9,8 @@ import request from 'supertest';
 const redisStore = new Map<string, string>();
 
 const mockRedis = {
-  async set(key: string, value: string, ..._args: any[]) {
+  async set(key: string, value: string, ...args: unknown[]) {
+    void args;
     redisStore.set(key, value);
     return 'OK';
   },

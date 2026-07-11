@@ -1,22 +1,25 @@
 // src/main.ts
-// src/main.ts
-import { NestFactory } from '@nestjs/core';
-import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
-import { ValidationPipe, VersioningType } from '@nestjs/common';
+
+import { Logger, ValidationPipe, VersioningType } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { AppModule } from './app.module';
-import * as dotenv from 'dotenv';
-import helmet from 'helmet';
-import compression from 'compression';
-import { HttpExceptionFilter } from './common/filters/http-exception.filter';
-import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
-import { join } from 'path';
+import { NestFactory } from '@nestjs/core';
 import { NestExpressApplication } from '@nestjs/platform-express';
+import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import compression from 'compression';
+import * as dotenv from 'dotenv';
+import type { Response } from 'express';
 import * as fs from 'fs';
+import helmet from 'helmet';
+import { join } from 'path';
+
+import { AppModule } from './app.module';
+import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 
 dotenv.config();
 
-async function bootstrap() {
+const bootstrapLogger = new Logger('Bootstrap');
+
+async function bootstrap(): Promise<void> {
   const configService = new ConfigService();
   const nodeEnv = configService.get<string>('NODE_ENV', 'development');
   const isProduction = nodeEnv === 'production';
@@ -24,63 +27,29 @@ async function bootstrap() {
   const frontendUrls = configService
     .get<string>('FRONTEND_URLS', 'http://localhost:3001')
     .split(',')
-    .map((url) => url.trim());
+    .map((url) => url.trim())
+    .filter(Boolean);
 
-  console.log('========================================');
-  console.log('🚀 Starting Container Management System');
-  console.log(`🔧 NODE_ENV: ${nodeEnv}`);
-  console.log(`🌐 Port: ${port}`);
-  console.log(`📊 Database: ${configService.get('DB_DATABASE')}`);
-  console.log('========================================');
+  bootstrapLogger.log('Starting Container Management System');
+  bootstrapLogger.log(`NODE_ENV: ${nodeEnv}`);
+  bootstrapLogger.log(`Port: ${port}`);
+  bootstrapLogger.log(`Database: ${configService.get<string>('DB_DATABASE', 'unknown')}`);
 
-  // ============================================
-  // 1. HTTPS CONFIGURATION (Production)
-  // ============================================
-  let app: NestExpressApplication;
+  const app = await createApplication(configService, isProduction);
 
-  if (isProduction) {
-    // ✅ HTTPS në production
-    const sslKeyPath = configService.get<string>('SSL_KEY_PATH', './certs/key.pem');
-    const sslCertPath = configService.get<string>('SSL_CERT_PATH', './certs/cert.pem');
+  app.set('trust proxy', true);
 
-    // Kontrollo nëse certifikatat ekzistojnë
-    if (!fs.existsSync(sslKeyPath) || !fs.existsSync(sslCertPath)) {
-      console.warn('⚠️  SSL certificates not found. Falling back to HTTP.');
-      app = await NestFactory.create<NestExpressApplication>(AppModule);
-    } else {
-      const httpsOptions = {
-        key: fs.readFileSync(sslKeyPath),
-        cert: fs.readFileSync(sslCertPath),
-      };
-      app = await NestFactory.create<NestExpressApplication>(AppModule, { httpsOptions });
-      console.log('🔒 HTTPS enabled');
-    }
-  } else {
-    // HTTP në development
-    app = await NestFactory.create<NestExpressApplication>(AppModule);
-  }
+  const uploadsPath = join(process.cwd(), 'uploads');
 
-  // ============================================
-  // 2. TRUST PROXY (për IP të saktë)
-  // ============================================
-  app.set('trust proxy', true); // ✅ Shto këtë!
-
-  // ============================================
-  // 2. STATIC FILES (Uploads)
-  // ============================================
-  const uploadsPath = join(__dirname, '..', 'uploads');
   if (fs.existsSync(uploadsPath)) {
     app.useStaticAssets(uploadsPath, {
       prefix: '/uploads/',
-      setHeaders: (res, path) => {
-        res.setHeader('Cache-Control', 'public, max-age=31536000');
+      setHeaders: (response: Response) => {
+        response.setHeader('Cache-Control', 'public, max-age=31536000');
       },
     });
   }
 
-  // ============================================
-  // 3. SIGURIA - HELMET
-  // ============================================
   app.use(
     helmet({
       contentSecurityPolicy: {
@@ -91,11 +60,13 @@ async function bootstrap() {
           scriptSrc: ["'self'", "'unsafe-inline'"],
         },
       },
-      hsts: {
-        maxAge: 31536000, // 1 vit
-        includeSubDomains: true,
-        preload: true,
-      },
+      hsts: isProduction
+        ? {
+            maxAge: 31536000,
+            includeSubDomains: true,
+            preload: true,
+          }
+        : false,
       frameguard: {
         action: 'deny',
       },
@@ -106,26 +77,17 @@ async function bootstrap() {
     }),
   );
 
-  // ============================================
-  // 4. KOMPRESIONI PËR PERFORMANCË
-  // ============================================
   app.use(compression());
 
-  // ============================================
-  // 5. CORS - I KUFIZUAR
-  // ============================================
   app.enableCors({
     origin: isProduction ? frontendUrls : true,
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'Accept'],
     exposedHeaders: ['Content-Range', 'X-Content-Range'],
-    maxAge: 86400, // 24 orë
+    maxAge: 86400,
   });
 
-  // ============================================
-  // 6. VALIDIMI GLOBAL
-  // ============================================
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
@@ -137,144 +99,98 @@ async function bootstrap() {
     }),
   );
 
-  // ============================================
-  // 7. EXCEPTION FILTER - ERROR HANDLING (PA STACK TRACE)
-  // ============================================
   app.useGlobalFilters(new HttpExceptionFilter());
 
-  // ============================================
-  // 8. LOGGER INTERCEPTOR
-  // ============================================
-  app.useGlobalInterceptors(new LoggingInterceptor());
-
-  // ============================================
-  // 9. VERSIONIMI I API-së
-  // ============================================
   app.enableVersioning({
     type: VersioningType.URI,
     defaultVersion: '1',
   });
 
-  // ============================================
-  // 10. PREFIXI GLOBAL (Opsional)
-  // ============================================
-  // app.setGlobalPrefix('api');
-
-  // ============================================
-  // 11. SWAGGER - VETËM NË DEVELOPMENT
-  // ============================================
   if (!isProduction) {
-    const config = new DocumentBuilder()
-      .setTitle('Container Management System API')
-      .setDescription(
-        `
-## Container Management System API
-
-### 🔐 Authentication
-- **Login**: POST /auth/login
-- **Register**: POST /auth/register (Admin only)
-- **Refresh Token**: POST /auth/refresh
-- **Logout**: POST /auth/logout
-- **Sessions**: GET /auth/sessions
-
-### 📦 Containers
-- **Create**: POST /containers
-- **Get All**: GET /containers
-- **Get Active**: GET /containers/active
-- **Get Archived**: GET /containers/archived
-- **Search**: GET /containers/search
-- **Get By ID**: GET /containers/:id
-- **Update**: PUT /containers/:id
-- **Update Status**: PUT /containers/:id/status
-- **Delete**: DELETE /containers/:id
-
-### 📦 Items
-- **Create**: POST /items
-- **Get All**: GET /items
-- **Search**: GET /items/search
-- **Get By ID**: GET /items/:id
-- **Update**: PUT /items/:id
-- **Delete**: DELETE /items/:id
-
-### 👤 User Roles
-- **Super Admin**: Full access (can manage everything)
-- **Admin**: Create/Manage containers and items, manage users
-- **User**: View only
-
-### 🔒 Security Features
-- JWT Authentication with Refresh Tokens
-- Role-Based Access Control (RBAC)
-- Rate Limiting (5 attempts/min for login)
-- Account Locking (5 failed attempts = 15 min lock)
-- Password hashing with Argon2
-- Helmet security headers
-- CORS restricted to allowed domains
-- Input validation with DTOs
-- SQL Injection prevention (parameterized queries)
-- File upload security (MIME, size, extension validation)
-- HTTPS (Production)
-`,
-      )
-      .setVersion('1.0')
-      .addBearerAuth(
-        {
-          type: 'http',
-          scheme: 'bearer',
-          bearerFormat: 'JWT',
-          name: 'JWT',
-          description: 'Enter JWT token',
-          in: 'header',
-        },
-        'JWT-auth',
-      )
-      .addTag('Authentication', 'Login, Register, Refresh, Logout')
-      .addTag('Containers', 'Container management operations')
-      .addTag('Items', 'Item management operations')
-      .addTag('Files', 'File upload operations')
-      .addTag('Health', 'Health check endpoint')
-      .addServer(`http://localhost:${port}`, 'Development Server')
-      .addServer(`https://your-production-domain.com`, 'Production Server')
-      .build();
-
-    const document = SwaggerModule.createDocument(app, config);
-    SwaggerModule.setup('api-docs', app, document, {
-      swaggerOptions: {
-        persistAuthorization: true,
-        displayRequestDuration: true,
-        filter: true,
-        tryItOutEnabled: true,
-        operationsSorter: 'alpha',
-        tagsSorter: 'alpha',
-        defaultModelsExpandDepth: 3,
-        defaultModelExpandDepth: 3,
-      },
-    });
-    console.log(`📚 Swagger UI: http://localhost:${port}/api-docs`);
+    configureSwagger(app, port);
   }
 
-  // ============================================
-  // 12. START SERVER
-  // ============================================
+  app.enableShutdownHooks();
+
   await app.listen(port, '0.0.0.0');
 
-  console.log(
-    `✅ Application is running on: ${isProduction ? 'https' : 'http'}://localhost:${port}`,
-  );
-  console.log(`🔧 Environment: ${nodeEnv}`);
-  console.log('========================================');
-
-  // ============================================
-  // 13. GRACEFUL SHUTDOWN
-  // ============================================
-  const signals = ['SIGTERM', 'SIGINT', 'SIGUSR2'];
-  signals.forEach((signal) => {
-    process.on(signal, async () => {
-      console.log(`\n🛑 Received ${signal}, shutting down gracefully...`);
-      await app.close();
-      console.log('✅ Application closed gracefully');
-      process.exit(0);
-    });
-  });
+  bootstrapLogger.log(`Application is running on http://localhost:${port}`);
+  bootstrapLogger.log(`Environment: ${nodeEnv}`);
 }
 
-bootstrap();
+async function createApplication(
+  configService: ConfigService,
+  isProduction: boolean,
+): Promise<NestExpressApplication> {
+  if (!isProduction) {
+    return NestFactory.create<NestExpressApplication>(AppModule);
+  }
+
+  const sslKeyPath = configService.get<string>('SSL_KEY_PATH', './certs/key.pem');
+  const sslCertPath = configService.get<string>('SSL_CERT_PATH', './certs/cert.pem');
+
+  if (!fs.existsSync(sslKeyPath) || !fs.existsSync(sslCertPath)) {
+    bootstrapLogger.warn('SSL certificates not found. Falling back to HTTP.');
+
+    return NestFactory.create<NestExpressApplication>(AppModule);
+  }
+
+  const httpsOptions = {
+    key: fs.readFileSync(sslKeyPath),
+    cert: fs.readFileSync(sslCertPath),
+  };
+
+  bootstrapLogger.log('HTTPS enabled');
+
+  return NestFactory.create<NestExpressApplication>(AppModule, { httpsOptions });
+}
+
+function configureSwagger(app: NestExpressApplication, port: number): void {
+  const config = new DocumentBuilder()
+    .setTitle('Container Management System API')
+    .setDescription('API for authentication, containers, items, files and audit logs.')
+    .setVersion('1.0')
+    .addBearerAuth(
+      {
+        type: 'http',
+        scheme: 'bearer',
+        bearerFormat: 'JWT',
+        name: 'JWT',
+        description: 'Enter JWT token',
+        in: 'header',
+      },
+      'JWT-auth',
+    )
+    .addTag('Authentication', 'Login, register, refresh and logout')
+    .addTag('Containers', 'Container management operations')
+    .addTag('Items', 'Item management operations')
+    .addTag('Files', 'File upload operations')
+    .addTag('Audit Logs', 'Audit log operations')
+    .addTag('Health', 'Health check endpoint')
+    .addServer(`http://localhost:${port}`, 'Development Server')
+    .build();
+
+  const document = SwaggerModule.createDocument(app, config);
+
+  SwaggerModule.setup('api-docs', app, document, {
+    swaggerOptions: {
+      persistAuthorization: true,
+      displayRequestDuration: true,
+      filter: true,
+      tryItOutEnabled: true,
+      operationsSorter: 'alpha',
+      tagsSorter: 'alpha',
+      defaultModelsExpandDepth: 3,
+      defaultModelExpandDepth: 3,
+    },
+  });
+
+  bootstrapLogger.log(`Swagger UI: http://localhost:${port}/api-docs`);
+}
+
+void bootstrap().catch((error: unknown) => {
+  const message = error instanceof Error ? error.stack || error.message : 'Unknown bootstrap error';
+
+  bootstrapLogger.error(message);
+  process.exitCode = 1;
+});

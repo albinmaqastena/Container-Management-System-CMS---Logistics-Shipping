@@ -24,9 +24,7 @@ const mockRedis = {
   get: jest.fn().mockResolvedValue(null),
   del: jest.fn().mockResolvedValue(1),
   exists: jest.fn().mockResolvedValue(1),
-  scan: jest.fn().mockImplementation((cursor, ...args) => {
-    return Promise.resolve(['0', []]);
-  }),
+  scan: jest.fn().mockResolvedValue(['0', []]),
   keys: jest.fn().mockResolvedValue([]),
 };
 
@@ -352,6 +350,8 @@ describe('AuthService', () => {
           accessToken: 'access-token',
           ip: '127.0.0.1',
           userAgent: 'chrome',
+          createdAt: new Date().toISOString(),
+          expiresAt: new Date(Date.now() + 604800000).toISOString(),
         }),
       );
       redis.del.mockResolvedValue(1);
@@ -413,6 +413,8 @@ describe('AuthService', () => {
           accessToken: 'old-access-token',
           ip: '127.0.0.1',
           userAgent: 'chrome',
+          createdAt: new Date().toISOString(),
+          expiresAt: new Date(Date.now() + 604800000).toISOString(),
         }),
       );
       redis.set.mockResolvedValue('OK');

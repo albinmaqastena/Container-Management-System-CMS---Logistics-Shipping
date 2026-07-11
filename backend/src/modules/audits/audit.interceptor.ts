@@ -5,9 +5,29 @@ import { ConfigService } from '@nestjs/config';
 import { Reflector } from '@nestjs/core';
 import { Observable, catchError, tap, throwError } from 'rxjs';
 
-import { AuditService } from './audit.service';
-import { AuditAction, AuditStatus } from './entities/audit-log.entity';
 import { AUDIT_ACTION_KEY, SKIP_AUDIT_KEY } from './decorators/audit.decorator';
+import { AuditAction, AuditStatus } from './entities/audit-log.entity';
+import { AuditService } from './audit.service';
+
+interface AuditRequest {
+  method: string;
+  originalUrl?: string;
+  url: string;
+  body?: unknown;
+  user?: {
+    id?: string;
+  };
+  params?: Record<string, string | undefined>;
+  headers?: Record<string, string | string[] | undefined>;
+  ip?: string;
+  socket?: {
+    remoteAddress?: string;
+  };
+}
+
+interface AuditResponse {
+  statusCode?: number;
+}
 
 @Injectable()
 export class AuditInterceptor implements NestInterceptor {
@@ -31,9 +51,8 @@ export class AuditInterceptor implements NestInterceptor {
       return next.handle();
     }
 
-    const request = context.switchToHttp().getRequest();
-
-    const response = context.switchToHttp().getResponse();
+    const request = context.switchToHttp().getRequest<AuditRequest>();
+    const response = context.switchToHttp().getResponse<AuditResponse>();
 
     const rawUrl = request.originalUrl || request.url;
 
@@ -44,30 +63,20 @@ export class AuditInterceptor implements NestInterceptor {
 
     const action = explicitAction ?? this.detectAction(request.method, rawUrl);
 
-    /*
-     * Read-only endpoints and unrelated routes must not fill
-     * the audit table with UNKNOWN records.
-     */
     if (action === AuditAction.UNKNOWN) {
       return next.handle();
     }
 
     const userId = request.user?.id;
-
     const method = request.method;
-
     const url = rawUrl;
-
     const ip = request.ip || request.socket?.remoteAddress;
-
-    const userAgent = request.headers?.['user-agent'];
-
+    const userAgent = this.normalizeHeader(request.headers?.['user-agent']);
     const startedAt = Date.now();
-
     const requestBody = this.sanitizeValue(request.body);
 
     return next.handle().pipe(
-      tap((data) => {
+      tap((data: unknown) => {
         void this.auditService
           .log(
             action,
@@ -85,16 +94,11 @@ export class AuditInterceptor implements NestInterceptor {
             },
             AuditStatus.SUCCESS,
           )
-          .catch((error: unknown) => this.logAuditFailure(error));
+          .catch((error: unknown) => {
+            this.logAuditFailure(error);
+          });
       }),
-
       catchError((error: unknown) => {
-        const httpError = error as {
-          status?: number;
-          statusCode?: number;
-          message?: string;
-        };
-
         void this.auditService
           .log(
             action,
@@ -107,17 +111,48 @@ export class AuditInterceptor implements NestInterceptor {
               userAgent,
               method,
               url,
-              statusCode: httpError.status ?? httpError.statusCode ?? 500,
+              statusCode: this.getErrorStatusCode(error),
               duration: Date.now() - startedAt,
             },
             AuditStatus.FAILED,
             error instanceof Error ? error.message : 'Unknown error',
           )
-          .catch((auditError: unknown) => this.logAuditFailure(auditError));
+          .catch((auditError: unknown) => {
+            this.logAuditFailure(auditError);
+          });
 
         return throwError(() => error);
       }),
     );
+  }
+
+  private normalizeHeader(value: string | string[] | undefined): string | undefined {
+    if (Array.isArray(value)) {
+      return value.join(', ');
+    }
+
+    return value;
+  }
+
+  private getErrorStatusCode(error: unknown): number {
+    if (!error || typeof error !== 'object') {
+      return 500;
+    }
+
+    const value = error as {
+      status?: unknown;
+      statusCode?: unknown;
+    };
+
+    if (typeof value.status === 'number') {
+      return value.status;
+    }
+
+    if (typeof value.statusCode === 'number') {
+      return value.statusCode;
+    }
+
+    return 500;
   }
 
   private sanitizeValue(value: unknown): Record<string, unknown> | undefined {
@@ -141,46 +176,41 @@ export class AuditInterceptor implements NestInterceptor {
       'resetPasswordToken',
     ]);
 
-    return Object.fromEntries(
-      Object.entries(value)
-        .filter(([key]) => !sensitiveKeys.has(key))
-        .map(([key, item]) => {
-          if (Array.isArray(item)) {
-            return [
-              key,
-              item.map((entry) =>
-                entry && typeof entry === 'object'
-                  ? this.sanitizeObject(entry as Record<string, unknown>)
-                  : entry,
-              ),
-            ];
-          }
+    const entries: Array<[string, unknown]> = [];
 
-          if (item && typeof item === 'object') {
-            return [key, this.sanitizeObject(item as Record<string, unknown>)];
-          }
+    for (const [key, item] of Object.entries(value)) {
+      if (sensitiveKeys.has(key)) {
+        continue;
+      }
 
-          return [key, item];
-        }),
-    );
+      entries.push([key, this.sanitizeNestedValue(item)]);
+    }
+
+    return Object.fromEntries(entries);
   }
 
-  private extractTargetId(data: unknown, params?: Record<string, string>): string | undefined {
-    if (
-      data &&
-      typeof data === 'object' &&
-      'id' in data &&
-      typeof (
-        data as {
-          id?: unknown;
-        }
-      ).id === 'string'
-    ) {
-      return (
-        data as {
-          id: string;
-        }
-      ).id;
+  private sanitizeNestedValue(value: unknown): unknown {
+    if (Array.isArray(value)) {
+      return value.map((item) => this.sanitizeNestedValue(item));
+    }
+
+    if (value && typeof value === 'object') {
+      return this.sanitizeObject(value as Record<string, unknown>);
+    }
+
+    return value;
+  }
+
+  private extractTargetId(
+    data: unknown,
+    params?: Record<string, string | undefined>,
+  ): string | undefined {
+    if (data && typeof data === 'object' && 'id' in data) {
+      const id = (data as { id?: unknown }).id;
+
+      if (typeof id === 'string') {
+        return id;
+      }
     }
 
     return params?.id || params?.userId;
@@ -301,8 +331,33 @@ export class AuditInterceptor implements NestInterceptor {
   }
 
   private logAuditFailure(error: unknown): void {
-    const message = error instanceof Error ? error.message : String(error);
+    const message = error instanceof Error ? error.message : this.safeErrorString(error);
 
     this.logger.warn(`Unable to save audit log: ${message}`);
+  }
+
+  private safeErrorString(value: unknown): string {
+    if (
+      typeof value === 'string' ||
+      typeof value === 'number' ||
+      typeof value === 'boolean' ||
+      typeof value === 'bigint'
+    ) {
+      return String(value);
+    }
+
+    if (value === null) {
+      return 'null';
+    }
+
+    if (value === undefined) {
+      return 'undefined';
+    }
+
+    try {
+      return JSON.stringify(value);
+    } catch {
+      return 'Unknown error';
+    }
   }
 }

@@ -11,7 +11,9 @@ export class SearchItemQueryDto extends ItemQueryDto {
     description: 'Search text',
     example: 'Laptop',
   })
-  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
+  @Transform(({ value }: { value: unknown }): unknown =>
+    typeof value === 'string' ? value.trim() : value,
+  )
   @IsString({
     message: 'Query must be a string',
   })

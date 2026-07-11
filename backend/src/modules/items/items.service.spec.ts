@@ -10,7 +10,6 @@ import { ContainersService } from '../containers/containers.service';
 import { Container, ContainerStatus } from '../containers/entities/container.entity';
 import { User } from '../auth/entities/user.entity';
 import { CreateItemDto } from './dto/create-item.dto';
-import { UpdateItemDto } from './dto/update-item.dto';
 import { PaginationDto } from '../../common/dto/pagination.dto';
 
 describe('ItemsService', () => {

@@ -4,23 +4,25 @@ import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
 import { IsOptional, IsString, Matches, MaxLength } from 'class-validator';
 
+const normalizeFolder = (value: unknown): unknown => {
+  if (typeof value !== 'string') {
+    return value;
+  }
+
+  const normalized = value
+    .trim()
+    .replace(/\\/g, '/')
+    .replace(/^\/+|\/+$/g, '');
+
+  return normalized || undefined;
+};
+
 export class FileUploadDto {
   @ApiPropertyOptional({
     example: 'items/photos',
     description: 'Optional relative folder inside the configured upload directory',
   })
-  @Transform(({ value }) => {
-    if (typeof value !== 'string') {
-      return value;
-    }
-
-    const normalized = value
-      .trim()
-      .replace(/\\/g, '/')
-      .replace(/^\/+|\/+$/g, '');
-
-    return normalized || undefined;
-  })
+  @Transform(({ value }: { value: unknown }): unknown => normalizeFolder(value))
   @IsOptional()
   @IsString({
     message: 'Folder must be a string',

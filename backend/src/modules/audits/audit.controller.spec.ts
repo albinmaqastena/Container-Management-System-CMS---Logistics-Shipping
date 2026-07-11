@@ -7,7 +7,6 @@ import { AuditController } from './audit.controller';
 import { AuditService, AuditStats } from './audit.service';
 import { AuditAction, AuditLog, AuditStatus } from './entities/audit-log.entity';
 import { AuditQueryDto } from './dto/audit-query.dto';
-import { AuditCleanupQueryDto } from './dto/audit-cleanup-query.dto';
 import { PaginatedResponseDto, PaginationDto } from '../../common/dto/pagination.dto';
 
 describe('AuditController', () => {

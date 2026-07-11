@@ -14,16 +14,29 @@ import {
   MinLength,
 } from 'class-validator';
 
+const trimString = (value: unknown): unknown => (typeof value === 'string' ? value.trim() : value);
+
+const normalizeUpdatePhoto = (value: unknown): unknown => {
+  if (value === null) {
+    return null;
+  }
+
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    return trimmed === '' ? null : trimmed;
+  }
+
+  return value;
+};
+
 export class UpdateItemDto {
   @ApiPropertyOptional({
     example: 'ITEM-001',
     description: 'Unique item identifier',
   })
-  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
+  @Transform(({ value }: { value: unknown }): unknown => trimString(value))
   @IsOptional()
-  @IsString({
-    message: 'Unique number must be a string',
-  })
+  @IsString({ message: 'Unique number must be a string' })
   @MinLength(3, {
     message: 'Unique number must be at least 3 characters',
   })
@@ -36,11 +49,9 @@ export class UpdateItemDto {
     example: 'Electronic Components',
     description: 'Item name',
   })
-  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
+  @Transform(({ value }: { value: unknown }): unknown => trimString(value))
   @IsOptional()
-  @IsString({
-    message: 'Name must be a string',
-  })
+  @IsString({ message: 'Name must be a string' })
   @MinLength(3, {
     message: 'Item name must be at least 3 characters',
   })
@@ -54,23 +65,9 @@ export class UpdateItemDto {
     description: 'Optional photo URL. Send null to clear it.',
     nullable: true,
   })
-  @Transform(({ value }) => {
-    if (value === null) {
-      return null;
-    }
-
-    if (typeof value === 'string') {
-      const trimmed = value.trim();
-
-      return trimmed === '' ? null : trimmed;
-    }
-
-    return value;
-  })
+  @Transform(({ value }: { value: unknown }): unknown => normalizeUpdatePhoto(value))
   @IsOptional()
-  @IsString({
-    message: 'Photo URL must be a string',
-  })
+  @IsString({ message: 'Photo URL must be a string' })
   @MaxLength(500, {
     message: 'Photo URL must not exceed 500 characters',
   })
@@ -79,26 +76,16 @@ export class UpdateItemDto {
   })
   photo?: string | null;
 
-  @ApiPropertyOptional({
-    example: 5,
-    minimum: 1,
-    description: 'Number of packages',
-  })
+  @ApiPropertyOptional({ example: 5, minimum: 1 })
   @IsOptional()
   @Type(() => Number)
-  @IsInt({
-    message: 'Package quantity must be an integer',
-  })
+  @IsInt({ message: 'Package quantity must be an integer' })
   @Min(1, {
     message: 'Package quantity must be at least 1',
   })
   packageQuantity?: number;
 
-  @ApiPropertyOptional({
-    example: 100,
-    minimum: 1,
-    description: 'Products per package',
-  })
+  @ApiPropertyOptional({ example: 100, minimum: 1 })
   @IsOptional()
   @Type(() => Number)
   @IsInt({
@@ -109,11 +96,7 @@ export class UpdateItemDto {
   })
   productsPerPackage?: number;
 
-  @ApiPropertyOptional({
-    example: 150.5,
-    minimum: 0,
-    description: 'Package price',
-  })
+  @ApiPropertyOptional({ example: 150.5, minimum: 0 })
   @IsOptional()
   @Type(() => Number)
   @IsNumber(
@@ -135,7 +118,6 @@ export class UpdateItemDto {
     example: 2.5,
     minimum: 0.01,
     maximum: 10000,
-    description: 'Volume per package in cubic meters',
   })
   @IsOptional()
   @Type(() => Number)

@@ -17,12 +17,12 @@ import { Item } from '../items/entities/item.entity';
 export class ContainersService {
   constructor(
     @InjectRepository(Container)
-    private containerRepository: Repository<Container>,
+    private readonly containerRepository: Repository<Container>,
     @InjectRepository(Item)
-    private itemRepository: Repository<Item>,
+    private readonly itemRepository: Repository<Item>,
     @Inject(CACHE_MANAGER)
-    private cacheManager: Cache,
-    private dataSource: DataSource,
+    private readonly cacheManager: Cache,
+    private readonly dataSource: DataSource,
   ) {}
 
   private async clearContainerCache(id?: string): Promise<void> {
@@ -117,11 +117,11 @@ export class ContainersService {
       const saved = await this.containerRepository.save(container);
       await this.clearContainerCache(saved.id);
       return saved;
-    } catch (error: any) {
-      if (error?.code === '23505') {
+    } catch (error: unknown) {
+      if (this.isDatabaseError(error, '23505')) {
         throw new BadRequestException('Container with this name already exists');
       }
-      throw error;
+      this.rethrowUnknown(error);
     }
   }
 
@@ -264,11 +264,11 @@ export class ContainersService {
       const updated = await this.containerRepository.save(container);
       await this.clearContainerCache(id);
       return updated;
-    } catch (error: any) {
-      if (error?.code === '23505') {
+    } catch (error: unknown) {
+      if (this.isDatabaseError(error, '23505')) {
         throw new BadRequestException('Container with this name already exists');
       }
-      throw error;
+      this.rethrowUnknown(error);
     }
   }
 
@@ -335,9 +335,9 @@ export class ContainersService {
         .select('COALESCE(SUM(item.totalVolume), 0)', 'sum')
         .where('item.containerId = :containerId', { containerId: id })
         .andWhere('item.deletedAt IS NULL')
-        .getRawOne();
+        .getRawOne<{ sum: string | number }>();
 
-      const usedVolume = Number(result?.sum) || 0;
+      const usedVolume = Number(result?.sum ?? 0);
       await manager.getRepository(Container).update(id, { usedVolume });
     });
 
@@ -407,9 +407,9 @@ export class ContainersService {
       .select('COALESCE(SUM(item.totalVolume), 0)', 'sum')
       .where('item.containerId = :containerId', { containerId })
       .andWhere('item.deletedAt IS NULL')
-      .getRawOne();
+      .getRawOne<{ sum: string | number }>();
 
-    const usedVolume = Number(result?.sum) || 0;
+    const usedVolume = Number(result?.sum ?? 0);
     const container = await this.findOneWithoutCache(containerId);
 
     if (usedVolume > container.totalVolume) {
@@ -420,5 +420,21 @@ export class ContainersService {
 
     await this.containerRepository.update(containerId, { usedVolume });
     await this.clearContainerCache(containerId);
+  }
+  private isDatabaseError(error: unknown, code: string): boolean {
+    return (
+      typeof error === 'object' &&
+      error !== null &&
+      'code' in error &&
+      (error as { code?: unknown }).code === code
+    );
+  }
+
+  private rethrowUnknown(error: unknown): never {
+    if (error instanceof Error) {
+      throw error;
+    }
+
+    throw new Error('Unknown database error');
   }
 }

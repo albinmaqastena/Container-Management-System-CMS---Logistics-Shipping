@@ -39,7 +39,7 @@ import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { UUIDValidationPipe } from '../../common/pipes/uuid-validation.pipe';
 import { PaginatedResponseDto, PaginationDto } from '../../common/dto/pagination.dto';
-import { UserRole } from '../auth/entities/user.entity';
+import { User, UserRole } from '../auth/entities/user.entity';
 
 @ApiTags('Containers')
 @ApiExtraModels(Container, PaginatedResponseDto)
@@ -67,7 +67,7 @@ export class ContainersController {
   })
   async create(
     @Body() createContainerDto: CreateContainerDto,
-    @Request() req: { user: any },
+    @Request() req: { user: User },
   ): Promise<Container> {
     return this.containersService.create(createContainerDto, req.user);
   }

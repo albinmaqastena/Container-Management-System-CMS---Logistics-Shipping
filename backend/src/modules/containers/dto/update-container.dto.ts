@@ -10,7 +10,9 @@ export class UpdateContainerDto {
     example: 'Container Alpha Updated',
     description: 'Updated container name',
   })
-  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
+  @Transform(({ value }: { value: unknown }): unknown =>
+    typeof value === 'string' ? value.trim() : value,
+  )
   @IsOptional()
   @IsString({ message: 'Name must be a string' })
   @MinLength(3, {
@@ -24,7 +26,9 @@ export class UpdateContainerDto {
   @ApiPropertyOptional({
     example: 'Updated container description',
   })
-  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
+  @Transform(({ value }: { value: unknown }): unknown =>
+    typeof value === 'string' ? value.trim() : value,
+  )
   @IsOptional()
   @IsString({ message: 'Description must be a string' })
   @MaxLength(500, {

@@ -1,8 +1,11 @@
 // src/common/dto/pagination.dto.ts
 
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform, Type } from 'class-transformer';
 import { IsInt, IsOptional, IsString, Matches, Max, Min } from 'class-validator';
+
+const trimStringValue = (value: unknown): unknown =>
+  typeof value === 'string' ? value.trim() : value;
 
 export class PaginationDto {
   @ApiPropertyOptional({
@@ -45,7 +48,7 @@ export class PaginationDto {
     description: 'Comma-separated sort fields, for example: createdAt:DESC,name:ASC',
     example: 'createdAt:DESC',
   })
-  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
+  @Transform(({ value }: { value: unknown }) => trimStringValue(value))
   @IsOptional()
   @IsString({
     message: 'Sort must be a string',
@@ -57,27 +60,12 @@ export class PaginationDto {
 }
 
 export class PaginatedResponseDto<T> {
-  @ApiProperty({
-    isArray: true,
-  })
   data!: T[];
-
-  @ApiProperty()
   total!: number;
-
-  @ApiProperty()
   limit!: number;
-
-  @ApiProperty()
   offset!: number;
-
-  @ApiProperty()
   totalPages!: number;
-
-  @ApiProperty()
   currentPage!: number;
-
-  @ApiProperty()
   hasMore!: boolean;
 
   constructor(data: T[], total: number, limit: number, offset: number) {

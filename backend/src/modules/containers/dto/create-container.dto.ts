@@ -18,7 +18,9 @@ export class CreateContainerDto {
     example: 'Container Alpha',
     description: 'Unique container name',
   })
-  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
+  @Transform(({ value }: { value: unknown }): unknown =>
+    typeof value === 'string' ? value.trim() : value,
+  )
   @IsString({
     message: 'Name must be a string',
   })
@@ -62,7 +64,9 @@ export class CreateContainerDto {
     example: 'Main storage container',
     description: 'Optional container description',
   })
-  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
+  @Transform(({ value }: { value: unknown }): unknown =>
+    typeof value === 'string' ? value.trim() : value,
+  )
   @IsOptional()
   @IsString({
     message: 'Description must be a string',

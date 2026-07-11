@@ -15,17 +15,29 @@ export class LoggerMiddleware implements NestMiddleware {
 
       const userAgent = request.get('user-agent') || 'unknown';
 
-      const contentLength = response.getHeader('content-length') || 0;
+      const contentLength = this.normalizeHeaderValue(response.getHeader('content-length'));
 
       const ip = request.ip || request.socket.remoteAddress || 'unknown';
 
       this.logger.log(
-        `${request.method} ${request.originalUrl} ${response.statusCode} ${contentLength}B ${durationMs.toFixed(
-          2,
-        )}ms - ${ip} - ${userAgent}`,
+        `${request.method} ${request.originalUrl} ${
+          response.statusCode
+        } ${contentLength}B ${durationMs.toFixed(2)}ms - ${ip} - ${userAgent}`,
       );
     });
 
     next();
+  }
+
+  private normalizeHeaderValue(value: string | number | string[] | undefined): string {
+    if (Array.isArray(value)) {
+      return value.join(',');
+    }
+
+    if (typeof value === 'string' || typeof value === 'number') {
+      return String(value);
+    }
+
+    return '0';
   }
 }

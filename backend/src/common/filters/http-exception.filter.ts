@@ -21,29 +21,34 @@ interface ErrorResponseBody {
   errors?: string[];
 }
 
+interface NormalizedException {
+  statusCode: number;
+  message: string;
+  code: string;
+  errors?: string[];
+}
+
 @Catch()
 export class HttpExceptionFilter implements ExceptionFilter {
   private readonly logger = new Logger(HttpExceptionFilter.name);
 
   catch(exception: unknown, host: ArgumentsHost): void {
     const context = host.switchToHttp();
-
     const response = context.getResponse<Response>();
-
     const request = context.getRequest<Request>();
 
     const normalized = this.normalizeException(exception);
-
     const timestamp = new Date().toISOString();
+    const path = request.originalUrl || request.url;
 
     const logPayload = {
       timestamp,
       method: request.method,
-      url: request.originalUrl || request.url,
+      url: path,
       statusCode: normalized.statusCode,
       code: normalized.code,
       message: normalized.message,
-      ip: request.ip || request.socket?.remoteAddress,
+      ip: request.ip || request.socket.remoteAddress,
       userAgent: request.headers['user-agent'],
       stack: exception instanceof Error ? exception.stack : undefined,
     };
@@ -57,7 +62,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
     const body: ErrorResponseBody = {
       statusCode: normalized.statusCode,
       timestamp,
-      path: request.originalUrl || request.url,
+      path,
       message: normalized.message,
       code: normalized.code,
     };
@@ -69,52 +74,18 @@ export class HttpExceptionFilter implements ExceptionFilter {
     response.status(normalized.statusCode).json(body);
   }
 
-  private normalizeException(exception: unknown): {
-    statusCode: number;
-    message: string;
-    code: string;
-    errors?: string[];
-  } {
+  private normalizeException(exception: unknown): NormalizedException {
     if (exception instanceof BaseException) {
       return {
         statusCode: exception.status,
         message: exception.message,
         code: exception.code,
-        errors:
-          'errors' in exception && Array.isArray(exception.errors) ? exception.errors : undefined,
+        errors: this.getBaseExceptionErrors(exception),
       };
     }
 
     if (exception instanceof HttpException) {
-      const statusCode = exception.getStatus();
-
-      const response = exception.getResponse();
-
-      if (typeof response === 'string') {
-        return {
-          statusCode,
-          message: response,
-          code: HttpStatus[statusCode] || 'HTTP_EXCEPTION',
-        };
-      }
-
-      const payload = response as Record<string, unknown>;
-
-      const rawMessage = payload.message;
-
-      const errors = Array.isArray(rawMessage) ? rawMessage.map(String) : undefined;
-
-      return {
-        statusCode,
-        message: errors ? errors.join(', ') : String(rawMessage || exception.message),
-        code:
-          typeof payload.code === 'string'
-            ? payload.code
-            : typeof payload.error === 'string'
-              ? payload.error.toUpperCase().replace(/\s+/g, '_')
-              : 'HTTP_EXCEPTION',
-        errors,
-      };
+      return this.normalizeHttpException(exception);
     }
 
     return {
@@ -122,5 +93,87 @@ export class HttpExceptionFilter implements ExceptionFilter {
       message: 'Internal server error',
       code: 'INTERNAL_SERVER_ERROR',
     };
+  }
+
+  private normalizeHttpException(exception: HttpException): NormalizedException {
+    const statusCode = exception.getStatus();
+    const response = exception.getResponse();
+
+    if (typeof response === 'string') {
+      return {
+        statusCode,
+        message: response,
+        code: this.getStatusCodeName(statusCode),
+      };
+    }
+
+    const payload = response as Record<string, unknown>;
+    const rawMessage = payload.message;
+    const errors = Array.isArray(rawMessage)
+      ? rawMessage.map((item) => this.toSafeMessage(item))
+      : undefined;
+
+    return {
+      statusCode,
+      message: errors?.join(', ') || this.toSafeMessage(rawMessage, exception.message),
+      code: this.getErrorCode(payload),
+      errors,
+    };
+  }
+
+  private getBaseExceptionErrors(exception: BaseException): string[] | undefined {
+    if (!('errors' in exception)) {
+      return undefined;
+    }
+
+    const errors = (
+      exception as BaseException & {
+        errors?: unknown;
+      }
+    ).errors;
+
+    return Array.isArray(errors) ? errors.map((item) => this.toSafeMessage(item)) : undefined;
+  }
+
+  private getErrorCode(payload: Record<string, unknown>): string {
+    if (typeof payload.code === 'string') {
+      return payload.code;
+    }
+
+    if (typeof payload.error === 'string') {
+      return payload.error.toUpperCase().replace(/\s+/g, '_');
+    }
+
+    return 'HTTP_EXCEPTION';
+  }
+
+  private getStatusCodeName(statusCode: number): string {
+    const statusName = HttpStatus[statusCode];
+
+    return typeof statusName === 'string' ? statusName : 'HTTP_EXCEPTION';
+  }
+
+  private toSafeMessage(value: unknown, fallback = 'Request failed'): string {
+    if (typeof value === 'string') {
+      return value;
+    }
+
+    if (typeof value === 'number' || typeof value === 'boolean' || typeof value === 'bigint') {
+      return String(value);
+    }
+
+    if (value instanceof Error) {
+      return value.message;
+    }
+
+    if (value === null || value === undefined) {
+      return fallback;
+    }
+
+    try {
+      return JSON.stringify(value);
+    } catch {
+      return fallback;
+    }
   }
 }

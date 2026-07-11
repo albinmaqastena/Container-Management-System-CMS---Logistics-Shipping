@@ -28,6 +28,15 @@ import { buildSortObject, ALLOWED_SORT_FIELDS } from '../../common/utils/sort.ut
 import { REDIS_CLIENT } from '../../common/redis/redis.module';
 import { UserResponseDto } from './dto/user-response.dto';
 
+interface RedisSessionData {
+  accessToken?: string;
+  refreshToken?: string;
+  createdAt?: string;
+  expiresAt?: string;
+  ip?: string;
+  userAgent?: string;
+}
+
 @Injectable()
 export class AuthService {
   private readonly logger = new Logger(AuthService.name);
@@ -159,8 +168,8 @@ export class AuthService {
       for (const key of keys) {
         const data = await this.redis.get(key);
         if (data) {
-          const session = JSON.parse(data);
-          if (session.refreshToken === refreshToken) {
+          const session = this.parseRedisSession(data);
+          if (session?.refreshToken === refreshToken) {
             ip = session.ip;
             userAgent = session.userAgent;
             sessionId = key.split(':')[2];
@@ -169,7 +178,7 @@ export class AuthService {
         }
       }
     } catch (error) {
-      this.logger.error('Error retrieving session for refresh:', error);
+      this.logError('Error retrieving session for refresh', error);
     }
 
     if (!sessionId) {
@@ -190,18 +199,18 @@ export class AuthService {
       for (const key of keys) {
         const data = await this.redis.get(key);
         if (data) {
-          const session = JSON.parse(data);
-          if (session.refreshToken === refreshToken) {
+          const session = this.parseRedisSession(data);
+          if (session?.refreshToken === refreshToken) {
             session.accessToken = newAccessToken;
             session.refreshToken = newRefreshToken;
             await this.redis.set(key, JSON.stringify(session), 'EX', this.sessionTtl);
-            this.logger.debug(`Session updated with new refresh token`);
+            this.logger.debug('Session updated with new refresh token');
             break;
           }
         }
       }
     } catch (error) {
-      this.logger.error('Error updating Redis session during refresh:', error);
+      this.logError('Error updating Redis session during refresh', error);
     }
 
     // ✅ Revoko refresh token-in e vjetër
@@ -238,8 +247,8 @@ export class AuthService {
       for (const key of keys) {
         const data = await this.redis.get(key);
         if (data) {
-          const session = JSON.parse(data);
-          if (session.refreshToken === refreshToken) {
+          const session = this.parseRedisSession(data);
+          if (session?.refreshToken === refreshToken) {
             await this.redis.del(key);
             this.logger.debug(`Session deleted for user ${userId}`);
             break;
@@ -247,7 +256,7 @@ export class AuthService {
         }
       }
     } catch (error) {
-      this.logger.error('Error clearing Redis session during logout:', error);
+      this.logError('Error clearing Redis session during logout', error);
     }
   }
 
@@ -375,7 +384,7 @@ export class AuthService {
     user.setResetToken(token, expiresInMs);
     await this.userRepository.save(user);
 
-    this.logger.log(`Password reset requested`);
+    this.logger.log('Password reset requested');
 
     return { message: 'If this email exists, a reset link has been sent' };
   }
@@ -410,12 +419,14 @@ export class AuthService {
       for (const key of keys) {
         const data = await this.redis.get(key);
         if (data) {
-          const session = JSON.parse(data);
-          sessions.push(session.accessToken);
+          const session = this.parseRedisSession(data);
+          if (session?.accessToken) {
+            sessions.push(session.accessToken);
+          }
         }
       }
     } catch (error) {
-      this.logger.error('Error fetching sessions:', error);
+      this.logError('Error fetching sessions', error);
     }
     return sessions;
   }
@@ -427,20 +438,27 @@ export class AuthService {
       for (const key of keys) {
         const data = await this.redis.get(key);
         if (data) {
-          const session = JSON.parse(data);
-          sessions.push({
-            userId: userId,
-            id: key.split(':')[2],
-            createdAt: new Date(session.createdAt),
-            expiresAt: new Date(session.expiresAt),
-            ip: session.ip,
-            userAgent: session.userAgent,
-            isActive: true,
-          });
+          const session = this.parseRedisSession(data);
+          if (
+            session?.createdAt &&
+            session.expiresAt &&
+            this.isValidDateString(session.createdAt) &&
+            this.isValidDateString(session.expiresAt)
+          ) {
+            sessions.push({
+              userId,
+              id: key.split(':')[2] || key,
+              createdAt: new Date(session.createdAt),
+              expiresAt: new Date(session.expiresAt),
+              ip: session.ip,
+              userAgent: session.userAgent,
+              isActive: true,
+            });
+          }
         }
       }
     } catch (error) {
-      this.logger.error('Error fetching detailed sessions:', error);
+      this.logError('Error fetching detailed sessions', error);
     }
     return sessions;
   }
@@ -453,7 +471,11 @@ export class AuthService {
       throw new NotFoundException('Session not found');
     }
 
-    const session = JSON.parse(data);
+    const session = this.parseRedisSession(data);
+
+    if (!session?.refreshToken) {
+      throw new BadRequestException('Invalid session data');
+    }
 
     await this.refreshTokenRepository.update(
       { token: session.refreshToken },
@@ -635,16 +657,19 @@ export class AuthService {
   // ================================================================
 
   private sanitizeUser(user: User): UserResponseDto {
-    const {
-      password,
-      resetPasswordToken,
-      resetPasswordExpires,
-      failedLoginAttempts,
-      lockedUntil,
-      ...safeUser
-    } = user;
-
-    return safeUser;
+    return {
+      id: user.id,
+      username: user.username,
+      email: user.email,
+      role: user.role,
+      isActive: user.isActive,
+      lastLogin: user.lastLogin ?? null,
+      lastLoginIp: user.lastLoginIp ?? null,
+      lastLoginUserAgent: user.lastLoginUserAgent ?? null,
+      createdAt: user.createdAt,
+      updatedAt: user.updatedAt,
+      deletedAt: user.deletedAt ?? null,
+    };
   }
 
   private generateAccessToken(user: User): string {
@@ -692,7 +717,7 @@ export class AuthService {
         this.logger.debug(`Removed oldest session for user ${userId} (limit: ${this.maxSessions})`);
       }
     } catch (error) {
-      this.logger.warn('Could not enforce session limit:', error);
+      this.logError('Could not enforce session limit', error, 'warn');
     }
   }
 
@@ -704,7 +729,7 @@ export class AuthService {
         this.logger.debug(`Invalidated ${keys.length} sessions for user ${userId}`);
       }
     } catch (error) {
-      this.logger.error('Error invalidating sessions with Redis:', error);
+      this.logError('Error invalidating sessions with Redis', error);
     }
   }
 
@@ -720,6 +745,82 @@ export class AuthService {
 
     return keys;
   }
+  private parseRedisSession(value: string): RedisSessionData | null {
+    try {
+      const parsed: unknown = JSON.parse(value);
+
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        return null;
+      }
+
+      const session = parsed as Record<string, unknown>;
+
+      const accessToken = typeof session.accessToken === 'string' ? session.accessToken : undefined;
+
+      const refreshToken =
+        typeof session.refreshToken === 'string' ? session.refreshToken : undefined;
+
+      const createdAt = typeof session.createdAt === 'string' ? session.createdAt : undefined;
+
+      const expiresAt = typeof session.expiresAt === 'string' ? session.expiresAt : undefined;
+
+      if (!accessToken && !refreshToken && !createdAt && !expiresAt) {
+        return null;
+      }
+
+      return {
+        accessToken,
+        refreshToken,
+        createdAt,
+        expiresAt,
+        ip: typeof session.ip === 'string' ? session.ip : undefined,
+        userAgent: typeof session.userAgent === 'string' ? session.userAgent : undefined,
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  private isValidDateString(value: string): boolean {
+    return !Number.isNaN(Date.parse(value));
+  }
+
+  private logError(context: string, error: unknown, level: 'error' | 'warn' = 'error'): void {
+    const message = error instanceof Error ? error.message : this.stringifyUnknown(error);
+
+    if (level === 'warn') {
+      this.logger.warn(`${context}: ${message}`);
+      return;
+    }
+
+    this.logger.error(`${context}: ${message}`);
+  }
+
+  private stringifyUnknown(value: unknown): string {
+    if (
+      typeof value === 'string' ||
+      typeof value === 'number' ||
+      typeof value === 'boolean' ||
+      typeof value === 'bigint'
+    ) {
+      return String(value);
+    }
+
+    if (value === null) {
+      return 'null';
+    }
+
+    if (value === undefined) {
+      return 'undefined';
+    }
+
+    try {
+      return JSON.stringify(value);
+    } catch {
+      return 'Unknown error';
+    }
+  }
+
   private parseDurationToSeconds(value: string): number {
     const match = /^(\d+)(s|m|h|d)$/i.exec(value.trim());
 
@@ -728,15 +829,19 @@ export class AuthService {
     }
 
     const amount = Number(match[1]);
-    const unit = match[2].toLowerCase();
+    const unit = match[2]?.toLowerCase();
 
-    const multiplier: Record<string, number> = {
+    const multipliers = {
       s: 1,
       m: 60,
       h: 60 * 60,
       d: 24 * 60 * 60,
-    };
+    } as const;
 
-    return amount * multiplier[unit];
+    if (!unit || !(unit in multipliers)) {
+      throw new Error(`Unsupported duration unit: ${unit ?? 'unknown'}`);
+    }
+
+    return amount * multipliers[unit as keyof typeof multipliers];
   }
 }

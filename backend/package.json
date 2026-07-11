@@ -120,6 +120,7 @@
     "@nestjs/testing": "^11.0.1",
     "@types/bcrypt": "^6.0.0",
     "@types/cache-manager": "^4.0.6",
+    "@types/compression": "^1.8.1",
     "@types/crypto-js": "^4.2.2",
     "@types/express": "^5.0.0",
     "@types/jest": "^30.0.0",
@@ -147,51 +148,51 @@
     "typescript-eslint": "^8.20.0"
   },
   "jest": {
-  "moduleFileExtensions": [
-    "js",
-    "json",
-    "ts"
-  ],
-  "rootDir": ".",
-  "testMatch": [
-    "<rootDir>/src/**/*.spec.ts"
-  ],
-  "transform": {
-    "^.+\\.ts$": [
-      "ts-jest",
-      {
-        "tsconfig": "<rootDir>/tsconfig.spec.json",
-        "diagnostics": true
-      }
-    ]
-  },
-  "collectCoverageFrom": [
-    "src/**/*.ts",
-    "!src/**/*.spec.ts",
-    "!src/main.ts",
-    "!src/**/*.module.ts",
-    "!src/migrations/**",
-    "!src/seeds/**"
-  ],
-  "coverageDirectory": "coverage",
-  "testEnvironment": "node",
-  "moduleNameMapper": {
-    "^src/(.*)$": "<rootDir>/src/$1"
-  },
-  "moduleDirectories": [
-    "node_modules",
-    "<rootDir>/src"
-  ],
-  "testPathIgnorePatterns": [
-    "/node_modules/",
-    "/dist/",
-    "/test/"
-  ],
-  "testTimeout": 10000,
-  "verbose": true,
-  "forceExit": true,
-  "detectOpenHandles": true,
-  "clearMocks": true,
-  "restoreMocks": true
-}
+    "moduleFileExtensions": [
+      "js",
+      "json",
+      "ts"
+    ],
+    "rootDir": ".",
+    "testMatch": [
+      "<rootDir>/src/**/*.spec.ts"
+    ],
+    "transform": {
+      "^.+\\.ts$": [
+        "ts-jest",
+        {
+          "tsconfig": "<rootDir>/tsconfig.spec.json",
+          "diagnostics": true
+        }
+      ]
+    },
+    "collectCoverageFrom": [
+      "src/**/*.ts",
+      "!src/**/*.spec.ts",
+      "!src/main.ts",
+      "!src/**/*.module.ts",
+      "!src/migrations/**",
+      "!src/seeds/**"
+    ],
+    "coverageDirectory": "coverage",
+    "testEnvironment": "node",
+    "moduleNameMapper": {
+      "^src/(.*)$": "<rootDir>/src/$1"
+    },
+    "moduleDirectories": [
+      "node_modules",
+      "<rootDir>/src"
+    ],
+    "testPathIgnorePatterns": [
+      "/node_modules/",
+      "/dist/",
+      "/test/"
+    ],
+    "testTimeout": 10000,
+    "verbose": true,
+    "forceExit": true,
+    "detectOpenHandles": true,
+    "clearMocks": true,
+    "restoreMocks": true
+  }
 }

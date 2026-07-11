@@ -24,7 +24,7 @@ export class LoggingInterceptor implements NestInterceptor {
 
     const method = request.method;
     const url = request.originalUrl || request.url;
-    const userAgent = request.headers?.['user-agent'] || 'unknown';
+    const userAgent = this.normalizeHeader(request.headers?.['user-agent']);
     const ip = request.ip || request.socket?.remoteAddress || 'unknown';
     const startedAt = Date.now();
 
@@ -36,7 +36,7 @@ export class LoggingInterceptor implements NestInterceptor {
 
     return next.handle().pipe(
       tap({
-        next: (data) => {
+        next: (data: unknown) => {
           const duration = Date.now() - startedAt;
 
           this.logger.log(`${method} ${url} - ${duration}ms`);
@@ -47,15 +47,20 @@ export class LoggingInterceptor implements NestInterceptor {
         },
         error: (error: unknown) => {
           const duration = Date.now() - startedAt;
+          const message = error instanceof Error ? error.message : 'Unknown error';
 
-          this.logger.error(
-            `${method} ${url} - ${duration}ms - ${
-              error instanceof Error ? error.message : 'Unknown error'
-            }`,
-          );
+          this.logger.error(`${method} ${url} - ${duration}ms - ${message}`);
         },
       }),
     );
+  }
+
+  private normalizeHeader(value: string | string[] | undefined): string {
+    if (Array.isArray(value)) {
+      return value.join(', ');
+    }
+
+    return value || 'unknown';
   }
 
   private sanitizeBody(body?: Record<string, unknown>): Record<string, unknown> | undefined {
@@ -80,13 +85,34 @@ export class LoggingInterceptor implements NestInterceptor {
     try {
       const serialized = JSON.stringify(value);
 
-      if (!serialized) {
-        return String(value);
+      if (typeof serialized !== 'string') {
+        return this.safePrimitiveToString(value);
       }
 
       return serialized.length > maxLength ? `${serialized.slice(0, maxLength)}…` : serialized;
     } catch {
       return '[Unserializable value]';
     }
+  }
+
+  private safePrimitiveToString(value: unknown): string {
+    if (
+      typeof value === 'string' ||
+      typeof value === 'number' ||
+      typeof value === 'boolean' ||
+      typeof value === 'bigint'
+    ) {
+      return String(value);
+    }
+
+    if (value === null) {
+      return 'null';
+    }
+
+    if (value === undefined) {
+      return 'undefined';
+    }
+
+    return '[Object]';
   }
 }
