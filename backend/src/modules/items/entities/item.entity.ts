@@ -13,20 +13,13 @@ import {
   UpdateDateColumn,
   ValueTransformer,
 } from 'typeorm';
-import {
-  ApiProperty,
-  ApiPropertyOptional,
-} from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 import { Container } from '../../containers/entities/container.entity';
 
 const decimalTransformer: ValueTransformer = {
-  to: (
-    value: number,
-  ): number => value,
-  from: (
-    value: string | number,
-  ): number => Number(value),
+  to: (value: number): number => value,
+  from: (value: string | number): number => Number(value),
 };
 
 @Entity('items')
@@ -77,8 +70,7 @@ export class Item {
     type: 'decimal',
     precision: 12,
     scale: 2,
-    transformer:
-      decimalTransformer,
+    transformer: decimalTransformer,
   })
   packagePrice!: number;
 
@@ -87,8 +79,7 @@ export class Item {
     type: 'decimal',
     precision: 12,
     scale: 2,
-    transformer:
-      decimalTransformer,
+    transformer: decimalTransformer,
   })
   volume!: number;
 
@@ -97,23 +88,17 @@ export class Item {
     type: 'decimal',
     precision: 14,
     scale: 2,
-    transformer:
-      decimalTransformer,
+    transformer: decimalTransformer,
   })
   totalVolume!: number;
 
   @ApiProperty({
     type: () => Container,
   })
-  @ManyToOne(
-    () => Container,
-    (container) =>
-      container.items,
-    {
-      nullable: false,
-      onDelete: 'CASCADE',
-    },
-  )
+  @ManyToOne(() => Container, (container) => container.items, {
+    nullable: false,
+    onDelete: 'CASCADE',
+  })
   @JoinColumn({
     name: 'containerId',
   })
@@ -144,23 +129,12 @@ export class Item {
   @BeforeInsert()
   @BeforeUpdate()
   calculateTotalVolume(): void {
-    this.totalVolume =
-      Number(
-        (
-          this.packageQuantity *
-          this.volume
-        ).toFixed(2),
-      );
+    this.totalVolume = Number((this.packageQuantity * this.volume).toFixed(2));
   }
 
-  constructor(
-    partial?: Partial<Item>,
-  ) {
+  constructor(partial?: Partial<Item>) {
     if (partial) {
-      Object.assign(
-        this,
-        partial,
-      );
+      Object.assign(this, partial);
     }
   }
 }

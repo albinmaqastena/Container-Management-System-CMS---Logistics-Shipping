@@ -31,9 +31,7 @@ const mockRedis = {
     const pattern = args[1];
     const prefix = pattern.replace('*', '');
 
-    const keys = [...redisStore.keys()].filter((k) =>
-      k.startsWith(prefix),
-    );
+    const keys = [...redisStore.keys()].filter((k) => k.startsWith(prefix));
 
     return ['0', keys];
   },
@@ -41,9 +39,7 @@ const mockRedis = {
   async keys(pattern: string) {
     const prefix = pattern.replace('*', '');
 
-    return [...redisStore.keys()].filter((k) =>
-      k.startsWith(prefix),
-    );
+    return [...redisStore.keys()].filter((k) => k.startsWith(prefix));
   },
 };
 
@@ -112,10 +108,9 @@ beforeAll(async () => {
   }
 
   // Kontrollo admin-in
-  const admin = await dataSource.query(
-    'SELECT id, username, email FROM users WHERE email = $1',
-    ['admin@example.com'],
-  );
+  const admin = await dataSource.query('SELECT id, username, email FROM users WHERE email = $1', [
+    'admin@example.com',
+  ]);
 
   if (admin.length === 0) {
     console.warn('⚠️  Admin user not found!');

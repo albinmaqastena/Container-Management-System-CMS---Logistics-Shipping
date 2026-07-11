@@ -1,18 +1,8 @@
 // src/common/dto/pagination.dto.ts
 
-import {
-  ApiProperty,
-  ApiPropertyOptional,
-} from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform, Type } from 'class-transformer';
-import {
-  IsInt,
-  IsOptional,
-  IsString,
-  Matches,
-  Max,
-  Min,
-} from 'class-validator';
+import { IsInt, IsOptional, IsString, Matches, Max, Min } from 'class-validator';
 
 export class PaginationDto {
   @ApiPropertyOptional({
@@ -52,26 +42,17 @@ export class PaginationDto {
   offset?: number = 0;
 
   @ApiPropertyOptional({
-    description:
-      'Comma-separated sort fields, for example: createdAt:DESC,name:ASC',
+    description: 'Comma-separated sort fields, for example: createdAt:DESC,name:ASC',
     example: 'createdAt:DESC',
   })
-  @Transform(({ value }) =>
-    typeof value === 'string'
-      ? value.trim()
-      : value,
-  )
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
   @IsOptional()
   @IsString({
     message: 'Sort must be a string',
   })
-  @Matches(
-    /^[a-zA-Z0-9_]+:(ASC|DESC)(,[a-zA-Z0-9_]+:(ASC|DESC))*$/,
-    {
-      message:
-        'Sort must use the format field:ASC or field:DESC',
-    },
-  )
+  @Matches(/^[a-zA-Z0-9_]+:(ASC|DESC)(,[a-zA-Z0-9_]+:(ASC|DESC))*$/, {
+    message: 'Sort must use the format field:ASC or field:DESC',
+  })
   sort?: string;
 }
 
@@ -99,42 +80,17 @@ export class PaginatedResponseDto<T> {
   @ApiProperty()
   hasMore!: boolean;
 
-  constructor(
-    data: T[],
-    total: number,
-    limit: number,
-    offset: number,
-  ) {
-    const normalizedLimit =
-      Number.isFinite(limit) && limit > 0
-        ? limit
-        : 10;
+  constructor(data: T[], total: number, limit: number, offset: number) {
+    const normalizedLimit = Number.isFinite(limit) && limit > 0 ? limit : 10;
 
-    const normalizedOffset =
-      Number.isFinite(offset) &&
-      offset >= 0
-        ? offset
-        : 0;
+    const normalizedOffset = Number.isFinite(offset) && offset >= 0 ? offset : 0;
 
     this.data = data;
     this.total = Math.max(total, 0);
     this.limit = normalizedLimit;
     this.offset = normalizedOffset;
-    this.totalPages =
-      this.total === 0
-        ? 0
-        : Math.ceil(
-            this.total /
-              normalizedLimit,
-          );
-    this.currentPage =
-      Math.floor(
-        normalizedOffset /
-          normalizedLimit,
-      ) + 1;
-    this.hasMore =
-      normalizedOffset +
-        data.length <
-      this.total;
+    this.totalPages = this.total === 0 ? 0 : Math.ceil(this.total / normalizedLimit);
+    this.currentPage = Math.floor(normalizedOffset / normalizedLimit) + 1;
+    this.hasMore = normalizedOffset + data.length < this.total;
   }
 }

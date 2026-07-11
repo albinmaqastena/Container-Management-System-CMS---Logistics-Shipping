@@ -1,16 +1,14 @@
 // src/migrations/20260707123458-AddSecurityFieldsAndRefreshTokens.ts
 import { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class AddSecurityFieldsAndRefreshTokens1783455272444
-  implements MigrationInterface
-{
+export class AddSecurityFieldsAndRefreshTokens1783455272444 implements MigrationInterface {
   name = 'AddSecurityFieldsAndRefreshTokens1783455272444';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     // ============================================
     // 1. SHTO FUSHAT E REJA NË TABELËN USERS
     // ============================================
-    
+
     // ✅ failed_login_attempts
     await queryRunner.query(`
       ALTER TABLE "users" 
@@ -86,7 +84,7 @@ export class AddSecurityFieldsAndRefreshTokens1783455272444
     // ============================================
     // Nëse kalojmë nga bcrypt në Argon2, duhet të përditësojmë password-in e admin-it
     // Kjo bëhet më vonë përmes një migrimi të veçantë ose manualisht
-    
+
     // ============================================
     // 4. VERIFIKO NDRYSHIMET
     // ============================================
@@ -95,7 +93,10 @@ export class AddSecurityFieldsAndRefreshTokens1783455272444
       FROM information_schema.columns 
       WHERE table_name = 'users'
     `);
-    console.log('📊 Users columns:', usersColumns.map(c => c.column_name));
+    console.log(
+      '📊 Users columns:',
+      usersColumns.map((c) => c.column_name),
+    );
 
     const tables = await queryRunner.query(`
       SELECT table_name 
@@ -103,7 +104,10 @@ export class AddSecurityFieldsAndRefreshTokens1783455272444
       WHERE table_schema = 'public'
       AND table_name IN ('users', 'containers', 'items', 'refresh_tokens')
     `);
-    console.log('📊 Tables:', tables.map(t => t.table_name));
+    console.log(
+      '📊 Tables:',
+      tables.map((t) => t.table_name),
+    );
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {

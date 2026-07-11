@@ -1,12 +1,8 @@
 // src/common/utils/sort.utils.ts
 
-import {
-  BadRequestException,
-} from '@nestjs/common';
+import { BadRequestException } from '@nestjs/common';
 
-export type SortDirection =
-  | 'ASC'
-  | 'DESC';
+export type SortDirection = 'ASC' | 'DESC';
 
 export interface SortOptions {
   field: string;
@@ -38,25 +34,8 @@ export const ALLOWED_SORT_FIELDS = {
     'updatedAt',
     'deletedAt',
   ],
-  users: [
-    'id',
-    'username',
-    'email',
-    'role',
-    'isActive',
-    'createdAt',
-    'updatedAt',
-    'deletedAt',
-  ],
-  audit: [
-    'id',
-    'action',
-    'status',
-    'userId',
-    'targetId',
-    'targetType',
-    'createdAt',
-  ],
+  users: ['id', 'username', 'email', 'role', 'isActive', 'createdAt', 'updatedAt', 'deletedAt'],
+  audit: ['id', 'action', 'status', 'userId', 'targetId', 'targetType', 'createdAt'],
 } as const;
 
 export const parseSort = (
@@ -72,54 +51,29 @@ export const parseSort = (
     ];
   }
 
-  const sorts =
-    sortString
-      .split(',')
-      .map((part) =>
-        part.trim(),
-      )
-      .filter(Boolean)
-      .map((part) => {
-        const [
-          rawField,
-          rawOrder,
-        ] = part.split(':');
+  const sorts = sortString
+    .split(',')
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .map((part) => {
+      const [rawField, rawOrder] = part.split(':');
 
-        const field =
-          rawField?.trim();
-        const order =
-          rawOrder
-            ?.trim()
-            .toUpperCase();
+      const field = rawField?.trim();
+      const order = rawOrder?.trim().toUpperCase();
 
-        if (
-          !field ||
-          !['ASC', 'DESC'].includes(
-            order,
-          )
-        ) {
-          throw new BadRequestException(
-            `Invalid sort expression: ${part}`,
-          );
-        }
+      if (!field || !['ASC', 'DESC'].includes(order)) {
+        throw new BadRequestException(`Invalid sort expression: ${part}`);
+      }
 
-        if (
-          allowedFields.length > 0 &&
-          !allowedFields.includes(
-            field,
-          )
-        ) {
-          throw new BadRequestException(
-            `Sorting by "${field}" is not allowed`,
-          );
-        }
+      if (allowedFields.length > 0 && !allowedFields.includes(field)) {
+        throw new BadRequestException(`Sorting by "${field}" is not allowed`);
+      }
 
-        return {
-          field,
-          order:
-            order as SortDirection,
-        };
-      });
+      return {
+        field,
+        order: order as SortDirection,
+      };
+    });
 
   return sorts.length
     ? sorts
@@ -134,19 +88,8 @@ export const parseSort = (
 export const buildSortObject = (
   sortString?: string,
   allowedFields: readonly string[] = [],
-): Record<
-  string,
-  SortDirection
-> => {
+): Record<string, SortDirection> => {
   return Object.fromEntries(
-    parseSort(
-      sortString,
-      allowedFields,
-    ).map(
-      ({ field, order }) => [
-        field,
-        order,
-      ],
-    ),
+    parseSort(sortString, allowedFields).map(({ field, order }) => [field, order]),
   );
 };

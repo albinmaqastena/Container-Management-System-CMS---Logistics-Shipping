@@ -2,13 +2,7 @@
 
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
-import {
-  IsEnum,
-  IsOptional,
-  IsString,
-  MaxLength,
-  MinLength,
-} from 'class-validator';
+import { IsEnum, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
 import { ContainerStatus } from '../entities/container.entity';
 
 export class UpdateContainerDto {
@@ -16,9 +10,7 @@ export class UpdateContainerDto {
     example: 'Container Alpha Updated',
     description: 'Updated container name',
   })
-  @Transform(({ value }) =>
-    typeof value === 'string' ? value.trim() : value,
-  )
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
   @IsOptional()
   @IsString({ message: 'Name must be a string' })
   @MinLength(3, {
@@ -32,9 +24,7 @@ export class UpdateContainerDto {
   @ApiPropertyOptional({
     example: 'Updated container description',
   })
-  @Transform(({ value }) =>
-    typeof value === 'string' ? value.trim() : value,
-  )
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
   @IsOptional()
   @IsString({ message: 'Description must be a string' })
   @MaxLength(500, {
@@ -48,9 +38,7 @@ export class UpdateContainerDto {
   })
   @IsOptional()
   @IsEnum(ContainerStatus, {
-    message: `Invalid status. Must be one of: ${Object.values(
-      ContainerStatus,
-    ).join(', ')}`,
+    message: `Invalid status. Must be one of: ${Object.values(ContainerStatus).join(', ')}`,
   })
   status?: ContainerStatus;
 }

@@ -28,48 +28,50 @@ export const createDatabaseConfig = (configService: ConfigService): TypeOrmModul
     username: configService.get<string>('DB_USERNAME'),
     password: configService.get<string>('DB_PASSWORD'),
     database: configService.get<string>('DB_DATABASE'),
-    
+
     // Entities
     entities: [User, Container, Item],
-    
+
     // Sync & Schema
     synchronize: !isProduction && !isTest,
     dropSchema: isTest,
-    
+
     // Logging
     logging: nodeEnv === 'development',
     logger: 'advanced-console',
-    
+
     // SSL
-    ssl: isProduction ? {
-      rejectUnauthorized: false,
-      ca: configService.get('DB_SSL_CA'),
-      key: configService.get('DB_SSL_KEY'),
-      cert: configService.get('DB_SSL_CERT'),
-    } : false,
-    
+    ssl: isProduction
+      ? {
+          rejectUnauthorized: false,
+          ca: configService.get('DB_SSL_CA'),
+          key: configService.get('DB_SSL_KEY'),
+          cert: configService.get('DB_SSL_CERT'),
+        }
+      : false,
+
     // Connection Pool
     extra: {
-      max: isTest ? 5 : (configService.get<number>('DB_MAX_CONNECTIONS') || 20),
+      max: isTest ? 5 : configService.get<number>('DB_MAX_CONNECTIONS') || 20,
       idleTimeoutMillis: 30000,
       connectionTimeoutMillis: 2000,
     },
-    
+
     // Retry
     retryAttempts: isTest ? 1 : 3,
     retryDelay: isTest ? 1000 : 3000,
-    
+
     // Migrations
     migrations: ['dist/migrations/*{.ts,.js}'],
     migrationsRun: isProduction,
     migrationsTableName: 'migrations',
     migrationsTransactionMode: 'each',
-    
+
     // Cache
     cache: {
       duration: 60000, // 1 minute
     },
-    
+
     // ✅ HOQA namingStrategy - Nuk është e nevojshme
     // namingStrategy: ... // ← HOQE KËTË!
   };
@@ -86,9 +88,12 @@ export const databaseConfig: TypeOrmModuleOptions = {
   entities: [User, Container, Item],
   synchronize: process.env.NODE_ENV !== 'production' && process.env.NODE_ENV !== 'test',
   logging: process.env.NODE_ENV === 'development',
-  ssl: process.env.NODE_ENV === 'production' ? {
-    rejectUnauthorized: false,
-  } : false,
+  ssl:
+    process.env.NODE_ENV === 'production'
+      ? {
+          rejectUnauthorized: false,
+        }
+      : false,
   extra: {
     max: 20,
     idleTimeoutMillis: 30000,

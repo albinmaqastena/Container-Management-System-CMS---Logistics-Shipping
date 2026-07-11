@@ -4,15 +4,9 @@ export abstract class BaseException extends Error {
   abstract readonly status: number;
   abstract readonly code: string;
 
-  protected constructor(
-    message: string,
-    options?: ErrorOptions,
-  ) {
+  protected constructor(message: string, options?: ErrorOptions) {
     super(message, options);
     this.name = new.target.name;
-    Object.setPrototypeOf(
-      this,
-      new.target.prototype,
-    );
+    Object.setPrototypeOf(this, new.target.prototype);
   }
 }

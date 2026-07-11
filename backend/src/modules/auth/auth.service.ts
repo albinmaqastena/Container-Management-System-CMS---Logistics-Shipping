@@ -44,29 +44,17 @@ export class AuthService {
     @Inject(REDIS_CLIENT)
     private readonly redis: Redis,
   ) {
-    this.sessionTtl =
-      this.parseDurationToSeconds(
-        this.configService.get<string>(
-          'auth.jwt.refreshTokenExpiresIn',
-          '7d',
-        ),
-      );
+    this.sessionTtl = this.parseDurationToSeconds(
+      this.configService.get<string>('auth.jwt.refreshTokenExpiresIn', '7d'),
+    );
 
-    this.maxSessions =
-      this.configService.get<number>(
-        'AUTH_MAX_SESSIONS',
-        10,
-      );
+    this.maxSessions = this.configService.get<number>('AUTH_MAX_SESSIONS', 10);
   }
 
   // ================================================================
   // LOGIN
   // ================================================================
-  async login(
-    loginDto: LoginDto,
-    ip?: string,
-    userAgent?: string,
-  ): Promise<AuthResponseDto> {
+  async login(loginDto: LoginDto, ip?: string, userAgent?: string): Promise<AuthResponseDto> {
     const { email, password } = loginDto;
 
     const user = await this.userRepository.findOne({
@@ -83,9 +71,7 @@ export class AuthService {
     }
 
     if (user.isLocked()) {
-      throw new UnauthorizedException(
-        'Account is temporarily locked. Please try again later.',
-      );
+      throw new UnauthorizedException('Account is temporarily locked. Please try again later.');
     }
 
     const isValidPassword = await user.validatePassword(password);
@@ -93,26 +79,14 @@ export class AuthService {
       user.incrementFailedAttempts();
       await this.userRepository.save(user);
 
-      const maxAttempts =
-        this.configService.get<number>(
-          'auth.rateLimit.loginAttempts',
-          5,
-        );
+      const maxAttempts = this.configService.get<number>('auth.rateLimit.loginAttempts', 5);
 
-      if (
-        user.failedLoginAttempts >=
-        maxAttempts
-      ) {
+      if (user.failedLoginAttempts >= maxAttempts) {
         user.lockAccount(
-          this.configService.get<number>(
-            'auth.rateLimit.blockDuration',
-            15 * 60 * 1000,
-          ),
+          this.configService.get<number>('auth.rateLimit.blockDuration', 15 * 60 * 1000),
         );
         await this.userRepository.save(user);
-        throw new UnauthorizedException(
-          'Too many failed attempts. Account locked for 15 minutes.',
-        );
+        throw new UnauthorizedException('Too many failed attempts. Account locked for 15 minutes.');
       }
       throw new UnauthorizedException('Invalid credentials');
     }
@@ -152,11 +126,7 @@ export class AuthService {
       this.sessionTtl,
     );
 
-    return new AuthResponseDto(
-      accessToken,
-      this.sanitizeUser(user),
-      refreshToken,
-    );
+    return new AuthResponseDto(accessToken, this.sanitizeUser(user), refreshToken);
   }
 
   // ================================================================
@@ -224,12 +194,7 @@ export class AuthService {
           if (session.refreshToken === refreshToken) {
             session.accessToken = newAccessToken;
             session.refreshToken = newRefreshToken;
-            await this.redis.set(
-              key,
-              JSON.stringify(session),
-              'EX',
-              this.sessionTtl,
-            );
+            await this.redis.set(key, JSON.stringify(session), 'EX', this.sessionTtl);
             this.logger.debug(`Session updated with new refresh token`);
             break;
           }
@@ -330,11 +295,12 @@ export class AuthService {
       }
     } else {
       if (currentUser.role === UserRole.SUPER_ADMIN) {
-        role = registerDto.role === UserRole.SUPER_ADMIN
-          ? UserRole.SUPER_ADMIN
-          : registerDto.role === UserRole.ADMIN
-            ? UserRole.ADMIN
-            : UserRole.USER;
+        role =
+          registerDto.role === UserRole.SUPER_ADMIN
+            ? UserRole.SUPER_ADMIN
+            : registerDto.role === UserRole.ADMIN
+              ? UserRole.ADMIN
+              : UserRole.USER;
       } else if (currentUser.role === UserRole.ADMIN) {
         if (registerDto.role === UserRole.SUPER_ADMIN) {
           throw new UnauthorizedException('Admin cannot create Super Admin');
@@ -352,8 +318,7 @@ export class AuthService {
       role,
     });
 
-    const savedUser =
-      await this.userRepository.save(user);
+    const savedUser = await this.userRepository.save(user);
 
     return this.sanitizeUser(savedUser) as unknown as User;
   }
@@ -660,26 +625,16 @@ export class AuthService {
 
     const [users, total] = await queryBuilder.getManyAndCount();
 
-    const sanitizedUsers = users.map((user) =>
-      this.sanitizeUser(user),
-    );
+    const sanitizedUsers = users.map((user) => this.sanitizeUser(user));
 
-    return new PaginatedResponseDto<UserResponseDto>(
-      sanitizedUsers,
-      total,
-      limit,
-      offset,
-    );
+    return new PaginatedResponseDto<UserResponseDto>(sanitizedUsers, total, limit, offset);
   }
 
   // ================================================================
   // PRIVATE HELPERS
   // ================================================================
 
-
-  private sanitizeUser(
-    user: User,
-  ): UserResponseDto {
+  private sanitizeUser(user: User): UserResponseDto {
     const {
       password,
       resetPasswordToken,
@@ -689,27 +644,19 @@ export class AuthService {
       ...safeUser
     } = user;
 
-    return safeUser as UserResponseDto;
+    return safeUser;
   }
 
-  private generateAccessToken(
-    user: User,
-  ): string {
+  private generateAccessToken(user: User): string {
     const payload = {
       sub: user.id,
       email: user.email,
       role: user.role,
     };
 
-    return this.jwtService.sign(
-      payload,
-      {
-        expiresIn:
-          this.configService.getOrThrow<StringValue>(
-            'auth.jwt.accessTokenExpiresIn',
-          ),
-      },
-    );
+    return this.jwtService.sign(payload, {
+      expiresIn: this.configService.getOrThrow<StringValue>('auth.jwt.accessTokenExpiresIn'),
+    });
   }
 
   private async generateRefreshToken(
@@ -719,10 +666,7 @@ export class AuthService {
     sessionId?: string,
   ): Promise<string> {
     const token = uuidv4();
-    const expiresAt = new Date(
-      Date.now() +
-        this.sessionTtl * 1000,
-    );
+    const expiresAt = new Date(Date.now() + this.sessionTtl * 1000);
 
     const refreshToken = new RefreshToken({
       token,
@@ -745,9 +689,7 @@ export class AuthService {
       if (keys.length >= this.maxSessions) {
         const oldestKey = keys[0];
         await this.redis.del(oldestKey);
-        this.logger.debug(
-          `Removed oldest session for user ${userId} (limit: ${this.maxSessions})`,
-        );
+        this.logger.debug(`Removed oldest session for user ${userId} (limit: ${this.maxSessions})`);
       }
     } catch (error) {
       this.logger.warn('Could not enforce session limit:', error);
@@ -771,41 +713,24 @@ export class AuthService {
     let cursor = '0';
 
     do {
-      const result = await this.redis.scan(
-        cursor,
-        'MATCH',
-        pattern,
-        'COUNT',
-        100,
-      );
+      const result = await this.redis.scan(cursor, 'MATCH', pattern, 'COUNT', 100);
       cursor = result[0];
       keys.push(...result[1]);
     } while (cursor !== '0');
 
     return keys;
   }
-  private parseDurationToSeconds(
-    value: string,
-  ): number {
-    const match =
-      /^(\d+)(s|m|h|d)$/i.exec(
-        value.trim(),
-      );
+  private parseDurationToSeconds(value: string): number {
+    const match = /^(\d+)(s|m|h|d)$/i.exec(value.trim());
 
     if (!match) {
-      throw new Error(
-        `Invalid duration format: ${value}`,
-      );
+      throw new Error(`Invalid duration format: ${value}`);
     }
 
     const amount = Number(match[1]);
-    const unit =
-      match[2].toLowerCase();
+    const unit = match[2].toLowerCase();
 
-    const multiplier: Record<
-      string,
-      number
-    > = {
+    const multiplier: Record<string, number> = {
       s: 1,
       m: 60,
       h: 60 * 60,
@@ -814,5 +739,4 @@ export class AuthService {
 
     return amount * multiplier[unit];
   }
-
 }

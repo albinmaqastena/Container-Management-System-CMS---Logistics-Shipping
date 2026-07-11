@@ -24,10 +24,7 @@ import {
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
-import {
-  FileInterceptor,
-  FilesInterceptor,
-} from '@nestjs/platform-express';
+import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express';
 
 import { FilesService } from './files.service';
 import { FileUploadDto } from './dto/file-upload.dto';
@@ -58,19 +55,11 @@ interface UploadedFilesResponse {
 @Controller('files')
 @UseGuards(JwtAuthGuard)
 export class FilesController {
-  constructor(
-    private readonly filesService: FilesService,
-  ) {}
+  constructor(private readonly filesService: FilesService) {}
 
   @Post('upload')
-  @Roles(
-    UserRole.SUPER_ADMIN,
-    UserRole.ADMIN,
-  )
-  @UseInterceptors(
-    FileInterceptor('file'),
-    FileValidationInterceptor,
-  )
+  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)
+  @UseInterceptors(FileInterceptor('file'), FileValidationInterceptor)
   @ApiOperation({
     summary: 'Upload a single file',
   })
@@ -113,16 +102,10 @@ export class FilesController {
     body: FileUploadDto = {},
   ): Promise<UploadedFileResponse> {
     if (!file) {
-      throw new BadRequestException(
-        'No file provided',
-      );
+      throw new BadRequestException('No file provided');
     }
 
-    const result =
-      await this.filesService.saveFile(
-        file,
-        body.folder,
-      );
+    const result = await this.filesService.saveFile(file, body.folder);
 
     return {
       message: 'File uploaded successfully',
@@ -131,14 +114,8 @@ export class FilesController {
   }
 
   @Post('upload/multiple')
-  @Roles(
-    UserRole.SUPER_ADMIN,
-    UserRole.ADMIN,
-  )
-  @UseInterceptors(
-    FilesInterceptor('files', 10),
-    FileValidationInterceptor,
-  )
+  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)
+  @UseInterceptors(FilesInterceptor('files', 10), FileValidationInterceptor)
   @ApiOperation({
     summary: 'Upload multiple files',
   })
@@ -185,18 +162,11 @@ export class FilesController {
     body: FileUploadDto = {},
   ): Promise<UploadedFilesResponse> {
     if (!files?.length) {
-      throw new BadRequestException(
-        'No files provided',
-      );
+      throw new BadRequestException('No files provided');
     }
 
     const results = await Promise.all(
-      files.map((file) =>
-        this.filesService.saveFile(
-          file,
-          body.folder,
-        ),
-      ),
+      files.map((file) => this.filesService.saveFile(file, body.folder)),
     );
 
     return {
@@ -206,10 +176,7 @@ export class FilesController {
   }
 
   @Delete('*path')
-  @Roles(
-    UserRole.SUPER_ADMIN,
-    UserRole.ADMIN,
-  )
+  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Delete a file',
@@ -217,8 +184,7 @@ export class FilesController {
   @ApiParam({
     name: 'path',
     example: 'items/photos/example.jpg',
-    description:
-      'Relative path returned by the upload endpoint',
+    description: 'Relative path returned by the upload endpoint',
   })
   @ApiResponse({
     status: HttpStatus.OK,
@@ -236,15 +202,9 @@ export class FilesController {
     @Param('path')
     filePath: string | string[],
   ): Promise<{ message: string }> {
-    const normalizedPath = Array.isArray(
-      filePath,
-    )
-      ? filePath.join('/')
-      : filePath;
+    const normalizedPath = Array.isArray(filePath) ? filePath.join('/') : filePath;
 
-    await this.filesService.deleteFile(
-      normalizedPath,
-    );
+    await this.filesService.deleteFile(normalizedPath);
 
     return {
       message: 'File deleted successfully',

@@ -85,14 +85,10 @@ export class Container {
   @ApiProperty({
     type: () => User,
   })
-  @ManyToOne(
-    () => User,
-    (user) => user.containers,
-    {
-      nullable: false,
-      onDelete: 'RESTRICT',
-    },
-  )
+  @ManyToOne(() => User, (user) => user.containers, {
+    nullable: false,
+    onDelete: 'RESTRICT',
+  })
   @JoinColumn({
     name: 'createdById',
   })
@@ -107,10 +103,7 @@ export class Container {
   @ApiProperty({
     type: () => [Item],
   })
-  @OneToMany(
-    () => Item,
-    (item) => item.container,
-  )
+  @OneToMany(() => Item, (item) => item.container)
   items!: Item[];
 
   @ApiProperty()
@@ -131,10 +124,7 @@ export class Container {
     description: 'Remaining available volume',
   })
   get availableVolume(): number {
-    return Math.max(
-      0,
-      Number(this.totalVolume) - Number(this.usedVolume),
-    );
+    return Math.max(0, Number(this.totalVolume) - Number(this.usedVolume));
   }
 
   constructor(partial?: Partial<Container>) {

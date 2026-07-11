@@ -18,9 +18,7 @@ export class RegisterDto {
   @ApiProperty({
     example: 'johndoe',
   })
-  @Transform(({ value }) =>
-    typeof value === 'string' ? value.trim() : value,
-  )
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
   @IsString({
     message: 'Username must be a string',
   })
@@ -34,22 +32,20 @@ export class RegisterDto {
     message: 'Username must not exceed 50 characters',
   })
   @Matches(/^[a-zA-Z0-9_]+$/, {
-    message:
-      'Username can only contain letters, numbers and underscores',
+    message: 'Username can only contain letters, numbers and underscores',
   })
   username!: string;
 
   @ApiProperty({
     example: 'john@example.com',
   })
-  @Transform(({ value }) =>
-    typeof value === 'string'
-      ? value.trim().toLowerCase()
-      : value,
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim().toLowerCase() : value))
+  @IsEmail(
+    {},
+    {
+      message: 'Please provide a valid email address',
+    },
   )
-  @IsEmail({}, {
-    message: 'Please provide a valid email address',
-  })
   @IsNotEmpty({
     message: 'Email is required',
   })
@@ -73,13 +69,10 @@ export class RegisterDto {
   @MaxLength(100, {
     message: 'Password must not exceed 100 characters',
   })
-  @Matches(
-    /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{12,100}$/,
-    {
-      message:
-        'Password must contain at least 1 uppercase letter, 1 lowercase letter, 1 number and 1 special character (@$!%*?&)',
-    },
-  )
+  @Matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{12,100}$/, {
+    message:
+      'Password must contain at least 1 uppercase letter, 1 lowercase letter, 1 number and 1 special character (@$!%*?&)',
+  })
   password!: string;
 
   @ApiPropertyOptional({
@@ -88,8 +81,7 @@ export class RegisterDto {
   })
   @IsOptional()
   @IsEnum(UserRole, {
-    message:
-      'Invalid role. Must be one of: super_admin, admin, user',
+    message: 'Invalid role. Must be one of: super_admin, admin, user',
   })
   role?: UserRole;
 }

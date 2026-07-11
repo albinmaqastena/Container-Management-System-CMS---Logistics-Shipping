@@ -5,6 +5,10 @@
   "author": "",
   "private": true,
   "license": "UNLICENSED",
+  "engines": {
+    "node": ">=22 <25",
+    "npm": ">=10"
+  },
   "scripts": {
     "build": "nest build",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
@@ -12,7 +16,7 @@
     "start:dev": "cross-env NODE_ENV=development nest start --watch",
     "start:dev:local": "cross-env NODE_ENV=development node -r dotenv/config dist/main.js",
     "start:debug": "cross-env NODE_ENV=development nest start --debug --watch",
-    "start:prod": "cross-env NODE_ENV=production node dist/main.js",
+    "start:prod": "node dist/main.js",
     "start:test": "cross-env NODE_ENV=test nest start --watch",
     "lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
     "lint:check": "eslint \"{src,apps,libs,test}/**/*.ts\"",
@@ -22,41 +26,37 @@
     "test:debug": "cross-env NODE_ENV=test node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
     "test:e2e": "cross-env NODE_ENV=test jest --config ./test/jest-e2e.json --runInBand --forceExit --verbose",
     "test:e2e:watch": "cross-env NODE_ENV=test jest --config ./test/jest-e2e.json --watch",
-    "test:e2e:debug": "cross-env NODE_ENV=test jest --config ./test/jest-e2e.json --runInBand --debug",
+    "test:e2e:debug": "cross-env NODE_ENV=test jest --config ./test/jest-e2e.json --runInBand --detectOpenHandles",
     "test:ci": "cross-env NODE_ENV=test npm run test:cov -- --ci --runInBand && npm run test:e2e -- --ci",
     "typeorm": "ts-node -r tsconfig-paths/register ./node_modules/typeorm/cli.js",
     "typeorm:dev": "cross-env NODE_ENV=development npm run typeorm",
     "typeorm:test": "cross-env NODE_ENV=test npm run typeorm",
-    "typeorm:prod": "cross-env NODE_ENV=production npm run typeorm",
+    "typeorm:prod": "typeorm",
     "migration:generate": "cross-env NODE_ENV=development npm run typeorm -- migration:generate -d src/data-source.ts",
     "migration:generate:test": "cross-env NODE_ENV=test npm run typeorm -- migration:generate -d src/data-source.ts",
     "migration:generate:prod": "cross-env NODE_ENV=production npm run typeorm -- migration:generate -d src/data-source.ts",
     "migration:create": "npm run typeorm -- migration:create",
     "migration:run": "cross-env NODE_ENV=development npm run typeorm -- migration:run -d src/data-source.ts",
     "migration:run:test": "cross-env NODE_ENV=test npm run typeorm -- migration:run -d src/data-source.ts",
-    "migration:run:prod": "cross-env NODE_ENV=production npm run typeorm -- migration:run -d src/data-source.ts",
+    "migration:run:prod": "cross-env NODE_ENV=production typeorm migration:run -d dist/data-source.js",
     "migration:revert": "cross-env NODE_ENV=development npm run typeorm -- migration:revert -d src/data-source.ts",
     "migration:revert:test": "cross-env NODE_ENV=test npm run typeorm -- migration:revert -d src/data-source.ts",
-    "migration:revert:prod": "cross-env NODE_ENV=production npm run typeorm -- migration:revert -d src/data-source.ts",
+    "migration:revert:prod": "cross-env NODE_ENV=production typeorm migration:revert -d dist/data-source.js",
     "migration:show": "cross-env NODE_ENV=development npm run typeorm -- migration:show -d src/data-source.ts",
     "migration:show:test": "cross-env NODE_ENV=test npm run typeorm -- migration:show -d src/data-source.ts",
-    "migration:show:prod": "cross-env NODE_ENV=production npm run typeorm -- migration:show -d src/data-source.ts",
+    "migration:show:prod": "cross-env NODE_ENV=production typeorm migration:show -d dist/data-source.js",
     "seed:create": "ts-node src/seeds/create-seed.ts",
     "seed:run": "cross-env NODE_ENV=development ts-node src/seeds/run-seed.ts",
     "seed:run:test": "cross-env NODE_ENV=test ts-node src/seeds/run-seed.ts",
-    "seed:run:prod": "cross-env NODE_ENV=production ts-node src/seeds/run-seed.ts",
+    "seed:run:prod": "cross-env NODE_ENV=production node dist/seeds/run-seed.js",
     "db:drop": "cross-env NODE_ENV=development npm run typeorm -- schema:drop -d src/data-source.ts",
     "db:drop:test": "cross-env NODE_ENV=test npm run typeorm -- schema:drop -d src/data-source.ts",
-    "db:drop:prod": "cross-env NODE_ENV=production npm run typeorm -- schema:drop -d src/data-source.ts",
     "db:reset:test": "cross-env NODE_ENV=test npm run db:drop:test && npm run migration:run:test",
     "db:reset:dev": "cross-env NODE_ENV=development npm run db:drop && npm run migration:run",
-    "db:reset:prod": "cross-env NODE_ENV=production npm run db:drop:prod && npm run migration:run:prod",
     "db:setup:test": "cross-env NODE_ENV=test npm run db:reset:test && npm run seed:run:test",
     "db:setup:dev": "cross-env NODE_ENV=development npm run db:reset:dev && npm run seed:run",
     "clean": "rimraf dist coverage",
     "prebuild": "npm run clean",
-    "postinstall": "npm run build",
-    "prepare": "npm run build",
     "env:check": "node -e \"console.log('NODE_ENV:', process.env.NODE_ENV, 'DB:', process.env.DB_DATABASE)\"",
     "env:check:test": "cross-env NODE_ENV=test node -e \"console.log('NODE_ENV:', process.env.NODE_ENV, 'DB:', process.env.DB_DATABASE)\"",
     "env:check:prod": "cross-env NODE_ENV=production node -e \"console.log('NODE_ENV:', process.env.NODE_ENV, 'DB:', process.env.DB_DATABASE)\"",
@@ -64,7 +64,7 @@
     "test:all:cov": "npm run test:cov && npm run test:e2e -- --coverage",
     "dev": "cross-env NODE_ENV=development nest start --watch",
     "dev:debug": "cross-env NODE_ENV=development nest start --debug --watch",
-    "prod": "cross-env NODE_ENV=production node dist/main.js",
+    "prod": "node dist/main.js",
     "docker:build": "docker build -t container-backend .",
     "docker:build:prod": "docker build -f Dockerfile.prod -t container-backend:prod .",
     "docker:run": "docker run -p 3000:3000 --env-file .env container-backend",
@@ -124,7 +124,7 @@
     "@types/express": "^5.0.0",
     "@types/jest": "^30.0.0",
     "@types/multer": "^2.2.0",
-    "@types/node": "^24.0.0",
+    "@types/node": "^24.13.3",
     "@types/passport": "^1.0.17",
     "@types/passport-jwt": "^4.0.1",
     "@types/pg": "^8.20.0",
@@ -147,27 +147,51 @@
     "typescript-eslint": "^8.20.0"
   },
   "jest": {
-    "moduleFileExtensions": [
-      "js",
-      "json",
-      "ts"
-    ],
-    "rootDir": "src",
-    "testRegex": ".*\\.spec\\.ts$",
-    "transform": {
-      "^.+\\.(t|j)s$": "ts-jest"
-    },
-    "collectCoverageFrom": [
-      "**/*.(t|j)s"
-    ],
-    "coverageDirectory": "../coverage",
-    "testEnvironment": "node",
-    "moduleNameMapper": {
-      "^src/(.*)$": "<rootDir>/$1"
-    },
-    "testTimeout": 10000,
-    "verbose": true,
-    "forceExit": true,
-    "detectOpenHandles": true
-  }
+  "moduleFileExtensions": [
+    "js",
+    "json",
+    "ts"
+  ],
+  "rootDir": ".",
+  "testMatch": [
+    "<rootDir>/src/**/*.spec.ts"
+  ],
+  "transform": {
+    "^.+\\.ts$": [
+      "ts-jest",
+      {
+        "tsconfig": "<rootDir>/tsconfig.spec.json",
+        "diagnostics": true
+      }
+    ]
+  },
+  "collectCoverageFrom": [
+    "src/**/*.ts",
+    "!src/**/*.spec.ts",
+    "!src/main.ts",
+    "!src/**/*.module.ts",
+    "!src/migrations/**",
+    "!src/seeds/**"
+  ],
+  "coverageDirectory": "coverage",
+  "testEnvironment": "node",
+  "moduleNameMapper": {
+    "^src/(.*)$": "<rootDir>/src/$1"
+  },
+  "moduleDirectories": [
+    "node_modules",
+    "<rootDir>/src"
+  ],
+  "testPathIgnorePatterns": [
+    "/node_modules/",
+    "/dist/",
+    "/test/"
+  ],
+  "testTimeout": 10000,
+  "verbose": true,
+  "forceExit": true,
+  "detectOpenHandles": true,
+  "clearMocks": true,
+  "restoreMocks": true
+}
 }

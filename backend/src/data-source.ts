@@ -47,29 +47,32 @@ const AppDataSource = new DataSource({
   username: process.env.DB_USERNAME || 'postgres',
   password: process.env.DB_PASSWORD || 'password',
   database: process.env.DB_DATABASE || 'container_db',
-  
+
   // Entities
   entities: [User, Container, Item],
-  
+
   // Migrations
   migrations: [path.join(__dirname, 'migrations', '*{.ts,.js}')],
-  
+
   // ✅ Gjithmonë false për migrime
   synchronize: false,
-  
+
   // Logging
   logging: nodeEnv !== 'production',
   logger: nodeEnv === 'development' ? 'advanced-console' : 'file',
-  
+
   // Migrations table
   migrationsTableName: 'migrations',
   migrationsTransactionMode: 'each',
-  
+
   // SSL për production
-  ssl: nodeEnv === 'production' ? {
-    rejectUnauthorized: false,
-  } : false,
-  
+  ssl:
+    nodeEnv === 'production'
+      ? {
+          rejectUnauthorized: false,
+        }
+      : false,
+
   // ✅ Connection pool
   extra: {
     max: nodeEnv === 'test' ? 5 : 20,
@@ -78,7 +81,7 @@ const AppDataSource = new DataSource({
     statement_timeout: nodeEnv === 'test' ? 5000 : 10000,
     query_timeout: nodeEnv === 'test' ? 5000 : 10000,
   },
-  
+
   // ✅ Cache
   cache: {
     duration: nodeEnv === 'test' ? 1000 : 60000,

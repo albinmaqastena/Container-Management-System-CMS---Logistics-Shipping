@@ -146,19 +146,13 @@ export class User {
   })
   deletedAt?: Date | null;
 
-  @OneToMany(
-    () => Container,
-    (container) => container.createdBy,
-  )
+  @OneToMany(() => Container, (container) => container.createdBy)
   containers!: Container[];
 
   @BeforeInsert()
   @BeforeUpdate()
   async hashPassword(): Promise<void> {
-    if (
-      this.password &&
-      !this.password.startsWith('$argon2')
-    ) {
+    if (this.password && !this.password.startsWith('$argon2')) {
       this.password = await argon2.hash(this.password);
     }
   }
@@ -172,10 +166,7 @@ export class User {
   }
 
   isLocked(): boolean {
-    return Boolean(
-      this.lockedUntil &&
-        this.lockedUntil.getTime() > Date.now(),
-    );
+    return Boolean(this.lockedUntil && this.lockedUntil.getTime() > Date.now());
   }
 
   lockAccount(durationMs: number): void {
@@ -192,14 +183,9 @@ export class User {
     this.lockedUntil = null;
   }
 
-  setResetToken(
-    token: string,
-    expiresInMs: number,
-  ): void {
+  setResetToken(token: string, expiresInMs: number): void {
     this.resetPasswordToken = token;
-    this.resetPasswordExpires = new Date(
-      Date.now() + expiresInMs,
-    );
+    this.resetPasswordExpires = new Date(Date.now() + expiresInMs);
   }
 
   clearResetToken(): void {
@@ -210,8 +196,8 @@ export class User {
   isResetTokenValid(token: string): boolean {
     return Boolean(
       this.resetPasswordToken === token &&
-        this.resetPasswordExpires &&
-        this.resetPasswordExpires.getTime() > Date.now(),
+      this.resetPasswordExpires &&
+      this.resetPasswordExpires.getTime() > Date.now(),
     );
   }
 

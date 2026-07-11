@@ -94,13 +94,19 @@ export class InitialMigration1783266234236 implements MigrationInterface {
     await queryRunner.query(`CREATE INDEX "idx_users_username" ON "users"("username")`);
     await queryRunner.query(`CREATE INDEX "idx_users_role" ON "users"("role")`);
     await queryRunner.query(`CREATE INDEX "idx_users_isActive" ON "users"("isActive")`);
-    
+
     // Containers indexes
-    await queryRunner.query(`CREATE INDEX "idx_containers_containerCode" ON "containers"("containerCode")`);
+    await queryRunner.query(
+      `CREATE INDEX "idx_containers_containerCode" ON "containers"("containerCode")`,
+    );
     await queryRunner.query(`CREATE INDEX "idx_containers_status" ON "containers"("status")`);
-    await queryRunner.query(`CREATE INDEX "idx_containers_createdById" ON "containers"("createdById")`);
-    await queryRunner.query(`CREATE INDEX "idx_containers_createdAt" ON "containers"("createdAt" DESC)`);
-    
+    await queryRunner.query(
+      `CREATE INDEX "idx_containers_createdById" ON "containers"("createdById")`,
+    );
+    await queryRunner.query(
+      `CREATE INDEX "idx_containers_createdAt" ON "containers"("createdAt" DESC)`,
+    );
+
     // Items indexes
     await queryRunner.query(`CREATE INDEX "idx_items_uniqueNumber" ON "items"("uniqueNumber")`);
     await queryRunner.query(`CREATE INDEX "idx_items_name" ON "items"("name")`);
@@ -110,7 +116,7 @@ export class InitialMigration1783266234236 implements MigrationInterface {
     // ============================================
     // 6. CREATE FUNCTIONS & TRIGGERS
     // ============================================
-    
+
     // 6.1 Update updated_at
     await queryRunner.query(`
       CREATE OR REPLACE FUNCTION update_updated_at_column()
@@ -274,7 +280,7 @@ export class InitialMigration1783266234236 implements MigrationInterface {
     // ============================================
     // 7. CREATE VIEWS
     // ============================================
-    
+
     // 7.1 Container statistics view
     await queryRunner.query(`
       CREATE OR REPLACE VIEW container_statistics AS
@@ -347,34 +353,46 @@ export class InitialMigration1783266234236 implements MigrationInterface {
     // ============================================
     // DROP IN REVERSE ORDER
     // ============================================
-    
+
     // Drop views
     await queryRunner.query(`DROP VIEW IF EXISTS user_activity`);
     await queryRunner.query(`DROP VIEW IF EXISTS item_details`);
     await queryRunner.query(`DROP VIEW IF EXISTS container_statistics`);
-    
+
     // Drop triggers
     await queryRunner.query(`DROP TRIGGER IF EXISTS trigger_items_check_capacity ON "items"`);
-    await queryRunner.query(`DROP TRIGGER IF EXISTS trigger_items_update_container_volume_update ON "items"`);
-    await queryRunner.query(`DROP TRIGGER IF EXISTS trigger_items_update_container_volume_delete ON "items"`);
-    await queryRunner.query(`DROP TRIGGER IF EXISTS trigger_items_update_container_volume_insert ON "items"`);
-    await queryRunner.query(`DROP TRIGGER IF EXISTS trigger_containers_generate_code ON "containers"`);
-    await queryRunner.query(`DROP TRIGGER IF EXISTS trigger_items_calculate_total_volume ON "items"`);
+    await queryRunner.query(
+      `DROP TRIGGER IF EXISTS trigger_items_update_container_volume_update ON "items"`,
+    );
+    await queryRunner.query(
+      `DROP TRIGGER IF EXISTS trigger_items_update_container_volume_delete ON "items"`,
+    );
+    await queryRunner.query(
+      `DROP TRIGGER IF EXISTS trigger_items_update_container_volume_insert ON "items"`,
+    );
+    await queryRunner.query(
+      `DROP TRIGGER IF EXISTS trigger_containers_generate_code ON "containers"`,
+    );
+    await queryRunner.query(
+      `DROP TRIGGER IF EXISTS trigger_items_calculate_total_volume ON "items"`,
+    );
     await queryRunner.query(`DROP TRIGGER IF EXISTS trigger_users_updated_at ON "users"`);
     await queryRunner.query(`DROP TRIGGER IF EXISTS trigger_containers_updated_at ON "containers"`);
     await queryRunner.query(`DROP TRIGGER IF EXISTS trigger_items_updated_at ON "items"`);
-    
+
     // Drop functions
     await queryRunner.query(`DROP FUNCTION IF EXISTS check_container_capacity()`);
     await queryRunner.query(`DROP FUNCTION IF EXISTS update_container_used_volume()`);
     await queryRunner.query(`DROP FUNCTION IF EXISTS generate_container_code()`);
     await queryRunner.query(`DROP FUNCTION IF EXISTS calculate_item_total_volume()`);
     await queryRunner.query(`DROP FUNCTION IF EXISTS update_updated_at_column()`);
-    
+
     // Drop foreign keys
-    await queryRunner.query(`ALTER TABLE "containers" DROP CONSTRAINT IF EXISTS "FK_containers_createdBy"`);
+    await queryRunner.query(
+      `ALTER TABLE "containers" DROP CONSTRAINT IF EXISTS "FK_containers_createdBy"`,
+    );
     await queryRunner.query(`ALTER TABLE "items" DROP CONSTRAINT IF EXISTS "FK_items_container"`);
-    
+
     // Drop indexes
     await queryRunner.query(`DROP INDEX IF EXISTS "idx_items_containerId"`);
     await queryRunner.query(`DROP INDEX IF EXISTS "idx_items_uniqueNumber"`);
@@ -388,7 +406,7 @@ export class InitialMigration1783266234236 implements MigrationInterface {
     await queryRunner.query(`DROP INDEX IF EXISTS "idx_users_username"`);
     await queryRunner.query(`DROP INDEX IF EXISTS "idx_users_role"`);
     await queryRunner.query(`DROP INDEX IF EXISTS "idx_users_isActive"`);
-    
+
     // Drop tables
     await queryRunner.query(`DROP TABLE "items"`);
     await queryRunner.query(`DROP TABLE "containers"`);

@@ -106,45 +106,27 @@ describe('AuthService', () => {
     };
 
     const configValues: Record<string, unknown> = {
-      'auth.jwt.secret':
-        'test-secret-with-at-least-32-characters',
+      'auth.jwt.secret': 'test-secret-with-at-least-32-characters',
       'auth.jwt.accessTokenExpiresIn': '15m',
       'auth.jwt.refreshTokenExpiresIn': '7d',
-      'auth.jwt.issuer':
-        'container-management-system',
-      'auth.jwt.audience':
-        'container-management-users',
+      'auth.jwt.issuer': 'container-management-system',
+      'auth.jwt.audience': 'container-management-users',
       'auth.rateLimit.loginAttempts': 5,
-      'auth.rateLimit.blockDuration':
-        15 * 60 * 1000,
+      'auth.rateLimit.blockDuration': 15 * 60 * 1000,
       AUTH_MAX_SESSIONS: 10,
       REDIS_HOST: 'localhost',
       REDIS_PORT: 6379,
     };
 
     configService = {
-      get: jest.fn(
-        (
-          key: string,
-          defaultValue?: unknown,
-        ) =>
-          configValues[key] ??
-          defaultValue,
-      ),
-      getOrThrow: jest.fn(
-        (key: string) => {
-          if (
-            configValues[key] ===
-            undefined
-          ) {
-            throw new Error(
-              `Missing config: ${key}`,
-            );
-          }
+      get: jest.fn((key: string, defaultValue?: unknown) => configValues[key] ?? defaultValue),
+      getOrThrow: jest.fn((key: string) => {
+        if (configValues[key] === undefined) {
+          throw new Error(`Missing config: ${key}`);
+        }
 
-          return configValues[key];
-        },
-      ),
+        return configValues[key];
+      }),
     };
 
     redis = { ...mockRedis };
@@ -262,11 +244,7 @@ describe('AuthService', () => {
       );
 
       expect(user.incrementFailedAttempts).toHaveBeenCalled();
-      expect(
-        user.lockAccount,
-      ).toHaveBeenCalledWith(
-        15 * 60 * 1000,
-      );
+      expect(user.lockAccount).toHaveBeenCalledWith(15 * 60 * 1000);
       expect(user.failedLoginAttempts).toBe(5);
     });
 
@@ -348,7 +326,9 @@ describe('AuthService', () => {
 
     it('should throw UnauthorizedException if regular USER tries to register', async () => {
       const currentUser = createMockUser({ role: UserRole.USER });
-      await expect(service.register(registerDto, currentUser)).rejects.toThrow(UnauthorizedException);
+      await expect(service.register(registerDto, currentUser)).rejects.toThrow(
+        UnauthorizedException,
+      );
     });
 
     it('should throw ConflictException if user already exists', async () => {
@@ -404,10 +384,7 @@ describe('AuthService', () => {
 
       expect(refreshTokenRepository.update).toHaveBeenCalled();
       expect(redis.scan).toHaveBeenCalled();
-      expect(redis.del).toHaveBeenCalledWith(
-        `session:${userId}:123`,
-        `session:${userId}:456`,
-      );
+      expect(redis.del).toHaveBeenCalledWith(`session:${userId}:123`, `session:${userId}:456`);
     });
   });
 
@@ -645,9 +622,7 @@ describe('AuthService', () => {
       });
 
       redis.scan.mockResolvedValue(['0', [`session:${userId}:123`, `session:${userId}:456`]]);
-      redis.get
-        .mockResolvedValueOnce(sessionData)
-        .mockResolvedValueOnce(sessionData);
+      redis.get.mockResolvedValueOnce(sessionData).mockResolvedValueOnce(sessionData);
 
       const sessions = await service.getUserSessionsDetailed(userId);
       expect(sessions).toHaveLength(2);
@@ -698,14 +673,7 @@ describe('AuthService', () => {
   describe('getProfile', () => {
     it('should return user profile (same as findUserById)', async () => {
       const user = createMockUser();
-      const findUserSpy = jest
-        .spyOn(
-          service,
-          'findUserById',
-        )
-        .mockResolvedValue(
-          user as any,
-        );
+      const findUserSpy = jest.spyOn(service, 'findUserById').mockResolvedValue(user);
 
       const result = await service.getProfile(user.id);
       expect(findUserSpy).toHaveBeenCalledWith(user.id, false);
@@ -767,7 +735,9 @@ describe('AuthService', () => {
     it('should throw BadRequestException if trying to delete SUPER_ADMIN', async () => {
       const user = createMockUser({ role: UserRole.SUPER_ADMIN });
       userRepository.findOne.mockResolvedValue(user);
-      await expect(service.softDeleteUser(userId)).rejects.toThrow('Cannot delete Super Admin user');
+      await expect(service.softDeleteUser(userId)).rejects.toThrow(
+        'Cannot delete Super Admin user',
+      );
     });
   });
 
@@ -781,18 +751,14 @@ describe('AuthService', () => {
         deletedAt: null,
         isActive: false,
       });
-      userRepository.findOne
-        .mockResolvedValueOnce(user)
-        .mockResolvedValueOnce(restoredUser);
+      userRepository.findOne.mockResolvedValueOnce(user).mockResolvedValueOnce(restoredUser);
       userRepository.restore.mockResolvedValue({ affected: 1 });
       userRepository.save.mockImplementation(async (value) => value);
 
       const result = await service.restoreUser(userId);
 
       expect(userRepository.restore).toHaveBeenCalledWith(userId);
-      expect(userRepository.save).toHaveBeenCalledWith(
-        expect.objectContaining({ isActive: true }),
-      );
+      expect(userRepository.save).toHaveBeenCalledWith(expect.objectContaining({ isActive: true }));
       expect(result.isActive).toBe(true);
     });
 

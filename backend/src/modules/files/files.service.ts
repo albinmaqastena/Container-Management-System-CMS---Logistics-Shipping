@@ -1,11 +1,6 @@
 // src/modules/files/files.service.ts
 
-import {
-  BadRequestException,
-  Injectable,
-  Logger,
-  NotFoundException,
-} from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as crypto from 'crypto';
 import * as fs from 'fs';
@@ -35,202 +30,110 @@ interface FileConfiguration {
 
 @Injectable()
 export class FilesService {
-  private readonly logger =
-    new Logger(FilesService.name);
+  private readonly logger = new Logger(FilesService.name);
 
   private readonly uploadDir: string;
   private readonly urlPrefix: string;
 
-  constructor(
-    private readonly configService: ConfigService,
-  ) {
-    const fileConfig =
-      this.configService.get<FileConfiguration>(
-        'file',
-      );
+  constructor(private readonly configService: ConfigService) {
+    const fileConfig = this.configService.get<FileConfiguration>('file');
 
-    this.uploadDir = path.resolve(
-      fileConfig?.upload?.destination ??
-        './uploads',
-    );
+    this.uploadDir = path.resolve(fileConfig?.upload?.destination ?? './uploads');
 
-    this.urlPrefix = (
-      fileConfig?.upload?.urlPrefix ??
-      '/uploads'
-    ).replace(/\/+$/, '');
+    this.urlPrefix = (fileConfig?.upload?.urlPrefix ?? '/uploads').replace(/\/+$/, '');
 
     fs.mkdirSync(this.uploadDir, {
       recursive: true,
     });
   }
 
-  async saveFile(
-    file: MulterFile,
-    subFolder = '',
-  ): Promise<SavedFileResult> {
-    if (
-      !file ||
-      !Buffer.isBuffer(file.buffer) ||
-      file.buffer.length === 0
-    ) {
-      throw new BadRequestException(
-        'File buffer is empty',
-      );
+  async saveFile(file: MulterFile, subFolder = ''): Promise<SavedFileResult> {
+    if (!file || !Buffer.isBuffer(file.buffer) || file.buffer.length === 0) {
+      throw new BadRequestException('File buffer is empty');
     }
 
     if (!file.originalname?.trim()) {
-      throw new BadRequestException(
-        'Original filename is required',
-      );
+      throw new BadRequestException('Original filename is required');
     }
 
-    const normalizedFolder =
-      this.normalizeRelativePath(
-        subFolder,
-      );
+    const normalizedFolder = this.normalizeRelativePath(subFolder);
 
-    const safeFilename =
-      this.generateSafeFilename(
-        file.originalname,
-      );
+    const safeFilename = this.generateSafeFilename(file.originalname);
 
-    const relativePath =
-      normalizedFolder
-        ? path.posix.join(
-            normalizedFolder,
-            safeFilename,
-          )
-        : safeFilename;
+    const relativePath = normalizedFolder
+      ? path.posix.join(normalizedFolder, safeFilename)
+      : safeFilename;
 
-    const fullPath =
-      this.resolveInsideUploadDirectory(
-        relativePath,
-      );
+    const fullPath = this.resolveInsideUploadDirectory(relativePath);
 
-    await fs.promises.mkdir(
-      path.dirname(fullPath),
-      {
-        recursive: true,
-      },
-    );
+    await fs.promises.mkdir(path.dirname(fullPath), {
+      recursive: true,
+    });
 
     try {
-      await fs.promises.writeFile(
-        fullPath,
-        file.buffer,
-        {
-          flag: 'wx',
-        },
-      );
+      await fs.promises.writeFile(fullPath, file.buffer, {
+        flag: 'wx',
+      });
 
-      if (
-        file.mimetype?.startsWith(
-          'image/',
-        )
-      ) {
-        await this.optimizeImage(
-          fullPath,
-          file.mimetype,
-        );
+      if (file.mimetype?.startsWith('image/')) {
+        await this.optimizeImage(fullPath, file.mimetype);
       }
     } catch (error) {
-      await fs.promises
-        .unlink(fullPath)
-        .catch(() => undefined);
+      await fs.promises.unlink(fullPath).catch(() => undefined);
 
       this.logger.error(
         `Failed to save file ${relativePath}`,
-        error instanceof Error
-          ? error.stack
-          : String(error),
+        error instanceof Error ? error.stack : String(error),
       );
 
-      throw new BadRequestException(
-        'Unable to save file',
-      );
+      throw new BadRequestException('Unable to save file');
     }
 
-    this.logger.log(
-      `File saved: ${relativePath}`,
-    );
+    this.logger.log(`File saved: ${relativePath}`);
 
     return {
       filename: safeFilename,
       path: relativePath,
-      url: `${this.urlPrefix}/${this.encodeUrlPath(
-        relativePath,
-      )}`,
+      url: `${this.urlPrefix}/${this.encodeUrlPath(relativePath)}`,
     };
   }
 
-  async deleteFile(
-    filePath: string,
-  ): Promise<void> {
-    const normalizedPath =
-      this.normalizeRelativePath(
-        filePath,
-      );
+  async deleteFile(filePath: string): Promise<void> {
+    const normalizedPath = this.normalizeRelativePath(filePath);
 
     if (!normalizedPath) {
-      throw new BadRequestException(
-        'Invalid file path',
-      );
+      throw new BadRequestException('Invalid file path');
     }
 
-    const fullPath =
-      this.resolveInsideUploadDirectory(
-        normalizedPath,
-      );
+    const fullPath = this.resolveInsideUploadDirectory(normalizedPath);
 
     try {
-      const stat =
-        await fs.promises.stat(
-          fullPath,
-        );
+      const stat = await fs.promises.stat(fullPath);
 
       if (!stat.isFile()) {
-        throw new NotFoundException(
-          'File not found',
-        );
+        throw new NotFoundException('File not found');
       }
 
-      await fs.promises.unlink(
-        fullPath,
-      );
+      await fs.promises.unlink(fullPath);
     } catch (error) {
-      if (
-        error instanceof
-        NotFoundException
-      ) {
+      if (error instanceof NotFoundException) {
         throw error;
       }
 
-      if (
-        (
-          error as NodeJS.ErrnoException
-        ).code === 'ENOENT'
-      ) {
-        throw new NotFoundException(
-          'File not found',
-        );
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+        throw new NotFoundException('File not found');
       }
 
       this.logger.error(
         `Error deleting file ${normalizedPath}`,
-        error instanceof Error
-          ? error.stack
-          : String(error),
+        error instanceof Error ? error.stack : String(error),
       );
 
-      throw new BadRequestException(
-        'Unable to delete file',
-      );
+      throw new BadRequestException('Unable to delete file');
     }
 
     try {
-      await this.removeEmptyParentFolders(
-        path.dirname(fullPath),
-      );
+      await this.removeEmptyParentFolders(path.dirname(fullPath));
     } catch (error) {
       /*
        * The file is already deleted. Failure to clean empty
@@ -238,58 +141,35 @@ export class FilesService {
        */
       this.logger.warn(
         `Unable to remove empty parent folders for ${normalizedPath}: ${
-          error instanceof Error
-            ? error.message
-            : 'Unknown error'
+          error instanceof Error ? error.message : 'Unknown error'
         }`,
       );
     }
 
-    this.logger.log(
-      `File deleted: ${normalizedPath}`,
-    );
+    this.logger.log(`File deleted: ${normalizedPath}`);
   }
 
-  private generateSafeFilename(
-    originalName: string,
-  ): string {
-    const parsed = path.parse(
-      path.basename(originalName),
-    );
+  private generateSafeFilename(originalName: string): string {
+    const parsed = path.parse(path.basename(originalName));
 
-    const extension = parsed.ext
-      .toLowerCase()
-      .replace(
-        /[^a-z0-9.]/g,
-        '',
-      );
+    const extension = parsed.ext.toLowerCase().replace(/[^a-z0-9.]/g, '');
 
     const baseName =
       parsed.name
         .normalize('NFKD')
-        .replace(
-          /[^a-zA-Z0-9_-]/g,
-          '-',
-        )
+        .replace(/[^a-zA-Z0-9_-]/g, '-')
         .replace(/-+/g, '-')
         .replace(/^-|-$/g, '')
-        .slice(0, 50) ||
-      'file';
+        .slice(0, 50) || 'file';
 
-    const timestamp =
-      Date.now();
+    const timestamp = Date.now();
 
-    const random =
-      crypto
-        .randomBytes(8)
-        .toString('hex');
+    const random = crypto.randomBytes(8).toString('hex');
 
     return `${baseName}-${timestamp}-${random}${extension}`;
   }
 
-  private normalizeRelativePath(
-    input?: string,
-  ): string {
+  private normalizeRelativePath(input?: string): string {
     if (!input) {
       return '';
     }
@@ -297,140 +177,83 @@ export class FilesService {
     let decoded: string;
 
     try {
-      decoded =
-        decodeURIComponent(input);
+      decoded = decodeURIComponent(input);
     } catch {
-      throw new BadRequestException(
-        'Invalid encoded path',
-      );
+      throw new BadRequestException('Invalid encoded path');
     }
 
     const normalized = decoded
       .trim()
       .replace(/\\/g, '/')
-      .replace(
-        /^\/+|\/+$/g,
-        '',
-      );
+      .replace(/^\/+|\/+$/g, '');
 
-    if (
-      !normalized ||
-      normalized === '.'
-    ) {
+    if (!normalized || normalized === '.') {
       return '';
     }
 
-    const segments =
-      normalized.split('/');
+    const segments = normalized.split('/');
 
     if (
       segments.some(
         (segment) =>
-          !segment ||
-          segment === '.' ||
-          segment === '..' ||
-          !/^[a-zA-Z0-9_.-]+$/.test(
-            segment,
-          ),
+          !segment || segment === '.' || segment === '..' || !/^[a-zA-Z0-9_.-]+$/.test(segment),
       )
     ) {
-      throw new BadRequestException(
-        'Invalid file path',
-      );
+      throw new BadRequestException('Invalid file path');
     }
 
     return segments.join('/');
   }
 
-  private resolveInsideUploadDirectory(
-    relativePath: string,
-  ): string {
-    const fullPath = path.resolve(
-      this.uploadDir,
-      ...relativePath.split('/'),
-    );
+  private resolveInsideUploadDirectory(relativePath: string): string {
+    const fullPath = path.resolve(this.uploadDir, ...relativePath.split('/'));
 
-    const relative = path.relative(
-      this.uploadDir,
-      fullPath,
-    );
+    const relative = path.relative(this.uploadDir, fullPath);
 
-    if (
-      relative.startsWith('..') ||
-      path.isAbsolute(relative)
-    ) {
-      throw new BadRequestException(
-        'Invalid file path',
-      );
+    if (relative.startsWith('..') || path.isAbsolute(relative)) {
+      throw new BadRequestException('Invalid file path');
     }
 
     return fullPath;
   }
 
-  private async optimizeImage(
-    filePath: string,
-    mimetype: string,
-  ): Promise<void> {
-    const fileConfig =
-      this.configService.get<FileConfiguration>(
-        'file',
-      );
+  private async optimizeImage(filePath: string, mimetype: string): Promise<void> {
+    const fileConfig = this.configService.get<FileConfiguration>('file');
 
-    const options =
-      fileConfig?.imageOptimization;
+    const options = fileConfig?.imageOptimization;
 
     if (!options?.enabled) {
       return;
     }
 
-    const maxWidth =
-      options.maxWidth ?? 1920;
+    const maxWidth = options.maxWidth ?? 1920;
 
-    const maxHeight =
-      options.maxHeight ?? 1080;
+    const maxHeight = options.maxHeight ?? 1080;
 
-    const quality = Math.min(
-      100,
-      Math.max(
-        1,
-        options.quality ?? 80,
-      ),
-    );
+    const quality = Math.min(100, Math.max(1, options.quality ?? 80));
 
-    const temporaryPath =
-      `${filePath}.tmp`;
+    const temporaryPath = `${filePath}.tmp`;
 
     try {
-      const image = sharp(
-        filePath,
-        {
-          failOn: 'none',
-        },
-      );
+      const image = sharp(filePath, {
+        failOn: 'none',
+      });
 
-      const metadata =
-        await image.metadata();
+      const metadata = await image.metadata();
 
       const shouldResize =
         Boolean(metadata.width) &&
         Boolean(metadata.height) &&
-        (
-          metadata.width! >
-            maxWidth ||
-          metadata.height! >
-            maxHeight
-        );
+        (metadata.width > maxWidth || metadata.height > maxHeight);
 
-      const pipeline =
-        shouldResize
-          ? image.resize({
-              width: maxWidth,
-              height: maxHeight,
-              fit: 'inside',
-              withoutEnlargement:
-                true,
-            })
-          : image;
+      const pipeline = shouldResize
+        ? image.resize({
+            width: maxWidth,
+            height: maxHeight,
+            fit: 'inside',
+            withoutEnlargement: true,
+          })
+        : image;
 
       switch (mimetype) {
         case 'image/jpeg':
@@ -438,9 +261,7 @@ export class FilesService {
             .jpeg({
               quality,
             })
-            .toFile(
-              temporaryPath,
-            );
+            .toFile(temporaryPath);
           break;
 
         case 'image/png':
@@ -449,9 +270,7 @@ export class FilesService {
               quality,
               compressionLevel: 9,
             })
-            .toFile(
-              temporaryPath,
-            );
+            .toFile(temporaryPath);
           break;
 
         case 'image/webp':
@@ -459,9 +278,7 @@ export class FilesService {
             .webp({
               quality,
             })
-            .toFile(
-              temporaryPath,
-            );
+            .toFile(temporaryPath);
           break;
 
         default:
@@ -472,81 +289,44 @@ export class FilesService {
        * Remove the old image first. This avoids Windows rename
        * failures when the destination already exists.
        */
-      await fs.promises.unlink(
-        filePath,
-      );
+      await fs.promises.unlink(filePath);
 
-      await fs.promises.rename(
-        temporaryPath,
-        filePath,
-      );
+      await fs.promises.rename(temporaryPath, filePath);
 
-      this.logger.debug(
-        `Image optimized: ${filePath}`,
-      );
+      this.logger.debug(`Image optimized: ${filePath}`);
     } catch (error) {
-      await fs.promises
-        .unlink(temporaryPath)
-        .catch(() => undefined);
+      await fs.promises.unlink(temporaryPath).catch(() => undefined);
 
       this.logger.warn(
-        `Image optimization failed: ${
-          error instanceof Error
-            ? error.message
-            : 'Unknown error'
-        }`,
+        `Image optimization failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
       );
     }
   }
 
-  private encodeUrlPath(
-    relativePath: string,
-  ): string {
+  private encodeUrlPath(relativePath: string): string {
     return relativePath
       .split('/')
-      .map((segment) =>
-        encodeURIComponent(segment),
-      )
+      .map((segment) => encodeURIComponent(segment))
       .join('/');
   }
 
-  private async removeEmptyParentFolders(
-    startDirectory: string,
-  ): Promise<void> {
-    let currentDirectory =
-      startDirectory;
+  private async removeEmptyParentFolders(startDirectory: string): Promise<void> {
+    let currentDirectory = startDirectory;
 
     while (
-      currentDirectory !==
-        this.uploadDir &&
-      path.relative(
-        this.uploadDir,
-        currentDirectory,
-      ) &&
-      !path
-        .relative(
-          this.uploadDir,
-          currentDirectory,
-        )
-        .startsWith('..')
+      currentDirectory !== this.uploadDir &&
+      path.relative(this.uploadDir, currentDirectory) &&
+      !path.relative(this.uploadDir, currentDirectory).startsWith('..')
     ) {
-      const entries =
-        await fs.promises.readdir(
-          currentDirectory,
-        );
+      const entries = await fs.promises.readdir(currentDirectory);
 
       if (entries.length > 0) {
         return;
       }
 
-      await fs.promises.rmdir(
-        currentDirectory,
-      );
+      await fs.promises.rmdir(currentDirectory);
 
-      currentDirectory =
-        path.dirname(
-          currentDirectory,
-        );
+      currentDirectory = path.dirname(currentDirectory);
     }
   }
 }

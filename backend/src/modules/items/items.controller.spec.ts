@@ -8,10 +8,7 @@ import { UpdateItemDto } from './dto/update-item.dto';
 import { ItemQueryDto } from './dto/item-query.dto';
 import { SearchItemQueryDto } from './dto/search-item-query.dto';
 import { Item } from './entities/item.entity';
-import {
-  Container,
-  ContainerStatus,
-} from '../containers/entities/container.entity';
+import { Container, ContainerStatus } from '../containers/entities/container.entity';
 import { User } from '../auth/entities/user.entity';
 import { PaginatedResponseDto } from '../../common/dto/pagination.dto';
 
@@ -64,11 +61,9 @@ describe('ItemsController', () => {
     updatedAt: new Date(),
     deletedAt: null,
     calculateTotalVolume: jest.fn(),
-  } as unknown as Item;
+  };
 
-  const paginatedItems = (
-    data: Item[] = [mockItem],
-  ): PaginatedResponseDto<Item> =>
+  const paginatedItems = (data: Item[] = [mockItem]): PaginatedResponseDto<Item> =>
     ({
       data,
       total: data.length,

@@ -44,16 +44,11 @@ import { Public } from '../../common/decorators/public.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { UUIDValidationPipe } from '../../common/pipes/uuid-validation.pipe';
-import {
-  PaginatedResponseDto,
-  PaginationDto,
-} from '../../common/dto/pagination.dto';
+import { PaginatedResponseDto, PaginationDto } from '../../common/dto/pagination.dto';
 
-const AUTH_THROTTLE_LIMIT =
-  process.env.NODE_ENV === 'test' ? 100000 : 5;
+const AUTH_THROTTLE_LIMIT = process.env.NODE_ENV === 'test' ? 100000 : 5;
 
-const AUTH_THROTTLE_TTL =
-  process.env.NODE_ENV === 'test' ? 1000 : 60000;
+const AUTH_THROTTLE_TTL = process.env.NODE_ENV === 'test' ? 1000 : 60000;
 
 interface AuthenticatedRequest extends ExpressRequest {
   user: User;
@@ -62,13 +57,9 @@ interface AuthenticatedRequest extends ExpressRequest {
 @ApiTags('Authentication')
 @Controller('auth')
 export class AuthController {
-  private readonly logger = new Logger(
-    AuthController.name,
-  );
+  private readonly logger = new Logger(AuthController.name);
 
-  constructor(
-    private readonly authService: AuthService,
-  ) {}
+  constructor(private readonly authService: AuthService) {}
 
   @Post('login')
   @Public()
@@ -98,32 +89,18 @@ export class AuthController {
       ? forwardedFor[0]
       : forwardedFor?.split(',')[0]?.trim();
 
-    const ip =
-      forwardedIp ||
-      req.ip ||
-      req.socket?.remoteAddress ||
-      '0.0.0.0';
+    const ip = forwardedIp || req.ip || req.socket?.remoteAddress || '0.0.0.0';
 
-    const userAgent =
-      req.headers['user-agent'] || 'unknown';
+    const userAgent = req.headers['user-agent'] || 'unknown';
 
-    this.logger.debug(
-      `Login attempt from IP: ${ip}`,
-    );
+    this.logger.debug(`Login attempt from IP: ${ip}`);
 
-    return this.authService.login(
-      loginDto,
-      ip,
-      userAgent,
-    );
+    return this.authService.login(loginDto, ip, userAgent);
   }
 
   @Post('register')
   @UseGuards(JwtAuthGuard)
-  @Roles(
-    UserRole.SUPER_ADMIN,
-    UserRole.ADMIN,
-  )
+  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)
   @Throttle({
     default: {
       limit: AUTH_THROTTLE_LIMIT,
@@ -147,10 +124,7 @@ export class AuthController {
     @Body() registerDto: RegisterDto,
     @Request() req: AuthenticatedRequest,
   ): Promise<Partial<User>> {
-    return this.authService.register(
-      registerDto,
-      req.user,
-    );
+    return this.authService.register(registerDto, req.user);
   }
 
   @Post('logout')
@@ -171,10 +145,7 @@ export class AuthController {
     @Request() req: AuthenticatedRequest,
     @Body() dto: RefreshTokenDto,
   ): Promise<{ message: string }> {
-    await this.authService.logout(
-      req.user.id,
-      dto.refreshToken,
-    );
+    await this.authService.logout(req.user.id, dto.refreshToken);
 
     return {
       message: 'Logged out successfully',
@@ -188,12 +159,8 @@ export class AuthController {
   @ApiOperation({
     summary: 'Logout from all devices',
   })
-  async logoutAll(
-    @Request() req: AuthenticatedRequest,
-  ): Promise<{ message: string }> {
-    await this.authService.logoutAll(
-      req.user.id,
-    );
+  async logoutAll(@Request() req: AuthenticatedRequest): Promise<{ message: string }> {
+    await this.authService.logoutAll(req.user.id);
 
     return {
       message: 'Logged out from all devices',
@@ -210,15 +177,11 @@ export class AuthController {
     status: HttpStatus.OK,
     description: 'Tokens refreshed successfully',
   })
-  async refreshToken(
-    @Body() dto: RefreshTokenDto,
-  ): Promise<{
+  async refreshToken(@Body() dto: RefreshTokenDto): Promise<{
     accessToken: string;
     refreshToken: string;
   }> {
-    return this.authService.refreshAccessToken(
-      dto.refreshToken,
-    );
+    return this.authService.refreshAccessToken(dto.refreshToken);
   }
 
   @Post('change-password')
@@ -232,11 +195,7 @@ export class AuthController {
     @Body() dto: ChangePasswordDto,
     @Request() req: AuthenticatedRequest,
   ): Promise<{ message: string }> {
-    await this.authService.changePassword(
-      req.user.id,
-      dto.currentPassword,
-      dto.newPassword,
-    );
+    await this.authService.changePassword(req.user.id, dto.currentPassword, dto.newPassword);
 
     return {
       message: 'Password changed successfully',
@@ -255,12 +214,8 @@ export class AuthController {
   @ApiOperation({
     summary: 'Request a password reset',
   })
-  async forgotPassword(
-    @Body() dto: ForgotPasswordDto,
-  ): Promise<{ message: string }> {
-    return this.authService.forgotPassword(
-      dto.email,
-    );
+  async forgotPassword(@Body() dto: ForgotPasswordDto): Promise<{ message: string }> {
+    return this.authService.forgotPassword(dto.email);
   }
 
   @Post('reset-password')
@@ -275,13 +230,8 @@ export class AuthController {
   @ApiOperation({
     summary: 'Reset password using a reset token',
   })
-  async resetPassword(
-    @Body() dto: ResetPasswordDto,
-  ): Promise<{ message: string }> {
-    return this.authService.resetPassword(
-      dto.token,
-      dto.newPassword,
-    );
+  async resetPassword(@Body() dto: ResetPasswordDto): Promise<{ message: string }> {
+    return this.authService.resetPassword(dto.token, dto.newPassword);
   }
 
   @Get('me')
@@ -294,12 +244,8 @@ export class AuthController {
     status: HttpStatus.OK,
     type: UserResponseDto,
   })
-  async getProfile(
-    @Request() req: AuthenticatedRequest,
-  ): Promise<Partial<User>> {
-    return this.authService.getProfile(
-      req.user.id,
-    );
+  async getProfile(@Request() req: AuthenticatedRequest): Promise<Partial<User>> {
+    return this.authService.getProfile(req.user.id);
   }
 
   @Get('sessions')
@@ -312,13 +258,8 @@ export class AuthController {
     status: HttpStatus.OK,
     type: [SessionDto],
   })
-  async getSessions(
-    @Request() req: AuthenticatedRequest,
-  ): Promise<{ sessions: SessionDto[] }> {
-    const sessions =
-      await this.authService.getUserSessionsDetailed(
-        req.user.id,
-      );
+  async getSessions(@Request() req: AuthenticatedRequest): Promise<{ sessions: SessionDto[] }> {
+    const sessions = await this.authService.getUserSessionsDetailed(req.user.id);
 
     return { sessions };
   }
@@ -334,10 +275,7 @@ export class AuthController {
     @Param('sessionId', UUIDValidationPipe)
     sessionId: string,
   ): Promise<{ message: string }> {
-    await this.authService.revokeSession(
-      req.user.id,
-      sessionId,
-    );
+    await this.authService.revokeSession(req.user.id, sessionId);
 
     return {
       message: 'Session revoked successfully',
@@ -360,12 +298,8 @@ export class AuthController {
       }),
     )
     query: PaginationDto,
-  ): Promise<
-    PaginatedResponseDto<Partial<User>>
-  > {
-    return this.authService.findDeletedUsers(
-      this.createPaginationDto(query),
-    );
+  ): Promise<PaginatedResponseDto<Partial<User>>> {
+    return this.authService.findDeletedUsers(this.createPaginationDto(query));
   }
 
   @Delete('users/:id')
@@ -376,9 +310,7 @@ export class AuthController {
   @ApiOperation({
     summary: 'Soft delete a user',
   })
-  async softDeleteUser(
-    @Param('id', UUIDValidationPipe) id: string,
-  ): Promise<void> {
+  async softDeleteUser(@Param('id', UUIDValidationPipe) id: string): Promise<void> {
     await this.authService.softDeleteUser(id);
   }
 
@@ -389,9 +321,7 @@ export class AuthController {
   @ApiOperation({
     summary: 'Restore a soft-deleted user',
   })
-  async restoreUser(
-    @Param('id', UUIDValidationPipe) id: string,
-  ): Promise<User> {
+  async restoreUser(@Param('id', UUIDValidationPipe) id: string): Promise<User> {
     return this.authService.restoreUser(id);
   }
 
@@ -403,12 +333,8 @@ export class AuthController {
   @ApiOperation({
     summary: 'Permanently delete a user',
   })
-  async permanentDeleteUser(
-    @Param('id', UUIDValidationPipe) id: string,
-  ): Promise<void> {
-    await this.authService.permanentDeleteUser(
-      id,
-    );
+  async permanentDeleteUser(@Param('id', UUIDValidationPipe) id: string): Promise<void> {
+    await this.authService.permanentDeleteUser(id);
   }
 
   @Get('users/:id')
@@ -430,39 +356,23 @@ export class AuthController {
   })
   async getUserById(
     @Param('id', UUIDValidationPipe) id: string,
-    @Query(
-      'includeDeleted',
-      new ParseBoolPipe({ optional: true }),
-    )
+    @Query('includeDeleted', new ParseBoolPipe({ optional: true }))
     includeDeleted?: boolean,
   ): Promise<Partial<User>> {
-    return this.authService.findUserById(
-      id,
-      includeDeleted ?? false,
-    );
+    return this.authService.findUserById(id, includeDeleted ?? false);
   }
 
-  private createPaginationDto(
-    query: PaginationDto,
-  ): PaginationDto {
+  private createPaginationDto(query: PaginationDto): PaginationDto {
     const limit = Number(query.limit);
     const offset = Number(query.offset);
 
-    const paginationDto =
-      new PaginationDto();
+    const paginationDto = new PaginationDto();
 
-    paginationDto.limit =
-      Number.isInteger(limit) && limit > 0
-        ? limit
-        : 10;
+    paginationDto.limit = Number.isInteger(limit) && limit > 0 ? limit : 10;
 
-    paginationDto.offset =
-      Number.isInteger(offset) && offset >= 0
-        ? offset
-        : 0;
+    paginationDto.offset = Number.isInteger(offset) && offset >= 0 ? offset : 0;
 
-    paginationDto.sort =
-      query.sort || undefined;
+    paginationDto.sort = query.sort || undefined;
 
     return paginationDto;
   }

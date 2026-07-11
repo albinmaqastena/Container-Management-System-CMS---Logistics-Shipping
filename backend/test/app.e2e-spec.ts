@@ -194,9 +194,7 @@ describe('AppController (e2e) - Full Test Suite', () => {
       });
 
       it('should fail logout without token', async () => {
-        await request(app.getHttpServer())
-          .post('/v1/auth/logout')
-          .expect(401);
+        await request(app.getHttpServer()).post('/v1/auth/logout').expect(401);
       });
 
       it('should fail logout with invalid token', async () => {
@@ -220,9 +218,7 @@ describe('AppController (e2e) - Full Test Suite', () => {
       });
 
       it('should fail getting sessions without token', async () => {
-        await request(app.getHttpServer())
-          .get('/v1/auth/sessions')
-          .expect(401);
+        await request(app.getHttpServer()).get('/v1/auth/sessions').expect(401);
       });
     });
   });
@@ -622,7 +618,7 @@ describe('AppController (e2e) - Full Test Suite', () => {
             name: 'Test Item One',
             packageQuantity: 5,
             productsPerPackage: 10,
-            packagePrice: 100.50,
+            packagePrice: 100.5,
             volume: 2.5,
             containerId: containerId,
           })
@@ -645,7 +641,7 @@ describe('AppController (e2e) - Full Test Suite', () => {
             photo: 'https://example.com/photo.jpg',
             packageQuantity: 3,
             productsPerPackage: 20,
-            packagePrice: 200.00,
+            packagePrice: 200.0,
             volume: 5.0,
             containerId: containerId,
           })
@@ -814,7 +810,11 @@ describe('AppController (e2e) - Full Test Suite', () => {
           .expect(200);
 
         expect(Array.isArray(response.body)).toBe(true);
-        expect(response.body.every((item: any) => item.containerId === containerId || item.container?.id === containerId)).toBe(true);
+        expect(
+          response.body.every(
+            (item: any) => item.containerId === containerId || item.container?.id === containerId,
+          ),
+        ).toBe(true);
       });
 
       it('should return empty array for non-existent search', async () => {
@@ -854,12 +854,12 @@ describe('AppController (e2e) - Full Test Suite', () => {
           .set('Authorization', `Bearer ${adminToken}`)
           .send({
             name: 'Updated Item Name',
-            packagePrice: 200.00,
+            packagePrice: 200.0,
           })
           .expect(200);
 
         expect(response.body.name).toBe('Updated Item Name');
-        expect(response.body.packagePrice).toBe(200.00);
+        expect(response.body.packagePrice).toBe(200.0);
       });
 
       it('should update item volume and recalculate totalVolume', async () => {

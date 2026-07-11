@@ -9,10 +9,7 @@ import {
   ManyToOne,
   PrimaryGeneratedColumn,
 } from 'typeorm';
-import {
-  ApiProperty,
-  ApiPropertyOptional,
-} from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 import { User } from '../../auth/entities/user.entity';
 
@@ -27,25 +24,21 @@ export enum AuditAction {
   USER_UPDATE = 'user_update',
   USER_DELETE = 'user_delete',
   USER_RESTORE = 'user_restore',
-  USER_PERMANENT_DELETE =
-    'user_permanent_delete',
+  USER_PERMANENT_DELETE = 'user_permanent_delete',
   USER_ROLE_CHANGE = 'user_role_change',
 
   CONTAINER_CREATE = 'container_create',
   CONTAINER_UPDATE = 'container_update',
   CONTAINER_DELETE = 'container_delete',
   CONTAINER_RESTORE = 'container_restore',
-  CONTAINER_PERMANENT_DELETE =
-    'container_permanent_delete',
-  CONTAINER_STATUS_CHANGE =
-    'container_status_change',
+  CONTAINER_PERMANENT_DELETE = 'container_permanent_delete',
+  CONTAINER_STATUS_CHANGE = 'container_status_change',
 
   ITEM_CREATE = 'item_create',
   ITEM_UPDATE = 'item_update',
   ITEM_DELETE = 'item_delete',
   ITEM_RESTORE = 'item_restore',
-  ITEM_PERMANENT_DELETE =
-    'item_permanent_delete',
+  ITEM_PERMANENT_DELETE = 'item_permanent_delete',
 
   FILE_UPLOAD = 'file_upload',
   FILE_DELETE = 'file_delete',
@@ -68,18 +61,9 @@ export interface AuditMetadata {
 }
 
 @Entity('audit_logs')
-@Index(
-  'IDX_audit_logs_user_created',
-  ['userId', 'createdAt'],
-)
-@Index(
-  'IDX_audit_logs_action_created',
-  ['action', 'createdAt'],
-)
-@Index(
-  'IDX_audit_logs_status_created',
-  ['status', 'createdAt'],
-)
+@Index('IDX_audit_logs_user_created', ['userId', 'createdAt'])
+@Index('IDX_audit_logs_action_created', ['action', 'createdAt'])
+@Index('IDX_audit_logs_status_created', ['status', 'createdAt'])
 export class AuditLog {
   @ApiProperty()
   @PrimaryGeneratedColumn('uuid')
@@ -118,13 +102,10 @@ export class AuditLog {
     type: () => User,
     nullable: true,
   })
-  @ManyToOne(
-    () => User,
-    {
-      nullable: true,
-      onDelete: 'SET NULL',
-    },
-  )
+  @ManyToOne(() => User, {
+    nullable: true,
+    onDelete: 'SET NULL',
+  })
   @JoinColumn({
     name: 'userId',
   })
@@ -158,10 +139,7 @@ export class AuditLog {
     type: 'jsonb',
     nullable: true,
   })
-  changes?: Record<
-    string,
-    unknown
-  > | null;
+  changes?: Record<string, unknown> | null;
 
   @ApiPropertyOptional({
     type: Object,
@@ -188,14 +166,9 @@ export class AuditLog {
   })
   createdAt!: Date;
 
-  constructor(
-    partial?: Partial<AuditLog>,
-  ) {
+  constructor(partial?: Partial<AuditLog>) {
     if (partial) {
-      Object.assign(
-        this,
-        partial,
-      );
+      Object.assign(this, partial);
     }
   }
 }

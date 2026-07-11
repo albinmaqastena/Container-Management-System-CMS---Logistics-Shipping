@@ -1,11 +1,7 @@
 // src/health/health.controller.ts
 
 import { Controller, Get } from '@nestjs/common';
-import {
-  ApiOperation,
-  ApiResponse,
-  ApiTags,
-} from '@nestjs/swagger';
+import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 
 import { Public } from '../common/decorators/public.decorator';
 
@@ -30,8 +26,7 @@ export class HealthController {
     schema: {
       example: {
         status: 'ok',
-        timestamp:
-          '2026-07-11T12:00:00.000Z',
+        timestamp: '2026-07-11T12:00:00.000Z',
         environment: 'production',
         uptime: 123.45,
       },
@@ -40,11 +35,8 @@ export class HealthController {
   getHealth(): HealthResponse {
     return {
       status: 'ok',
-      timestamp:
-        new Date().toISOString(),
-      environment:
-        process.env.NODE_ENV ||
-        'development',
+      timestamp: new Date().toISOString(),
+      environment: process.env.NODE_ENV || 'development',
       uptime: process.uptime(),
     };
   }

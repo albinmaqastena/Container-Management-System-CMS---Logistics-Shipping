@@ -1,13 +1,7 @@
 // src/modules/containers/dto/create-container.dto.ts
 
-import {
-  ApiProperty,
-  ApiPropertyOptional,
-} from '@nestjs/swagger';
-import {
-  Transform,
-  Type,
-} from 'class-transformer';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { Transform, Type } from 'class-transformer';
 import {
   IsNotEmpty,
   IsNumber,
@@ -24,11 +18,7 @@ export class CreateContainerDto {
     example: 'Container Alpha',
     description: 'Unique container name',
   })
-  @Transform(({ value }) =>
-    typeof value === 'string'
-      ? value.trim()
-      : value,
-  )
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
   @IsString({
     message: 'Name must be a string',
   })
@@ -36,12 +26,10 @@ export class CreateContainerDto {
     message: 'Container name is required',
   })
   @MinLength(3, {
-    message:
-      'Container name must be at least 3 characters',
+    message: 'Container name must be at least 3 characters',
   })
   @MaxLength(100, {
-    message:
-      'Container name must not exceed 100 characters',
+    message: 'Container name must not exceed 100 characters',
   })
   customName!: string;
 
@@ -49,8 +37,7 @@ export class CreateContainerDto {
     example: 100,
     minimum: 0.01,
     maximum: 100000,
-    description:
-      'Total volume in cubic meters',
+    description: 'Total volume in cubic meters',
   })
   @Type(() => Number)
   @IsNumber(
@@ -60,39 +47,28 @@ export class CreateContainerDto {
       maxDecimalPlaces: 2,
     },
     {
-      message:
-        'Total volume must be a valid number with at most 2 decimal places',
+      message: 'Total volume must be a valid number with at most 2 decimal places',
     },
   )
   @Min(0.01, {
-    message:
-      'Total volume must be greater than 0',
+    message: 'Total volume must be greater than 0',
   })
   @Max(100000, {
-    message:
-      'Total volume must not exceed 100,000 cubic meters',
+    message: 'Total volume must not exceed 100,000 cubic meters',
   })
   totalVolume!: number;
 
   @ApiPropertyOptional({
-    example:
-      'Main storage container',
-    description:
-      'Optional container description',
+    example: 'Main storage container',
+    description: 'Optional container description',
   })
-  @Transform(({ value }) =>
-    typeof value === 'string'
-      ? value.trim()
-      : value,
-  )
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
   @IsOptional()
   @IsString({
-    message:
-      'Description must be a string',
+    message: 'Description must be a string',
   })
   @MaxLength(500, {
-    message:
-      'Description must not exceed 500 characters',
+    message: 'Description must not exceed 500 characters',
   })
   description?: string;
 }

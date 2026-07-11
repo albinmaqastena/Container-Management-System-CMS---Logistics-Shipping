@@ -13,20 +13,11 @@ describe('Auth E2E', () => {
 
   beforeAll(async () => {
     app = getApp();
-    superAdminToken =
-      await getAuthToken(
-        'admin@example.com',
-        'Admin@123',
-      );
+    superAdminToken = await getAuthToken('admin@example.com', 'Admin@123');
 
-    adminToken =
-      superAdminToken;
+    adminToken = superAdminToken;
 
-    userToken =
-      await getAuthToken(
-        'testuser@example.com',
-        'Password@123',
-      );
+    userToken = await getAuthToken('testuser@example.com', 'Password@123');
   });
 
   // ================================================================
@@ -59,10 +50,7 @@ describe('Auth E2E', () => {
       const uniqueEmail = `e2eadmin_${Date.now()}@example.com`;
       const response = await request(app.getHttpServer())
         .post('/v1/auth/register')
-        .set(
-          'Authorization',
-          `Bearer ${superAdminToken}`,
-        )
+        .set('Authorization', `Bearer ${superAdminToken}`)
         .send({
           username: `e2eadmin_${Date.now()}`,
           email: uniqueEmail,
@@ -226,38 +214,41 @@ describe('Auth E2E', () => {
         .expect(400);
     });
 
-    const rateLimitIt =
-      process.env.E2E_RATE_LIMIT === 'true' ? it : it.skip;
+    const rateLimitIt = process.env.E2E_RATE_LIMIT === 'true' ? it : it.skip;
 
-    rateLimitIt('should rate limit after 5 failed attempts', async () => {
-      const email = `ratelimit_${Date.now()}@example.com`;
-      const password = 'Password@123';
+    rateLimitIt(
+      'should rate limit after 5 failed attempts',
+      async () => {
+        const email = `ratelimit_${Date.now()}@example.com`;
+        const password = 'Password@123';
 
-      await request(app.getHttpServer())
-        .post('/v1/auth/register')
-        .set('Authorization', `Bearer ${adminToken}`)
-        .send({
-          username: `ratelimit_${Date.now()}`,
-          email,
-          password,
-          role: 'user',
-        })
-        .expect(201);
+        await request(app.getHttpServer())
+          .post('/v1/auth/register')
+          .set('Authorization', `Bearer ${adminToken}`)
+          .send({
+            username: `ratelimit_${Date.now()}`,
+            email,
+            password,
+            role: 'user',
+          })
+          .expect(201);
 
-      for (let i = 0; i < 5; i++) {
+        for (let i = 0; i < 5; i++) {
+          await request(app.getHttpServer())
+            .post('/v1/auth/login')
+            .send({ email, password: 'WrongPassword@123' })
+            .expect(401);
+        }
+
         await request(app.getHttpServer())
           .post('/v1/auth/login')
-          .send({ email, password: 'WrongPassword@123' })
-          .expect(401);
-      }
-
-      await request(app.getHttpServer())
-        .post('/v1/auth/login')
-        .send({ email, password: 'wrong' })
-        .expect((res) => {
-          expect([400, 429]).toContain(res.status);
-        });
-    }, 15000);
+          .send({ email, password: 'wrong' })
+          .expect((res) => {
+            expect([400, 429]).toContain(res.status);
+          });
+      },
+      15000,
+    );
   });
 
   // ================================================================
@@ -270,19 +261,12 @@ describe('Auth E2E', () => {
         .send({ refreshToken })
         .expect(200);
 
-      expect(response.body).toHaveProperty(
-        'accessToken',
-      );
-      expect(response.body).toHaveProperty(
-        'refreshToken',
-      );
+      expect(response.body).toHaveProperty('accessToken');
+      expect(response.body).toHaveProperty('refreshToken');
 
-      expect(
-        response.body.refreshToken,
-      ).not.toBe(refreshToken);
+      expect(response.body.refreshToken).not.toBe(refreshToken);
 
-      refreshToken =
-        response.body.refreshToken;
+      refreshToken = response.body.refreshToken;
     });
 
     it('should fail with invalid refresh token', async () => {
@@ -375,9 +359,7 @@ describe('Auth E2E', () => {
     });
 
     it('should fail without access token', async () => {
-      await request(app.getHttpServer())
-        .post('/v1/auth/logout-all')
-        .expect(401);
+      await request(app.getHttpServer()).post('/v1/auth/logout-all').expect(401);
     });
   });
 
@@ -406,9 +388,7 @@ describe('Auth E2E', () => {
     });
 
     it('should fail without token', async () => {
-      await request(app.getHttpServer())
-        .get('/v1/auth/sessions')
-        .expect(401);
+      await request(app.getHttpServer()).get('/v1/auth/sessions').expect(401);
     });
   });
 
@@ -431,9 +411,7 @@ describe('Auth E2E', () => {
     });
 
     it('should fail without token', async () => {
-      await request(app.getHttpServer())
-        .get('/v1/auth/me')
-        .expect(401);
+      await request(app.getHttpServer()).get('/v1/auth/me').expect(401);
     });
   });
 
@@ -642,35 +620,19 @@ describe('Auth E2E', () => {
           .set('Authorization', `Bearer ${superAdminToken}`)
           .expect(200);
 
-        expect(
-          Array.isArray(
-            response.body.data,
-          ),
-        ).toBe(true);
-        expect(
-          response.body,
-        ).toEqual(
+        expect(Array.isArray(response.body.data)).toBe(true);
+        expect(response.body).toEqual(
           expect.objectContaining({
-            total:
-              expect.any(Number),
+            total: expect.any(Number),
             limit: 100,
             offset: 0,
-            totalPages:
-              expect.any(Number),
+            totalPages: expect.any(Number),
             currentPage: 1,
-            hasMore:
-              expect.any(Boolean),
+            hasMore: expect.any(Boolean),
           }),
         );
 
-        const found =
-          response.body.data.some(
-            (user: {
-              id: string;
-            }) =>
-              user.id ===
-              deleteUserId,
-          );
+        const found = response.body.data.some((user: { id: string }) => user.id === deleteUserId);
         expect(found).toBe(true);
       });
 

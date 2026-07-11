@@ -8,17 +8,9 @@ import { FilesService } from './files.service';
 import fileConfig from '../../config/file.config';
 
 @Module({
-  imports: [
-    ConfigModule.forFeature(fileConfig),
-  ],
-  controllers: [
-    FilesController,
-  ],
-  providers: [
-    FilesService,
-  ],
-  exports: [
-    FilesService,
-  ],
+  imports: [ConfigModule.forFeature(fileConfig)],
+  controllers: [FilesController],
+  providers: [FilesService],
+  exports: [FilesService],
 })
 export class FilesModule {}

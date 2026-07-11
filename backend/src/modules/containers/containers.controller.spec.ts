@@ -9,15 +9,9 @@ import { CreateContainerDto } from './dto/create-container.dto';
 import { UpdateContainerDto } from './dto/update-container.dto';
 import { ContainerQueryDto } from './dto/container-query.dto';
 import { SearchContainerQueryDto } from './dto/search-container-query.dto';
-import {
-  Container,
-  ContainerStatus,
-} from './entities/container.entity';
+import { Container, ContainerStatus } from './entities/container.entity';
 import { User, UserRole } from '../auth/entities/user.entity';
-import {
-  PaginatedResponseDto,
-  PaginationDto,
-} from '../../common/dto/pagination.dto';
+import { PaginatedResponseDto, PaginationDto } from '../../common/dto/pagination.dto';
 
 describe('ContainersController', () => {
   let controller: ContainersController;
@@ -93,24 +87,14 @@ describe('ContainersController', () => {
       ],
     }).compile();
 
-    controller = module.get<ContainersController>(
-      ContainersController,
-    );
+    controller = module.get<ContainersController>(ContainersController);
     service = module.get(ContainersService);
 
     service.findAll.mockResolvedValue(createPaginatedResponse());
-    service.findActiveContainers.mockResolvedValue(
-      createPaginatedResponse(),
-    );
-    service.findArchivedContainers.mockResolvedValue(
-      createPaginatedResponse(),
-    );
-    service.searchContainers.mockResolvedValue(
-      createPaginatedResponse(),
-    );
-    service.findDeleted.mockResolvedValue(
-      createPaginatedResponse(),
-    );
+    service.findActiveContainers.mockResolvedValue(createPaginatedResponse());
+    service.findArchivedContainers.mockResolvedValue(createPaginatedResponse());
+    service.searchContainers.mockResolvedValue(createPaginatedResponse());
+    service.findDeleted.mockResolvedValue(createPaginatedResponse());
     service.softDelete.mockResolvedValue(undefined);
     service.permanentDelete.mockResolvedValue(undefined);
   });
@@ -129,26 +113,17 @@ describe('ContainersController', () => {
 
       service.create.mockResolvedValue(mockContainer);
 
-      const result = await controller.create(
-        dto,
-        mockRequest,
-      );
+      const result = await controller.create(dto, mockRequest);
 
       expect(result).toEqual(mockContainer);
-      expect(service.create).toHaveBeenCalledWith(
-        dto,
-        mockUser,
-      );
+      expect(service.create).toHaveBeenCalledWith(dto, mockUser);
     });
   });
 
   describe('findAll', () => {
     it('should return containers with pagination defaults', async () => {
       const query = {} as ContainerQueryDto;
-      const expected = createPaginatedResponse(
-        [mockContainer],
-        1,
-      );
+      const expected = createPaginatedResponse([mockContainer], 1);
       service.findAll.mockResolvedValue(expected);
 
       const result = await controller.findAll(query);
@@ -213,10 +188,7 @@ describe('ContainersController', () => {
         deletedAt: new Date(),
       } as Container;
 
-      const expected = createPaginatedResponse(
-        [deletedContainer],
-        1,
-      );
+      const expected = createPaginatedResponse([deletedContainer], 1);
       service.findDeleted.mockResolvedValue(expected);
 
       const query = {
@@ -247,9 +219,7 @@ describe('ContainersController', () => {
 
       await controller.getActiveContainers(query);
 
-      expect(
-        service.findActiveContainers,
-      ).toHaveBeenCalledWith(
+      expect(service.findActiveContainers).toHaveBeenCalledWith(
         expect.objectContaining({
           limit: 10,
           offset: 0,
@@ -267,9 +237,7 @@ describe('ContainersController', () => {
 
       await controller.getArchivedContainers(query);
 
-      expect(
-        service.findArchivedContainers,
-      ).toHaveBeenCalledWith(
+      expect(service.findArchivedContainers).toHaveBeenCalledWith(
         expect.objectContaining({
           limit: 10,
           offset: 0,
@@ -287,10 +255,7 @@ describe('ContainersController', () => {
         sort: 'createdAt:DESC',
       } as SearchContainerQueryDto;
 
-      const expected = createPaginatedResponse(
-        [mockContainer],
-        1,
-      );
+      const expected = createPaginatedResponse([mockContainer], 1);
       service.searchContainers.mockResolvedValue(expected);
 
       const result = await controller.searchContainers(query);
@@ -328,15 +293,10 @@ describe('ContainersController', () => {
     it('should return a container with includeDeleted defaulting to false', async () => {
       service.findOne.mockResolvedValue(mockContainer);
 
-      const result = await controller.findOne(
-        mockContainer.id,
-      );
+      const result = await controller.findOne(mockContainer.id);
 
       expect(result).toEqual(mockContainer);
-      expect(service.findOne).toHaveBeenCalledWith(
-        mockContainer.id,
-        false,
-      );
+      expect(service.findOne).toHaveBeenCalledWith(mockContainer.id, false);
     });
 
     it('should pass includeDeleted when provided', async () => {
@@ -344,10 +304,7 @@ describe('ContainersController', () => {
 
       await controller.findOne(mockContainer.id, true);
 
-      expect(service.findOne).toHaveBeenCalledWith(
-        mockContainer.id,
-        true,
-      );
+      expect(service.findOne).toHaveBeenCalledWith(mockContainer.id, true);
     });
   });
 
@@ -366,16 +323,10 @@ describe('ContainersController', () => {
 
       service.update.mockResolvedValue(expected);
 
-      const result = await controller.update(
-        mockContainer.id,
-        dto,
-      );
+      const result = await controller.update(mockContainer.id, dto);
 
       expect(result).toEqual(expected);
-      expect(service.update).toHaveBeenCalledWith(
-        mockContainer.id,
-        dto,
-      );
+      expect(service.update).toHaveBeenCalledWith(mockContainer.id, dto);
     });
   });
 
@@ -388,24 +339,15 @@ describe('ContainersController', () => {
 
       service.updateStatus.mockResolvedValue(expected);
 
-      const result = await controller.updateStatus(
-        mockContainer.id,
-        ContainerStatus.ARCHIVED,
-      );
+      const result = await controller.updateStatus(mockContainer.id, ContainerStatus.ARCHIVED);
 
       expect(result).toEqual(expected);
-      expect(service.updateStatus).toHaveBeenCalledWith(
-        mockContainer.id,
-        ContainerStatus.ARCHIVED,
-      );
+      expect(service.updateStatus).toHaveBeenCalledWith(mockContainer.id, ContainerStatus.ARCHIVED);
     });
 
     it('should throw for an invalid status', async () => {
       await expect(
-        controller.updateStatus(
-          mockContainer.id,
-          'invalid' as ContainerStatus,
-        ),
+        controller.updateStatus(mockContainer.id, 'invalid' as ContainerStatus),
       ).rejects.toThrow(BadRequestException);
 
       expect(service.updateStatus).not.toHaveBeenCalled();
@@ -413,10 +355,7 @@ describe('ContainersController', () => {
 
     it('should throw when status is missing', async () => {
       await expect(
-        controller.updateStatus(
-          mockContainer.id,
-          undefined as unknown as ContainerStatus,
-        ),
+        controller.updateStatus(mockContainer.id, undefined as unknown as ContainerStatus),
       ).rejects.toThrow(BadRequestException);
 
       expect(service.updateStatus).not.toHaveBeenCalled();
@@ -427,9 +366,7 @@ describe('ContainersController', () => {
     it('should soft delete a container', async () => {
       await controller.remove(mockContainer.id);
 
-      expect(service.softDelete).toHaveBeenCalledWith(
-        mockContainer.id,
-      );
+      expect(service.softDelete).toHaveBeenCalledWith(mockContainer.id);
     });
   });
 
@@ -437,14 +374,10 @@ describe('ContainersController', () => {
     it('should restore a container', async () => {
       service.restore.mockResolvedValue(mockContainer);
 
-      const result = await controller.restore(
-        mockContainer.id,
-      );
+      const result = await controller.restore(mockContainer.id);
 
       expect(result).toEqual(mockContainer);
-      expect(service.restore).toHaveBeenCalledWith(
-        mockContainer.id,
-      );
+      expect(service.restore).toHaveBeenCalledWith(mockContainer.id);
     });
   });
 
@@ -452,9 +385,7 @@ describe('ContainersController', () => {
     it('should permanently delete a container', async () => {
       await controller.permanentDelete(mockContainer.id);
 
-      expect(
-        service.permanentDelete,
-      ).toHaveBeenCalledWith(mockContainer.id);
+      expect(service.permanentDelete).toHaveBeenCalledWith(mockContainer.id);
     });
   });
 });

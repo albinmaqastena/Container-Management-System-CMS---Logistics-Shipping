@@ -294,7 +294,6 @@ describe('Containers E2E', () => {
         .set('Authorization', `Bearer ${adminToken}`)
         .expect(204);
 
-
       const deletedCheck = await request(app.getHttpServer())
         .get(`/v1/containers/${container.body.id}?includeDeleted=true`)
         .set('Authorization', `Bearer ${adminToken}`)
@@ -306,7 +305,9 @@ describe('Containers E2E', () => {
         .set('Authorization', `Bearer ${adminToken}`)
         .expect(200);
 
-      const found = response.body.data.some((c: any) => c.id === container.body.id && c.deletedAt !== null);
+      const found = response.body.data.some(
+        (c: any) => c.id === container.body.id && c.deletedAt !== null,
+      );
       expect(found).toBe(true);
     });
 
@@ -408,7 +409,6 @@ describe('Containers E2E', () => {
         .set('Authorization', `Bearer ${adminToken}`)
         .expect(204);
 
-
       const deletedCheck = await request(app.getHttpServer())
         .get(`/v1/containers/${container.body.id}?includeDeleted=true`)
         .set('Authorization', `Bearer ${adminToken}`)
@@ -433,9 +433,7 @@ describe('Containers E2E', () => {
     });
 
     it('should fail without token', async () => {
-      await request(app.getHttpServer())
-        .get('/v1/containers/deleted')
-        .expect(401);
+      await request(app.getHttpServer()).get('/v1/containers/deleted').expect(401);
     });
   });
 
@@ -853,9 +851,7 @@ describe('Containers E2E', () => {
         })
         .expect(201);
 
-      await request(app.getHttpServer())
-        .delete(`/v1/containers/${container.body.id}`)
-        .expect(401);
+      await request(app.getHttpServer()).delete(`/v1/containers/${container.body.id}`).expect(401);
     });
   });
 

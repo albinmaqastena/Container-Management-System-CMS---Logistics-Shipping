@@ -41,42 +41,25 @@ const DEFAULT_ALLOWED_MIME_TYPES = [
 ];
 
 @Injectable()
-export class FileValidationInterceptor
-  implements NestInterceptor
-{
+export class FileValidationInterceptor implements NestInterceptor {
   private readonly maxFileSize: number;
   private readonly allowedMimeTypes: Set<string>;
 
-  constructor(
-    private readonly configService: ConfigService,
-  ) {
-    const fileConfig =
-      this.configService.get<FileValidationConfig>(
-        'file',
-      );
+  constructor(private readonly configService: ConfigService) {
+    const fileConfig = this.configService.get<FileValidationConfig>('file');
 
-    this.maxFileSize =
-      fileConfig?.upload?.maxFileSize ??
-      10 * 1024 * 1024;
-      
+    this.maxFileSize = fileConfig?.upload?.maxFileSize ?? 10 * 1024 * 1024;
+
     this.allowedMimeTypes = new Set([
       ...DEFAULT_ALLOWED_MIME_TYPES,
       ...(fileConfig?.upload?.allowedMimeTypes ?? []),
     ]);
   }
 
-  intercept(
-    context: ExecutionContext,
-    next: CallHandler,
-  ): Observable<unknown> {
-    const request =
-      context
-        .switchToHttp()
-        .getRequest<MultipartRequest>();
+  intercept(context: ExecutionContext, next: CallHandler): Observable<unknown> {
+    const request = context.switchToHttp().getRequest<MultipartRequest>();
 
-    const files = this.extractFiles(
-      request,
-    );
+    const files = this.extractFiles(request);
 
     // Missing files are handled by the controller.
     if (files.length === 0) {
@@ -90,9 +73,7 @@ export class FileValidationInterceptor
     return next.handle();
   }
 
-  private extractFiles(
-    request: MultipartRequest,
-  ): MulterFile[] {
+  private extractFiles(request: MultipartRequest): MulterFile[] {
     if (request.file) {
       return [request.file];
     }
@@ -101,29 +82,16 @@ export class FileValidationInterceptor
       return request.files;
     }
 
-    if (
-      request.files &&
-      typeof request.files === 'object'
-    ) {
-      return Object.values(
-        request.files,
-      ).flat();
+    if (request.files && typeof request.files === 'object') {
+      return Object.values(request.files).flat();
     }
 
     return [];
   }
 
-  private validateFile(
-    file: MulterFile,
-  ): void {
-    if (
-      !file.buffer ||
-      file.buffer.length === 0 ||
-      file.size === 0
-    ) {
-      throw new BadRequestException(
-        `File "${file.originalname}" is empty`,
-      );
+  private validateFile(file: MulterFile): void {
+    if (!file.buffer || file.buffer.length === 0 || file.size === 0) {
+      throw new BadRequestException(`File "${file.originalname}" is empty`);
     }
 
     if (file.size > this.maxFileSize) {
@@ -132,30 +100,14 @@ export class FileValidationInterceptor
       );
     }
 
-    const normalizedMimeType =
-      file.mimetype
-        ?.split(';')[0]
-        .trim()
-        .toLowerCase();
+    const normalizedMimeType = file.mimetype?.split(';')[0].trim().toLowerCase();
 
-    if (
-      !normalizedMimeType ||
-      !this.allowedMimeTypes.has(
-        normalizedMimeType,
-      )
-    ) {
-      throw new BadRequestException(
-        `File type "${file.mimetype}" is not allowed`,
-      );
+    if (!normalizedMimeType || !this.allowedMimeTypes.has(normalizedMimeType)) {
+      throw new BadRequestException(`File type "${file.mimetype}" is not allowed`);
     }
 
-    if (
-      !file.originalname ||
-      file.originalname.length > 255
-    ) {
-      throw new BadRequestException(
-        'Invalid file name',
-      );
+    if (!file.originalname || file.originalname.length > 255) {
+      throw new BadRequestException('Invalid file name');
     }
   }
 }

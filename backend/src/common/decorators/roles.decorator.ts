@@ -5,7 +5,5 @@ import { UserRole } from '../../modules/auth/entities/user.entity';
 
 export const ROLES_KEY = 'roles';
 
-export const Roles = (
-  ...roles: UserRole[]
-): MethodDecorator & ClassDecorator =>
+export const Roles = (...roles: UserRole[]): MethodDecorator & ClassDecorator =>
   SetMetadata(ROLES_KEY, roles);

@@ -2,18 +2,12 @@
 
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
-import {
-  IsOptional,
-  IsString,
-  Matches,
-  MaxLength,
-} from 'class-validator';
+import { IsOptional, IsString, Matches, MaxLength } from 'class-validator';
 
 export class FileUploadDto {
   @ApiPropertyOptional({
     example: 'items/photos',
-    description:
-      'Optional relative folder inside the configured upload directory',
+    description: 'Optional relative folder inside the configured upload directory',
   })
   @Transform(({ value }) => {
     if (typeof value !== 'string') {
@@ -32,15 +26,10 @@ export class FileUploadDto {
     message: 'Folder must be a string',
   })
   @MaxLength(150, {
-    message:
-      'Folder must not exceed 150 characters',
+    message: 'Folder must not exceed 150 characters',
   })
-  @Matches(
-    /^(?!.*(?:^|\/)\.{1,2}(?:\/|$))[a-zA-Z0-9_.-]+(?:\/[a-zA-Z0-9_.-]+)*$/,
-    {
-      message:
-        'Folder may only contain valid folder names separated by forward slashes',
-    },
-  )
+  @Matches(/^(?!.*(?:^|\/)\.{1,2}(?:\/|$))[a-zA-Z0-9_.-]+(?:\/[a-zA-Z0-9_.-]+)*$/, {
+    message: 'Folder may only contain valid folder names separated by forward slashes',
+  })
   folder?: string;
 }

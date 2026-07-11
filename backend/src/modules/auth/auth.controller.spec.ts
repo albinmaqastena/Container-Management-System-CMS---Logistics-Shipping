@@ -43,9 +43,7 @@ describe('AuthController', () => {
 
   const mockUser = createMockUser();
 
-  const createAuthenticatedRequest = (
-    user: User = mockUser,
-  ) =>
+  const createAuthenticatedRequest = (user: User = mockUser) =>
     ({
       user,
       headers: {},
@@ -144,11 +142,7 @@ describe('AuthController', () => {
 
       const result = await controller.login(loginDto, req);
 
-      expect(authService.login).toHaveBeenCalledWith(
-        loginDto,
-        req.ip,
-        req.headers['user-agent'],
-      );
+      expect(authService.login).toHaveBeenCalledWith(loginDto, req.ip, req.headers['user-agent']);
       expect(result).toBe(mockAuthResponse);
       // ✅ Refresh token duhet të jetë i definuar (nuk lidhet me vlerë specifike)
       expect(result.refreshToken).toBeDefined();

@@ -6,11 +6,7 @@ import { AuditAction } from '../entities/audit-log.entity';
 export const SKIP_AUDIT_KEY = 'skipAudit';
 export const AUDIT_ACTION_KEY = 'auditAction';
 
-export const SkipAudit =
-  (): MethodDecorator & ClassDecorator =>
-    SetMetadata(SKIP_AUDIT_KEY, true);
+export const SkipAudit = (): MethodDecorator & ClassDecorator => SetMetadata(SKIP_AUDIT_KEY, true);
 
-export const Audit = (
-  action: AuditAction,
-): MethodDecorator & ClassDecorator =>
+export const Audit = (action: AuditAction): MethodDecorator & ClassDecorator =>
   SetMetadata(AUDIT_ACTION_KEY, action);

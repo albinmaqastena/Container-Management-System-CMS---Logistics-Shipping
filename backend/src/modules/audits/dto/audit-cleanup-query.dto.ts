@@ -2,12 +2,7 @@
 
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import {
-  IsInt,
-  IsOptional,
-  Max,
-  Min,
-} from 'class-validator';
+import { IsInt, IsOptional, Max, Min } from 'class-validator';
 
 export class AuditCleanupQueryDto {
   @ApiPropertyOptional({
@@ -15,8 +10,7 @@ export class AuditCleanupQueryDto {
     minimum: 1,
     maximum: 3650,
     default: 90,
-    description:
-      'Delete audit logs older than this number of days',
+    description: 'Delete audit logs older than this number of days',
   })
   @IsOptional()
   @Type(() => Number)

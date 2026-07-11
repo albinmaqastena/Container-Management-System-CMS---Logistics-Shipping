@@ -1,12 +1,6 @@
 // src/common/interceptors/audit-log.interceptor.ts
 
-import {
-  CallHandler,
-  ExecutionContext,
-  Injectable,
-  Logger,
-  NestInterceptor,
-} from '@nestjs/common';
+import { CallHandler, ExecutionContext, Injectable, Logger, NestInterceptor } from '@nestjs/common';
 import { Observable, tap } from 'rxjs';
 
 interface AuditRequest {
@@ -26,34 +20,19 @@ interface AuditRequest {
 }
 
 @Injectable()
-export class AuditLogInterceptor
-  implements NestInterceptor
-{
-  private readonly logger =
-    new Logger(AuditLogInterceptor.name);
+export class AuditLogInterceptor implements NestInterceptor {
+  private readonly logger = new Logger(AuditLogInterceptor.name);
 
-  intercept(
-    context: ExecutionContext,
-    next: CallHandler,
-  ): Observable<unknown> {
-    const request =
-      context
-        .switchToHttp()
-        .getRequest<AuditRequest>();
+  intercept(context: ExecutionContext, next: CallHandler): Observable<unknown> {
+    const request = context.switchToHttp().getRequest<AuditRequest>();
 
     const method = request.method;
-    const url =
-      request.originalUrl ||
-      request.url;
+    const url = request.originalUrl || request.url;
 
     const user = request.user;
     const startedAt = Date.now();
 
-    const shouldLog =
-      Boolean(user) &&
-      ['POST', 'PUT', 'PATCH', 'DELETE'].includes(
-        method,
-      );
+    const shouldLog = Boolean(user) && ['POST', 'PUT', 'PATCH', 'DELETE'].includes(method);
 
     if (shouldLog) {
       this.logger.log(
@@ -62,14 +41,9 @@ export class AuditLogInterceptor
           userId: user?.id,
           email: user?.email,
           role: user?.role,
-          ip:
-            request.ip ||
-            request.socket?.remoteAddress,
-          timestamp:
-            new Date().toISOString(),
-          data: this.sanitizeBody(
-            request.body,
-          ),
+          ip: request.ip || request.socket?.remoteAddress,
+          timestamp: new Date().toISOString(),
+          data: this.sanitizeBody(request.body),
         }),
       );
     }
@@ -86,8 +60,7 @@ export class AuditLogInterceptor
               action: `${method} ${url}`,
               userId: user?.id,
               status: 'success',
-              duration:
-                Date.now() - startedAt,
+              duration: Date.now() - startedAt,
             }),
           );
         },
@@ -98,12 +71,8 @@ export class AuditLogInterceptor
               userId: user?.id,
               email: user?.email,
               status: 'failed',
-              duration:
-                Date.now() - startedAt,
-              error:
-                error instanceof Error
-                  ? error.message
-                  : 'Unknown error',
+              duration: Date.now() - startedAt,
+              error: error instanceof Error ? error.message : 'Unknown error',
             }),
           );
         },
@@ -111,9 +80,7 @@ export class AuditLogInterceptor
     );
   }
 
-  private sanitizeBody(
-    body?: Record<string, unknown>,
-  ): Record<string, unknown> | undefined {
+  private sanitizeBody(body?: Record<string, unknown>): Record<string, unknown> | undefined {
     if (!body) {
       return undefined;
     }
@@ -128,11 +95,6 @@ export class AuditLogInterceptor
       'resetPasswordToken',
     ]);
 
-    return Object.fromEntries(
-      Object.entries(body).filter(
-        ([key]) =>
-          !sensitiveKeys.has(key),
-      ),
-    );
+    return Object.fromEntries(Object.entries(body).filter(([key]) => !sensitiveKeys.has(key)));
   }
 }

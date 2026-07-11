@@ -19,11 +19,7 @@ export class AuthResponseDto {
   })
   refreshToken?: string;
 
-  constructor(
-    accessToken: string,
-    user: Partial<UserResponseDto>,
-    refreshToken?: string,
-  ) {
+  constructor(accessToken: string, user: Partial<UserResponseDto>, refreshToken?: string) {
     this.accessToken = accessToken;
     this.user = user;
     this.refreshToken = refreshToken;

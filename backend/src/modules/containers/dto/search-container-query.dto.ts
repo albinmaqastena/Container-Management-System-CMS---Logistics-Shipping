@@ -10,9 +10,7 @@ export class SearchContainerQueryDto extends PaginationDto {
     example: 'Container Alpha',
     description: 'Search text for container name, code or description',
   })
-  @Transform(({ value }) =>
-    typeof value === 'string' ? value.trim() : value,
-  )
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
   @IsString({ message: 'Query must be a string' })
   @IsNotEmpty({ message: 'Query parameter is required' })
   @MaxLength(200, {

@@ -1,9 +1,6 @@
 // src/modules/audits/audit.module.ts
 
-import {
-  Global,
-  Module,
-} from '@nestjs/common';
+import { Global, Module } from '@nestjs/common';
 import { APP_INTERCEPTOR } from '@nestjs/core';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
@@ -14,25 +11,15 @@ import { AuditLog } from './entities/audit-log.entity';
 
 @Global()
 @Module({
-  imports: [
-    TypeOrmModule.forFeature([
-      AuditLog,
-    ]),
-  ],
-  controllers: [
-    AuditController,
-  ],
+  imports: [TypeOrmModule.forFeature([AuditLog])],
+  controllers: [AuditController],
   providers: [
     AuditService,
     {
-      provide:
-        APP_INTERCEPTOR,
-      useClass:
-        AuditInterceptor,
+      provide: APP_INTERCEPTOR,
+      useClass: AuditInterceptor,
     },
   ],
-  exports: [
-    AuditService,
-  ],
+  exports: [AuditService],
 })
 export class AuditModule {}

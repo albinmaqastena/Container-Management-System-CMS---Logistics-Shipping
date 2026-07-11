@@ -10,10 +10,7 @@ import { Item } from '../items/entities/item.entity';
 import { User } from '../auth/entities/user.entity';
 import { CreateContainerDto } from './dto/create-container.dto';
 import { UpdateContainerDto } from './dto/update-container.dto';
-import {
-  PaginatedResponseDto,
-  PaginationDto,
-} from '../../common/dto/pagination.dto';
+import { PaginatedResponseDto, PaginationDto } from '../../common/dto/pagination.dto';
 
 describe('ContainersService', () => {
   let service: ContainersService;
@@ -136,10 +133,9 @@ describe('ContainersService', () => {
       const result = await service.create(dto, mockUser);
 
       expect(uniqueNameQuery.withDeleted).toHaveBeenCalled();
-      expect(uniqueNameQuery.where).toHaveBeenCalledWith(
-        'LOWER(container.name) = LOWER(:name)',
-        { name: 'Test Container' },
-      );
+      expect(uniqueNameQuery.where).toHaveBeenCalledWith('LOWER(container.name) = LOWER(:name)', {
+        name: 'Test Container',
+      });
       expect(repository.save).toHaveBeenCalledWith(
         expect.objectContaining({
           name: 'Test Container',
@@ -159,16 +155,14 @@ describe('ContainersService', () => {
       queryBuilder.getOne.mockResolvedValue(createContainer());
       repository.createQueryBuilder.mockReturnValue(queryBuilder);
 
-      await expect(service.create(dto, mockUser)).rejects.toThrow(
-        BadRequestException,
-      );
+      await expect(service.create(dto, mockUser)).rejects.toThrow(BadRequestException);
       expect(repository.save).not.toHaveBeenCalled();
     });
 
     it('rejects an invalid total volume', async () => {
-      await expect(
-        service.create({ ...dto, totalVolume: 0 }, mockUser),
-      ).rejects.toThrow(BadRequestException);
+      await expect(service.create({ ...dto, totalVolume: 0 }, mockUser)).rejects.toThrow(
+        BadRequestException,
+      );
     });
   });
 
@@ -190,14 +184,7 @@ describe('ContainersService', () => {
       const pagination: PaginationDto = { limit: 10, offset: 0 };
       const spy = jest
         .spyOn(service, 'findAll')
-        .mockResolvedValue(
-          new PaginatedResponseDto<Container>(
-            [],
-            0,
-            10,
-            0,
-          ),
-        );
+        .mockResolvedValue(new PaginatedResponseDto<Container>([], 0, 10, 0));
 
       await service.findActiveContainers(pagination);
       await service.findArchivedContainers(pagination);
@@ -247,9 +234,7 @@ describe('ContainersService', () => {
       cacheManager.get.mockResolvedValue(null);
       repository.findOne.mockResolvedValue(null);
 
-      await expect(service.findOne('missing')).rejects.toThrow(
-        NotFoundException,
-      );
+      await expect(service.findOne('missing')).rejects.toThrow(NotFoundException);
     });
   });
 
@@ -271,10 +256,9 @@ describe('ContainersService', () => {
       };
       const result = await service.update(container.id, dto);
 
-      expect(uniqueNameQuery.andWhere).toHaveBeenCalledWith(
-        'container.id != :excludeId',
-        { excludeId: container.id },
-      );
+      expect(uniqueNameQuery.andWhere).toHaveBeenCalledWith('container.id != :excludeId', {
+        excludeId: container.id,
+      });
       expect(repository.save).toHaveBeenCalledWith(
         expect.objectContaining({
           name: 'Updated Name',
@@ -298,14 +282,9 @@ describe('ContainersService', () => {
     it('loads without cache, saves the new status, and clears cache', async () => {
       const container = createContainer();
       jest.spyOn(service, 'findOneWithoutCache').mockResolvedValue(container);
-      repository.save.mockResolvedValue(
-        createContainer({ status: ContainerStatus.ARCHIVED }),
-      );
+      repository.save.mockResolvedValue(createContainer({ status: ContainerStatus.ARCHIVED }));
 
-      const result = await service.updateStatus(
-        container.id,
-        ContainerStatus.ARCHIVED,
-      );
+      const result = await service.updateStatus(container.id, ContainerStatus.ARCHIVED);
 
       expect(repository.save).toHaveBeenCalledWith(
         expect.objectContaining({ status: ContainerStatus.ARCHIVED }),
@@ -328,9 +307,7 @@ describe('ContainersService', () => {
         softDelete: jest.fn().mockResolvedValue({ affected: 1 }),
       };
       const manager = {
-        getRepository: jest.fn((entity) =>
-          entity === Container ? containerRepo : itemRepo,
-        ),
+        getRepository: jest.fn((entity) => (entity === Container ? containerRepo : itemRepo)),
       };
       dataSource.transaction.mockImplementation(async (callback) => callback(manager));
 
@@ -361,14 +338,10 @@ describe('ContainersService', () => {
         createQueryBuilder: jest.fn(() => itemVolumeQuery),
       };
       const manager = {
-        getRepository: jest.fn((entity) =>
-          entity === Container ? containerRepo : itemRepo,
-        ),
+        getRepository: jest.fn((entity) => (entity === Container ? containerRepo : itemRepo)),
       };
       dataSource.transaction.mockImplementation(async (callback) => callback(manager));
-      jest.spyOn(service, 'findOne').mockResolvedValue(
-        createContainer({ usedVolume: 40 }),
-      );
+      jest.spyOn(service, 'findOne').mockResolvedValue(createContainer({ usedVolume: 40 }));
 
       const result = await service.restore(deletedContainer.id);
 
@@ -396,9 +369,7 @@ describe('ContainersService', () => {
       };
       dataSource.transaction.mockImplementation(async (callback) => callback(manager));
 
-      await expect(service.restore(deletedContainer.id)).rejects.toThrow(
-        BadRequestException,
-      );
+      await expect(service.restore(deletedContainer.id)).rejects.toThrow(BadRequestException);
     });
 
     it('permanently deletes child items before the container', async () => {
@@ -413,9 +384,7 @@ describe('ContainersService', () => {
         createQueryBuilder: jest.fn(() => itemDeleteQuery),
       };
       const manager = {
-        getRepository: jest.fn((entity) =>
-          entity === Container ? containerRepo : itemRepo,
-        ),
+        getRepository: jest.fn((entity) => (entity === Container ? containerRepo : itemRepo)),
       };
       dataSource.transaction.mockImplementation(async (callback) => callback(manager));
 
@@ -473,9 +442,7 @@ describe('ContainersService', () => {
         .spyOn(service, 'findOneWithoutCache')
         .mockResolvedValue(createContainer({ totalVolume: 100 }));
 
-      await expect(service.updateUsedVolume('container-1')).rejects.toThrow(
-        BadRequestException,
-      );
+      await expect(service.updateUsedVolume('container-1')).rejects.toThrow(BadRequestException);
       expect(repository.update).not.toHaveBeenCalled();
     });
   });

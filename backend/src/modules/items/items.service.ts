@@ -5,24 +5,18 @@ import {
   BadRequestException,
   ConflictException,
   Inject,
-} from "@nestjs/common";
-import { InjectRepository } from "@nestjs/typeorm";
-import { DataSource, EntityManager, Repository, IsNull } from "typeorm";
-import { CACHE_MANAGER } from "@nestjs/cache-manager";
-import type { Cache } from "cache-manager";
-import { Item } from "./entities/item.entity";
-import { Container } from "../containers/entities/container.entity";
-import { CreateItemDto } from "./dto/create-item.dto";
-import { UpdateItemDto } from "./dto/update-item.dto";
-import { ContainersService } from "../containers/containers.service";
-import {
-  PaginationDto,
-  PaginatedResponseDto,
-} from "../../common/dto/pagination.dto";
-import {
-  buildSortObject,
-  ALLOWED_SORT_FIELDS,
-} from "../../common/utils/sort.utils";
+} from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { DataSource, EntityManager, Repository, IsNull } from 'typeorm';
+import { CACHE_MANAGER } from '@nestjs/cache-manager';
+import type { Cache } from 'cache-manager';
+import { Item } from './entities/item.entity';
+import { Container } from '../containers/entities/container.entity';
+import { CreateItemDto } from './dto/create-item.dto';
+import { UpdateItemDto } from './dto/update-item.dto';
+import { ContainersService } from '../containers/containers.service';
+import { PaginationDto, PaginatedResponseDto } from '../../common/dto/pagination.dto';
+import { buildSortObject, ALLOWED_SORT_FIELDS } from '../../common/utils/sort.utils';
 
 @Injectable()
 export class ItemsService {
@@ -46,10 +40,10 @@ export class ItemsService {
   ): Promise<number> {
     const result = await manager
       .getRepository(Item)
-      .createQueryBuilder("item")
-      .select("COALESCE(SUM(item.totalVolume), 0)", "sum")
-      .where("item.containerId = :containerId", { containerId })
-      .andWhere("item.deletedAt IS NULL")
+      .createQueryBuilder('item')
+      .select('COALESCE(SUM(item.totalVolume), 0)', 'sum')
+      .where('item.containerId = :containerId', { containerId })
+      .andWhere('item.deletedAt IS NULL')
       .getRawOne<{ sum: string }>();
 
     const usedVolume = Number(result?.sum) || 0;
@@ -65,29 +59,29 @@ export class ItemsService {
     await this.dataSource.transaction(async (manager) => {
       const container = await manager
         .getRepository(Container)
-        .createQueryBuilder("container")
-        .setLock("pessimistic_write")
-        .where("container.id = :id", { id: createItemDto.containerId })
-        .andWhere("container.deletedAt IS NULL")
+        .createQueryBuilder('container')
+        .setLock('pessimistic_write')
+        .where('container.id = :id', { id: createItemDto.containerId })
+        .andWhere('container.deletedAt IS NULL')
         .getOne();
 
       if (!container) {
-        throw new NotFoundException("Container not found");
+        throw new NotFoundException('Container not found');
       }
 
       const totalVolume = createItemDto.packageQuantity * createItemDto.volume;
       if (totalVolume <= 0) {
         throw new BadRequestException(
-          "Invalid volume calculation. Please check packageQuantity and volume.",
+          'Invalid volume calculation. Please check packageQuantity and volume.',
         );
       }
 
       const currentUsedVolume = await manager
         .getRepository(Item)
-        .createQueryBuilder("item")
-        .select("COALESCE(SUM(item.totalVolume), 0)", "sum")
-        .where("item.containerId = :containerId", { containerId: container.id })
-        .andWhere("item.deletedAt IS NULL")
+        .createQueryBuilder('item')
+        .select('COALESCE(SUM(item.totalVolume), 0)', 'sum')
+        .where('item.containerId = :containerId', { containerId: container.id })
+        .andWhere('item.deletedAt IS NULL')
         .getRawOne<{ sum: string }>();
 
       const usedVolume = Number(currentUsedVolume?.sum) || 0;
@@ -114,7 +108,7 @@ export class ItemsService {
       try {
         createdItem = await manager.getRepository(Item).save(item);
       } catch (error: any) {
-        if (error?.code === "23505") {
+        if (error?.code === '23505') {
           throw new ConflictException(
             `Item with uniqueNumber "${createItemDto.uniqueNumber}" already exists.`,
           );
@@ -141,43 +135,33 @@ export class ItemsService {
     const sort = paginationDto.sort;
 
     const queryBuilder = this.itemRepository
-      .createQueryBuilder("item")
-      .leftJoinAndSelect("item.container", "container");
+      .createQueryBuilder('item')
+      .leftJoinAndSelect('item.container', 'container');
 
     if (includeDeleted) {
       queryBuilder.withDeleted();
     } else {
-      queryBuilder.where("item.deletedAt IS NULL");
+      queryBuilder.where('item.deletedAt IS NULL');
     }
 
     if (containerId) {
-      queryBuilder.andWhere("item.containerId = :containerId", { containerId });
+      queryBuilder.andWhere('item.containerId = :containerId', { containerId });
     }
 
-    const sortObject = buildSortObject(
-      sort,
-      ALLOWED_SORT_FIELDS.items,
-    );
+    const sortObject = buildSortObject(sort, ALLOWED_SORT_FIELDS.items);
 
-    Object.entries(sortObject).forEach(
-      ([key, direction]) => {
-        if (key === 'deletedAt') {
-          queryBuilder.addOrderBy(
-            `item.${key}`,
-            direction,
-            direction === 'DESC'
-              ? 'NULLS LAST'
-              : 'NULLS FIRST',
-          );
-          return;
-        }
-
+    Object.entries(sortObject).forEach(([key, direction]) => {
+      if (key === 'deletedAt') {
         queryBuilder.addOrderBy(
           `item.${key}`,
           direction,
+          direction === 'DESC' ? 'NULLS LAST' : 'NULLS FIRST',
         );
-      },
-    );
+        return;
+      }
+
+      queryBuilder.addOrderBy(`item.${key}`, direction);
+    });
 
     queryBuilder.skip(offset).take(limit);
 
@@ -196,15 +180,15 @@ export class ItemsService {
     const sort = paginationDto.sort;
 
     const queryBuilder = this.itemRepository
-      .createQueryBuilder("item")
-      .leftJoinAndSelect("item.container", "container")
-      .where("item.deletedAt IS NULL")
-      .andWhere("(item.name ILIKE :query OR item.uniqueNumber ILIKE :query)", {
+      .createQueryBuilder('item')
+      .leftJoinAndSelect('item.container', 'container')
+      .where('item.deletedAt IS NULL')
+      .andWhere('(item.name ILIKE :query OR item.uniqueNumber ILIKE :query)', {
         query: `%${query.trim()}%`,
       });
 
     if (containerId) {
-      queryBuilder.andWhere("item.containerId = :containerId", { containerId });
+      queryBuilder.andWhere('item.containerId = :containerId', { containerId });
     }
 
     const sortObject = buildSortObject(sort, ALLOWED_SORT_FIELDS.items);
@@ -227,24 +211,22 @@ export class ItemsService {
     });
 
     if (!item) {
-      throw new NotFoundException("Item not found");
+      throw new NotFoundException('Item not found');
     }
 
     return item;
   }
 
-  async findDeleted(
-    paginationDto: PaginationDto,
-  ): Promise<PaginatedResponseDto<Item>> {
+  async findDeleted(paginationDto: PaginationDto): Promise<PaginatedResponseDto<Item>> {
     const limit = paginationDto.limit ?? 10;
     const offset = paginationDto.offset ?? 0;
     const sort = paginationDto.sort;
 
     const queryBuilder = this.itemRepository
-      .createQueryBuilder("item")
+      .createQueryBuilder('item')
       .withDeleted()
-      .leftJoinAndSelect("item.container", "container")
-      .where("item.deletedAt IS NOT NULL");
+      .leftJoinAndSelect('item.container', 'container')
+      .where('item.deletedAt IS NOT NULL');
 
     const sortObject = buildSortObject(sort, ALLOWED_SORT_FIELDS.items);
     Object.keys(sortObject).forEach((key) => {
@@ -268,59 +250,52 @@ export class ItemsService {
       // is applied to the nullable side of a LEFT JOIN.
       const item = await manager
         .getRepository(Item)
-        .createQueryBuilder("item")
-        .setLock("pessimistic_write")
-        .where("item.id = :id", { id })
-        .andWhere("item.deletedAt IS NULL")
+        .createQueryBuilder('item')
+        .setLock('pessimistic_write')
+        .where('item.id = :id', { id })
+        .andWhere('item.deletedAt IS NULL')
         .getOne();
 
       if (!item) {
-        throw new NotFoundException("Item not found");
+        throw new NotFoundException('Item not found');
       }
 
       const container = await manager
         .getRepository(Container)
-        .createQueryBuilder("container")
-        .setLock("pessimistic_write")
-        .where("container.id = :containerId", { containerId: item.containerId })
+        .createQueryBuilder('container')
+        .setLock('pessimistic_write')
+        .where('container.id = :containerId', { containerId: item.containerId })
         .withDeleted()
         .getOne();
 
       if (!container || container.deletedAt) {
-        throw new BadRequestException(
-          "Cannot update an item in a deleted container",
-        );
+        throw new BadRequestException('Cannot update an item in a deleted container');
       }
 
-      if (updateItemDto.uniqueNumber !== undefined)
-        item.uniqueNumber = updateItemDto.uniqueNumber;
+      if (updateItemDto.uniqueNumber !== undefined) item.uniqueNumber = updateItemDto.uniqueNumber;
       if (updateItemDto.name !== undefined) item.name = updateItemDto.name;
       if (updateItemDto.photo !== undefined) item.photo = updateItemDto.photo;
       if (updateItemDto.packageQuantity !== undefined)
         item.packageQuantity = updateItemDto.packageQuantity;
       if (updateItemDto.productsPerPackage !== undefined)
         item.productsPerPackage = updateItemDto.productsPerPackage;
-      if (updateItemDto.packagePrice !== undefined)
-        item.packagePrice = updateItemDto.packagePrice;
-      if (updateItemDto.volume !== undefined)
-        item.volume = updateItemDto.volume;
+      if (updateItemDto.packagePrice !== undefined) item.packagePrice = updateItemDto.packagePrice;
+      if (updateItemDto.volume !== undefined) item.volume = updateItemDto.volume;
 
       item.totalVolume = item.packageQuantity * item.volume;
       if (item.totalVolume <= 0) {
-        throw new BadRequestException(
-          "Item total volume must be greater than 0",
-        );
+        throw new BadRequestException('Item total volume must be greater than 0');
       }
 
       const otherItems = await manager
         .getRepository(Item)
-        .createQueryBuilder("otherItem")
-        .select("COALESCE(SUM(otherItem.totalVolume), 0)", "sum")
-        .where("otherItem.containerId = :containerId", {
+        .createQueryBuilder('otherItem')
+        .select('COALESCE(SUM(otherItem.totalVolume), 0)', 'sum')
+        .where('otherItem.containerId = :containerId', {
           containerId: item.containerId,
         })
-        .andWhere("otherItem.id != :id", { id })
-        .andWhere("otherItem.deletedAt IS NULL")
+        .andWhere('otherItem.id != :id', { id })
+        .andWhere('otherItem.deletedAt IS NULL')
         .getRawOne<{ sum: string }>();
 
       const otherItemsTotal = Number(otherItems?.sum) || 0;
@@ -333,7 +308,7 @@ export class ItemsService {
       try {
         updatedItem = await manager.getRepository(Item).save(item);
       } catch (error: any) {
-        if (error?.code === "23505") {
+        if (error?.code === '23505') {
           throw new ConflictException(
             `Item with uniqueNumber "${item.uniqueNumber}" already exists.`,
           );
@@ -361,7 +336,7 @@ export class ItemsService {
       });
 
       if (!item) {
-        throw new NotFoundException("Item not found");
+        throw new NotFoundException('Item not found');
       }
 
       containerId = item.containerId;
@@ -388,30 +363,22 @@ export class ItemsService {
       });
 
       if (!item) {
-        throw new NotFoundException("Item not found");
+        throw new NotFoundException('Item not found');
       }
 
       if (!item.deletedAt) {
-        throw new BadRequestException("Item is not deleted");
+        throw new BadRequestException('Item is not deleted');
       }
 
       containerId = item.containerId;
 
-      const container =
-        await this.containersService.findOneIncludingDeleted(
-          containerId,
-        );
+      const container = await this.containersService.findOneIncludingDeleted(containerId);
 
       if (container.deletedAt) {
-        throw new BadRequestException(
-          'Cannot restore an item into a deleted container',
-        );
+        throw new BadRequestException('Cannot restore an item into a deleted container');
       }
 
-      if (
-        container.availableVolume <
-        item.totalVolume
-      ) {
+      if (container.availableVolume < item.totalVolume) {
         throw new BadRequestException(
           `Not enough volume in container. Available: ${container.availableVolume}, Required: ${item.totalVolume}`,
         );
@@ -427,7 +394,7 @@ export class ItemsService {
       });
 
       if (!restored) {
-        throw new NotFoundException("Item not found after restore");
+        throw new NotFoundException('Item not found after restore');
       }
 
       restoredItem = restored;
@@ -450,7 +417,7 @@ export class ItemsService {
       });
 
       if (!item) {
-        throw new NotFoundException("Item not found");
+        throw new NotFoundException('Item not found');
       }
 
       containerId = item.containerId;

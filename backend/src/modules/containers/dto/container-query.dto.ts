@@ -12,9 +12,7 @@ export class ContainerQueryDto extends PaginationDto {
   })
   @IsOptional()
   @IsEnum(ContainerStatus, {
-    message: `Invalid status. Must be one of: ${Object.values(
-      ContainerStatus,
-    ).join(', ')}`,
+    message: `Invalid status. Must be one of: ${Object.values(ContainerStatus).join(', ')}`,
   })
   status?: ContainerStatus;
 

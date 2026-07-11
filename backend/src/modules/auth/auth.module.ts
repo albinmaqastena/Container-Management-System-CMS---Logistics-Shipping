@@ -1,10 +1,7 @@
 // src/modules/auth/auth.module.ts
 
 import { Module } from '@nestjs/common';
-import {
-  ConfigModule,
-  ConfigService,
-} from '@nestjs/config';
+import { ConfigModule, ConfigService } from '@nestjs/config';
 import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
 import { TypeOrmModule } from '@nestjs/typeorm';
@@ -20,10 +17,7 @@ import { RedisModule } from '../../common/redis/redis.module';
 @Module({
   imports: [
     ConfigModule,
-    TypeOrmModule.forFeature([
-      User,
-      RefreshToken,
-    ]),
+    TypeOrmModule.forFeature([User, RefreshToken]),
     PassportModule.register({
       defaultStrategy: 'jwt',
       session: false,
@@ -32,42 +26,19 @@ import { RedisModule } from '../../common/redis/redis.module';
     JwtModule.registerAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
-      useFactory: (
-        configService: ConfigService,
-      ) => ({
-        secret:
-          configService.getOrThrow<string>(
-            'auth.jwt.secret',
-          ),
+      useFactory: (configService: ConfigService) => ({
+        secret: configService.getOrThrow<string>('auth.jwt.secret'),
         signOptions: {
-          expiresIn:
-            configService.getOrThrow<StringValue>(
-              'auth.jwt.accessTokenExpiresIn',
-            ),
+          expiresIn: configService.getOrThrow<StringValue>('auth.jwt.accessTokenExpiresIn'),
           algorithm: 'HS256',
-          issuer:
-            configService.getOrThrow<string>(
-              'auth.jwt.issuer',
-            ),
-          audience:
-            configService.getOrThrow<string>(
-              'auth.jwt.audience',
-            ),
+          issuer: configService.getOrThrow<string>('auth.jwt.issuer'),
+          audience: configService.getOrThrow<string>('auth.jwt.audience'),
         },
       }),
     }),
   ],
-  controllers: [
-    AuthController,
-  ],
-  providers: [
-    AuthService,
-    JwtStrategy,
-  ],
-  exports: [
-    AuthService,
-    JwtModule,
-    PassportModule,
-  ],
+  controllers: [AuthController],
+  providers: [AuthService, JwtStrategy],
+  exports: [AuthService, JwtModule, PassportModule],
 })
 export class AuthModule {}

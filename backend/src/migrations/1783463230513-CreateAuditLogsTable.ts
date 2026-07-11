@@ -22,8 +22,12 @@ export class CreateAuditLogsTable1783463230513 implements MigrationInterface {
       )
     `);
 
-    await queryRunner.query(`CREATE INDEX "idx_audit_logs_userId_createdAt" ON "audit_logs" ("userId", "createdAt")`);
-    await queryRunner.query(`CREATE INDEX "idx_audit_logs_action_createdAt" ON "audit_logs" ("action", "createdAt")`);
+    await queryRunner.query(
+      `CREATE INDEX "idx_audit_logs_userId_createdAt" ON "audit_logs" ("userId", "createdAt")`,
+    );
+    await queryRunner.query(
+      `CREATE INDEX "idx_audit_logs_action_createdAt" ON "audit_logs" ("action", "createdAt")`,
+    );
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {

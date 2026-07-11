@@ -15,13 +15,7 @@ import {
   UseGuards,
   ValidationPipe,
 } from '@nestjs/common';
-import {
-  ApiBearerAuth,
-  ApiOperation,
-  ApiQuery,
-  ApiResponse,
-  ApiTags,
-} from '@nestjs/swagger';
+import { ApiBearerAuth, ApiOperation, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 
 import { ItemsService } from './items.service';
 import { CreateItemDto } from './dto/create-item.dto';
@@ -36,10 +30,7 @@ import { Roles } from '../../common/decorators/roles.decorator';
 import { UUIDValidationPipe } from '../../common/pipes/uuid-validation.pipe';
 
 import { UserRole } from '../auth/entities/user.entity';
-import {
-  PaginatedResponseDto,
-  PaginationDto,
-} from '../../common/dto/pagination.dto';
+import { PaginatedResponseDto, PaginationDto } from '../../common/dto/pagination.dto';
 
 @ApiTags('Items')
 @ApiBearerAuth()
@@ -70,9 +61,7 @@ export class ItemsController {
     status: HttpStatus.CONFLICT,
     description: 'An item with the same unique number already exists',
   })
-  async create(
-    @Body() createItemDto: CreateItemDto,
-  ): Promise<Item> {
+  async create(@Body() createItemDto: CreateItemDto): Promise<Item> {
     return this.itemsService.create(createItemDto);
   }
 
@@ -129,11 +118,7 @@ export class ItemsController {
 
     const includeDeleted = query.includeDeleted === 'true';
 
-    return this.itemsService.findAll(
-      paginationDto,
-      query.containerId,
-      includeDeleted,
-    );
+    return this.itemsService.findAll(paginationDto, query.containerId, includeDeleted);
   }
 
   @Get('deleted')
@@ -274,10 +259,7 @@ export class ItemsController {
     )
     includeDeleted?: boolean,
   ): Promise<Item> {
-    return this.itemsService.findOne(
-      id,
-      includeDeleted ?? false,
-    );
+    return this.itemsService.findOne(id, includeDeleted ?? false);
   }
 
   @Put(':id')
@@ -327,9 +309,7 @@ export class ItemsController {
     status: HttpStatus.BAD_REQUEST,
     description: 'Invalid UUID format',
   })
-  async remove(
-    @Param('id', UUIDValidationPipe) id: string,
-  ): Promise<void> {
+  async remove(@Param('id', UUIDValidationPipe) id: string): Promise<void> {
     await this.itemsService.softDelete(id);
   }
 
@@ -345,16 +325,13 @@ export class ItemsController {
   })
   @ApiResponse({
     status: HttpStatus.BAD_REQUEST,
-    description:
-      'Invalid UUID, item is not deleted or container has insufficient volume',
+    description: 'Invalid UUID, item is not deleted or container has insufficient volume',
   })
   @ApiResponse({
     status: HttpStatus.NOT_FOUND,
     description: 'Item or container not found',
   })
-  async restore(
-    @Param('id', UUIDValidationPipe) id: string,
-  ): Promise<Item> {
+  async restore(@Param('id', UUIDValidationPipe) id: string): Promise<Item> {
     return this.itemsService.restore(id);
   }
 
@@ -376,32 +353,21 @@ export class ItemsController {
     status: HttpStatus.BAD_REQUEST,
     description: 'Invalid UUID format',
   })
-  async permanentDelete(
-    @Param('id', UUIDValidationPipe) id: string,
-  ): Promise<void> {
+  async permanentDelete(@Param('id', UUIDValidationPipe) id: string): Promise<void> {
     await this.itemsService.permanentDelete(id);
   }
 
-  private createPaginationDto(
-    query: PaginationDto,
-  ): PaginationDto {
+  private createPaginationDto(query: PaginationDto): PaginationDto {
     const limit = Number(query.limit);
     const offset = Number(query.offset);
 
     const paginationDto = new PaginationDto();
 
-    paginationDto.limit =
-      Number.isInteger(limit) && limit > 0
-        ? limit
-        : 10;
+    paginationDto.limit = Number.isInteger(limit) && limit > 0 ? limit : 10;
 
-    paginationDto.offset =
-      Number.isInteger(offset) && offset >= 0
-        ? offset
-        : 0;
+    paginationDto.offset = Number.isInteger(offset) && offset >= 0 ? offset : 0;
 
-    paginationDto.sort =
-      query.sort || undefined;
+    paginationDto.sort = query.sort || undefined;
 
     return paginationDto;
   }

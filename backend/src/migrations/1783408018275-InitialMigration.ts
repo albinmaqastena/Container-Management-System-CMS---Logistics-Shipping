@@ -12,7 +12,7 @@ export class UpdateAdminPassword20260707123456 implements MigrationInterface {
 
     // Përditëso password-in e admin-it
     await queryRunner.query(
-      `UPDATE "users" SET "password" = '${hashedPassword}' WHERE "email" = 'admin@example.com'`
+      `UPDATE "users" SET "password" = '${hashedPassword}' WHERE "email" = 'admin@example.com'`,
     );
   }
 
@@ -21,7 +21,7 @@ export class UpdateAdminPassword20260707123456 implements MigrationInterface {
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash('admin123', salt);
     await queryRunner.query(
-      `UPDATE "users" SET "password" = '${hashedPassword}' WHERE "email" = 'admin@example.com'`
+      `UPDATE "users" SET "password" = '${hashedPassword}' WHERE "email" = 'admin@example.com'`,
     );
   }
 }

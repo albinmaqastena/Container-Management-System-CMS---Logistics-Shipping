@@ -415,17 +415,13 @@ describe('Items E2E', () => {
       expect(response.body).toHaveProperty('hasMore');
       expect(
         response.body.data.some(
-          (item: any) =>
-            item.id === itemToDelete.body.id &&
-            item.deletedAt !== null,
+          (item: any) => item.id === itemToDelete.body.id && item.deletedAt !== null,
         ),
       ).toBe(true);
     });
 
     it('should fail without token', async () => {
-      await request(app.getHttpServer())
-        .get('/v1/items')
-        .expect(401);
+      await request(app.getHttpServer()).get('/v1/items').expect(401);
     });
   });
 
@@ -466,18 +462,11 @@ describe('Items E2E', () => {
 
       expect(Array.isArray(response.body.data)).toBe(true);
       expect(response.body).toHaveProperty('hasMore');
-      expect(
-        response.body.data.some(
-          (item: any) =>
-            item.id === itemForDeletedId,
-        ),
-      ).toBe(true);
+      expect(response.body.data.some((item: any) => item.id === itemForDeletedId)).toBe(true);
     });
 
     it('should fail without token', async () => {
-      await request(app.getHttpServer())
-        .get('/v1/items/deleted')
-        .expect(401);
+      await request(app.getHttpServer()).get('/v1/items/deleted').expect(401);
     });
   });
 
@@ -542,9 +531,7 @@ describe('Items E2E', () => {
     });
 
     it('should fail without token', async () => {
-      await request(app.getHttpServer())
-        .get(`/v1/items/${testItemId}`)
-        .expect(401);
+      await request(app.getHttpServer()).get(`/v1/items/${testItemId}`).expect(401);
     });
   });
 
@@ -592,7 +579,11 @@ describe('Items E2E', () => {
         .set('Authorization', `Bearer ${adminToken}`)
         .expect(200);
 
-      expect(response.body.data.every((item: any) => item.containerId === containerId || item.container?.id === containerId)).toBe(true);
+      expect(
+        response.body.data.every(
+          (item: any) => item.containerId === containerId || item.container?.id === containerId,
+        ),
+      ).toBe(true);
     });
 
     it('should return empty array for non-existent search', async () => {
@@ -629,9 +620,7 @@ describe('Items E2E', () => {
     });
 
     it('should fail without token', async () => {
-      await request(app.getHttpServer())
-        .get('/v1/items/search?query=Test')
-        .expect(401);
+      await request(app.getHttpServer()).get('/v1/items/search?query=Test').expect(401);
     });
   });
 
@@ -837,9 +826,7 @@ describe('Items E2E', () => {
         })
         .expect(201);
 
-      await request(app.getHttpServer())
-        .delete(`/v1/items/${item.body.id}`)
-        .expect(401);
+      await request(app.getHttpServer()).delete(`/v1/items/${item.body.id}`).expect(401);
     });
 
     it('should fail to soft delete non-existent item', async () => {
@@ -966,9 +953,7 @@ describe('Items E2E', () => {
         .set('Authorization', `Bearer ${adminToken}`)
         .expect(204);
 
-      await request(app.getHttpServer())
-        .put(`/v1/items/${item.body.id}/restore`)
-        .expect(401);
+      await request(app.getHttpServer()).put(`/v1/items/${item.body.id}/restore`).expect(401);
     });
   });
 
@@ -1036,9 +1021,7 @@ describe('Items E2E', () => {
         .set('Authorization', `Bearer ${adminToken}`)
         .expect(204);
 
-      await request(app.getHttpServer())
-        .delete(`/v1/items/${item.body.id}/permanent`)
-        .expect(401);
+      await request(app.getHttpServer()).delete(`/v1/items/${item.body.id}/permanent`).expect(401);
     });
 
     it('should fail to permanent delete non-existent item', async () => {

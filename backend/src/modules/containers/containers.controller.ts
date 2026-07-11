@@ -38,10 +38,7 @@ import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { UUIDValidationPipe } from '../../common/pipes/uuid-validation.pipe';
-import {
-  PaginatedResponseDto,
-  PaginationDto,
-} from '../../common/dto/pagination.dto';
+import { PaginatedResponseDto, PaginationDto } from '../../common/dto/pagination.dto';
 import { UserRole } from '../auth/entities/user.entity';
 
 @ApiTags('Containers')
@@ -50,9 +47,7 @@ import { UserRole } from '../auth/entities/user.entity';
 @Controller('containers')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class ContainersController {
-  constructor(
-    private readonly containersService: ContainersService,
-  ) {}
+  constructor(private readonly containersService: ContainersService) {}
 
   @Post()
   @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)
@@ -74,10 +69,7 @@ export class ContainersController {
     @Body() createContainerDto: CreateContainerDto,
     @Request() req: { user: any },
   ): Promise<Container> {
-    return this.containersService.create(
-      createContainerDto,
-      req.user,
-    );
+    return this.containersService.create(createContainerDto, req.user);
   }
 
   @Get()
@@ -156,9 +148,7 @@ export class ContainersController {
     )
     query: PaginationDto,
   ): Promise<PaginatedResponseDto<Container>> {
-    return this.containersService.findDeleted(
-      this.createPaginationDto(query),
-    );
+    return this.containersService.findDeleted(this.createPaginationDto(query));
   }
 
   @Get('active')
@@ -194,9 +184,7 @@ export class ContainersController {
     )
     query: PaginationDto,
   ): Promise<PaginatedResponseDto<Container>> {
-    return this.containersService.findActiveContainers(
-      this.createPaginationDto(query),
-    );
+    return this.containersService.findActiveContainers(this.createPaginationDto(query));
   }
 
   @Get('archived')
@@ -232,9 +220,7 @@ export class ContainersController {
     )
     query: PaginationDto,
   ): Promise<PaginatedResponseDto<Container>> {
-    return this.containersService.findArchivedContainers(
-      this.createPaginationDto(query),
-    );
+    return this.containersService.findArchivedContainers(this.createPaginationDto(query));
   }
 
   @Get('search')
@@ -274,10 +260,7 @@ export class ContainersController {
     )
     query: SearchContainerQueryDto,
   ): Promise<PaginatedResponseDto<Container>> {
-    return this.containersService.searchContainers(
-      query.query,
-      this.createPaginationDto(query),
-    );
+    return this.containersService.searchContainers(query.query, this.createPaginationDto(query));
   }
 
   @Get(':id')
@@ -299,16 +282,10 @@ export class ContainersController {
   })
   async findOne(
     @Param('id', UUIDValidationPipe) id: string,
-    @Query(
-      'includeDeleted',
-      new ParseBoolPipe({ optional: true }),
-    )
+    @Query('includeDeleted', new ParseBoolPipe({ optional: true }))
     includeDeleted?: boolean,
   ): Promise<Container> {
-    return this.containersService.findOne(
-      id,
-      includeDeleted ?? false,
-    );
+    return this.containersService.findOne(id, includeDeleted ?? false);
   }
 
   @Put(':id')
@@ -323,10 +300,7 @@ export class ContainersController {
     @Param('id', UUIDValidationPipe) id: string,
     @Body() updateContainerDto: UpdateContainerDto,
   ): Promise<Container> {
-    return this.containersService.update(
-      id,
-      updateContainerDto,
-    );
+    return this.containersService.update(id, updateContainerDto);
   }
 
   @Put(':id/status')
@@ -346,14 +320,11 @@ export class ContainersController {
     @Param('id', UUIDValidationPipe) id: string,
     @Query('status') status: ContainerStatus,
   ): Promise<Container> {
-    if (
-      !status ||
-      !Object.values(ContainerStatus).includes(status)
-    ) {
+    if (!status || !Object.values(ContainerStatus).includes(status)) {
       throw new BadRequestException(
-        `Invalid status value: ${status}. Allowed values: ${Object.values(
-          ContainerStatus,
-        ).join(', ')}`,
+        `Invalid status value: ${status}. Allowed values: ${Object.values(ContainerStatus).join(
+          ', ',
+        )}`,
       );
     }
 
@@ -368,9 +339,7 @@ export class ContainersController {
     status: HttpStatus.NO_CONTENT,
     description: 'Container soft-deleted successfully',
   })
-  async remove(
-    @Param('id', UUIDValidationPipe) id: string,
-  ): Promise<void> {
+  async remove(@Param('id', UUIDValidationPipe) id: string): Promise<void> {
     await this.containersService.softDelete(id);
   }
 
@@ -384,9 +353,7 @@ export class ContainersController {
     description: 'Container restored successfully',
     type: Container,
   })
-  async restore(
-    @Param('id', UUIDValidationPipe) id: string,
-  ): Promise<Container> {
+  async restore(@Param('id', UUIDValidationPipe) id: string): Promise<Container> {
     return this.containersService.restore(id);
   }
 
@@ -400,23 +367,17 @@ export class ContainersController {
     status: HttpStatus.NO_CONTENT,
     description: 'Container permanently deleted successfully',
   })
-  async permanentDelete(
-    @Param('id', UUIDValidationPipe) id: string,
-  ): Promise<void> {
+  async permanentDelete(@Param('id', UUIDValidationPipe) id: string): Promise<void> {
     await this.containersService.permanentDelete(id);
   }
 
-  private createPaginationDto(
-    query: PaginationDto,
-  ): PaginationDto {
+  private createPaginationDto(query: PaginationDto): PaginationDto {
     const limit = Number(query.limit);
     const offset = Number(query.offset);
 
     const paginationDto = new PaginationDto();
-    paginationDto.limit =
-      Number.isInteger(limit) && limit > 0 ? limit : 10;
-    paginationDto.offset =
-      Number.isInteger(offset) && offset >= 0 ? offset : 0;
+    paginationDto.limit = Number.isInteger(limit) && limit > 0 ? limit : 10;
+    paginationDto.offset = Number.isInteger(offset) && offset >= 0 ? offset : 0;
     paginationDto.sort = query.sort || undefined;
 
     return paginationDto;

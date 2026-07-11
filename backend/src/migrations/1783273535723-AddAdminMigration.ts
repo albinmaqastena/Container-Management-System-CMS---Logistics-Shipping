@@ -7,7 +7,7 @@ export class AddAdminMigration1783273535723 implements MigrationInterface {
   public async up(queryRunner: QueryRunner): Promise<void> {
     // Check if an admin already exists (optional, prevents duplicate entries)
     const adminExists = await queryRunner.query(
-      `SELECT id FROM "users" WHERE email = 'admin@example.com' LIMIT 1`
+      `SELECT id FROM "users" WHERE email = 'admin@example.com' LIMIT 1`,
     );
 
     if (adminExists.length === 0) {
@@ -32,7 +32,7 @@ export class AddAdminMigration1783273535723 implements MigrationInterface {
           true,
           CURRENT_TIMESTAMP,
           CURRENT_TIMESTAMP
-        )`
+        )`,
       );
     } else {
       console.log('Admin user already exists, skipping insertion.');
@@ -41,8 +41,6 @@ export class AddAdminMigration1783273535723 implements MigrationInterface {
 
   public async down(queryRunner: QueryRunner): Promise<void> {
     // Remove the admin user by email (or username) if needed
-    await queryRunner.query(
-      `DELETE FROM "users" WHERE email = 'admin@example.com'`
-    );
+    await queryRunner.query(`DELETE FROM "users" WHERE email = 'admin@example.com'`);
   }
 }

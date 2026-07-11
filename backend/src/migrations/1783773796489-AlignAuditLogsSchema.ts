@@ -1,17 +1,9 @@
-import {
-  MigrationInterface,
-  QueryRunner,
-} from 'typeorm';
+import { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class AlignAuditLogsSchema1783773796489
-  implements MigrationInterface
-{
-  name =
-    'AlignAuditLogsSchema1783773796489';
+export class AlignAuditLogsSchema1783773796489 implements MigrationInterface {
+  name = 'AlignAuditLogsSchema1783773796489';
 
-  public async up(
-    queryRunner: QueryRunner,
-  ): Promise<void> {
+  public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`
       ALTER TABLE "audit_logs"
       ALTER COLUMN "createdAt"
@@ -27,9 +19,7 @@ export class AlignAuditLogsSchema1783773796489
     `);
   }
 
-  public async down(
-    queryRunner: QueryRunner,
-  ): Promise<void> {
+  public async down(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`
       DROP INDEX IF EXISTS
       "IDX_audit_logs_status_created"

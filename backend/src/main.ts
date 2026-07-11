@@ -60,7 +60,7 @@ async function bootstrap() {
     app = await NestFactory.create<NestExpressApplication>(AppModule);
   }
 
-   // ============================================
+  // ============================================
   // 2. TRUST PROXY (për IP të saktë)
   // ============================================
   app.set('trust proxy', true); // ✅ Shto këtë!
@@ -166,7 +166,8 @@ async function bootstrap() {
   if (!isProduction) {
     const config = new DocumentBuilder()
       .setTitle('Container Management System API')
-      .setDescription(`
+      .setDescription(
+        `
 ## Container Management System API
 
 ### 🔐 Authentication
@@ -212,7 +213,8 @@ async function bootstrap() {
 - SQL Injection prevention (parameterized queries)
 - File upload security (MIME, size, extension validation)
 - HTTPS (Production)
-`)
+`,
+      )
       .setVersion('1.0')
       .addBearerAuth(
         {
@@ -255,7 +257,9 @@ async function bootstrap() {
   // ============================================
   await app.listen(port, '0.0.0.0');
 
-  console.log(`✅ Application is running on: ${isProduction ? 'https' : 'http'}://localhost:${port}`);
+  console.log(
+    `✅ Application is running on: ${isProduction ? 'https' : 'http'}://localhost:${port}`,
+  );
   console.log(`🔧 Environment: ${nodeEnv}`);
   console.log('========================================');
 
