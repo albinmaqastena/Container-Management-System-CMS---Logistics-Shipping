@@ -9,6 +9,7 @@ import { RefreshToken } from './entities/refresh-token.entity';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
 import { ConfigService } from '@nestjs/config';
+import { REDIS_CLIENT } from '../../common/redis/redis.module';
 
 jest.mock('uuid', () => ({
   v4: jest
@@ -104,16 +105,46 @@ describe('AuthService', () => {
       sign: jest.fn().mockReturnValue('test-access-token'),
     };
 
+    const configValues: Record<string, unknown> = {
+      'auth.jwt.secret':
+        'test-secret-with-at-least-32-characters',
+      'auth.jwt.accessTokenExpiresIn': '15m',
+      'auth.jwt.refreshTokenExpiresIn': '7d',
+      'auth.jwt.issuer':
+        'container-management-system',
+      'auth.jwt.audience':
+        'container-management-users',
+      'auth.rateLimit.loginAttempts': 5,
+      'auth.rateLimit.blockDuration':
+        15 * 60 * 1000,
+      AUTH_MAX_SESSIONS: 10,
+      REDIS_HOST: 'localhost',
+      REDIS_PORT: 6379,
+    };
+
     configService = {
-      get: jest.fn().mockImplementation((key: string) => {
-        const config = {
-          'auth.jwt.secret': 'test-secret',
-          'auth.jwt.accessTokenExpiresIn': '15m',
-          REDIS_HOST: 'localhost',
-          REDIS_PORT: 6379,
-        };
-        return config[key];
-      }),
+      get: jest.fn(
+        (
+          key: string,
+          defaultValue?: unknown,
+        ) =>
+          configValues[key] ??
+          defaultValue,
+      ),
+      getOrThrow: jest.fn(
+        (key: string) => {
+          if (
+            configValues[key] ===
+            undefined
+          ) {
+            throw new Error(
+              `Missing config: ${key}`,
+            );
+          }
+
+          return configValues[key];
+        },
+      ),
     };
 
     redis = { ...mockRedis };
@@ -138,7 +169,7 @@ describe('AuthService', () => {
           useValue: configService,
         },
         {
-          provide: 'REDIS_CLIENT',
+          provide: REDIS_CLIENT,
           useValue: redis,
         },
       ],
@@ -231,7 +262,11 @@ describe('AuthService', () => {
       );
 
       expect(user.incrementFailedAttempts).toHaveBeenCalled();
-      expect(user.lockAccount).toHaveBeenCalled();
+      expect(
+        user.lockAccount,
+      ).toHaveBeenCalledWith(
+        15 * 60 * 1000,
+      );
       expect(user.failedLoginAttempts).toBe(5);
     });
 
@@ -566,6 +601,9 @@ describe('AuthService', () => {
       expect(result.total).toBe(2);
       expect(result.limit).toBe(10);
       expect(result.offset).toBe(0);
+      expect(result.totalPages).toBe(1);
+      expect(result.currentPage).toBe(1);
+      expect(result.hasMore).toBe(false);
       expect(result.data[0]).not.toHaveProperty('password');
       expect(result.data[0]).not.toHaveProperty('resetPasswordToken');
       expect(result.data[0]).not.toHaveProperty('resetPasswordExpires');
@@ -660,7 +698,14 @@ describe('AuthService', () => {
   describe('getProfile', () => {
     it('should return user profile (same as findUserById)', async () => {
       const user = createMockUser();
-      const findUserSpy = jest.spyOn(service, 'findUserById').mockResolvedValue(user);
+      const findUserSpy = jest
+        .spyOn(
+          service,
+          'findUserById',
+        )
+        .mockResolvedValue(
+          user as any,
+        );
 
       const result = await service.getProfile(user.id);
       expect(findUserSpy).toHaveBeenCalledWith(user.id, false);

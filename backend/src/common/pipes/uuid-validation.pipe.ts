@@ -1,13 +1,32 @@
 // src/common/pipes/uuid-validation.pipe.ts
-import { PipeTransform, Injectable, BadRequestException } from '@nestjs/common';
+
+import {
+  BadRequestException,
+  Injectable,
+  PipeTransform,
+} from '@nestjs/common';
 import { isUUID } from 'class-validator';
 
 @Injectable()
-export class UUIDValidationPipe implements PipeTransform<string> {
+export class UUIDValidationPipe
+  implements PipeTransform<string, string>
+{
   transform(value: string): string {
-    if (!value || !isUUID(value)) {
-      throw new BadRequestException(`Invalid UUID format: ${value}`);
+    const normalizedValue =
+      value?.trim();
+
+    if (
+      !normalizedValue ||
+      !isUUID(
+        normalizedValue,
+        '4',
+      )
+    ) {
+      throw new BadRequestException(
+        'Invalid UUID version 4 format',
+      );
     }
-    return value;
+
+    return normalizedValue;
   }
 }

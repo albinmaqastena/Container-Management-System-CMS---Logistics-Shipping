@@ -234,6 +234,54 @@ describe('Items E2E', () => {
         .expect(400);
     });
 
+    it('should fail when packageQuantity is not an integer', async () => {
+      await request(app.getHttpServer())
+        .post('/v1/items')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          uniqueNumber: `ITEM-DECIMAL-QTY-${Date.now()}`,
+          name: 'Decimal Quantity',
+          packageQuantity: 1.5,
+          productsPerPackage: 1,
+          packagePrice: 10,
+          volume: 1,
+          containerId,
+        })
+        .expect(400);
+    });
+
+    it('should fail when packagePrice has more than 2 decimal places', async () => {
+      await request(app.getHttpServer())
+        .post('/v1/items')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          uniqueNumber: `ITEM-PRICE-PRECISION-${Date.now()}`,
+          name: 'Price Precision',
+          packageQuantity: 1,
+          productsPerPackage: 1,
+          packagePrice: 10.123,
+          volume: 1,
+          containerId,
+        })
+        .expect(400);
+    });
+
+    it('should fail when volume has more than 2 decimal places', async () => {
+      await request(app.getHttpServer())
+        .post('/v1/items')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          uniqueNumber: `ITEM-VOLUME-PRECISION-${Date.now()}`,
+          name: 'Volume Precision',
+          packageQuantity: 1,
+          productsPerPackage: 1,
+          packagePrice: 10,
+          volume: 1.123,
+          containerId,
+        })
+        .expect(400);
+    });
+
     it('should fail with zero volume', async () => {
       await request(app.getHttpServer())
         .post('/v1/items')
@@ -284,6 +332,7 @@ describe('Items E2E', () => {
       expect(response.body).toHaveProperty('offset');
       expect(response.body).toHaveProperty('totalPages');
       expect(response.body).toHaveProperty('currentPage');
+      expect(response.body).toHaveProperty('hasMore');
     });
 
     it('should filter items by containerId', async () => {
@@ -305,6 +354,7 @@ describe('Items E2E', () => {
       expect(response.body.offset).toBe(0);
       expect(response.body).toHaveProperty('totalPages');
       expect(response.body).toHaveProperty('currentPage');
+      expect(response.body).toHaveProperty('hasMore');
       expect(response.body.data.length).toBeLessThanOrEqual(2);
     });
 
@@ -356,11 +406,20 @@ describe('Items E2E', () => {
         .expect(204);
 
       const response = await request(app.getHttpServer())
-        .get(`/v1/items?containerId=${containerId}&includeDeleted=true`)
+        .get(
+          `/v1/items?containerId=${containerId}&includeDeleted=true&limit=100&sort=deletedAt:DESC`,
+        )
         .set('Authorization', `Bearer ${adminToken}`)
         .expect(200);
 
-      expect(response.body.data.some((item: any) => item.id === itemToDelete.body.id && item.deletedAt !== null)).toBe(true);
+      expect(response.body).toHaveProperty('hasMore');
+      expect(
+        response.body.data.some(
+          (item: any) =>
+            item.id === itemToDelete.body.id &&
+            item.deletedAt !== null,
+        ),
+      ).toBe(true);
     });
 
     it('should fail without token', async () => {
@@ -401,12 +460,18 @@ describe('Items E2E', () => {
 
     it('should return deleted items (admin)', async () => {
       const response = await request(app.getHttpServer())
-        .get('/v1/items/deleted')
+        .get('/v1/items/deleted?limit=100&sort=deletedAt:DESC')
         .set('Authorization', `Bearer ${adminToken}`)
         .expect(200);
 
       expect(Array.isArray(response.body.data)).toBe(true);
-      expect(response.body.data.some((item: any) => item.id === itemForDeletedId)).toBe(true);
+      expect(response.body).toHaveProperty('hasMore');
+      expect(
+        response.body.data.some(
+          (item: any) =>
+            item.id === itemForDeletedId,
+        ),
+      ).toBe(true);
     });
 
     it('should fail without token', async () => {
@@ -464,7 +529,7 @@ describe('Items E2E', () => {
 
     it('should return 404 for non-existent item', async () => {
       await request(app.getHttpServer())
-        .get('/v1/items/00000000-0000-0000-0000-000000000000')
+        .get('/v1/items/00000000-0000-4000-8000-000000000000')
         .set('Authorization', `Bearer ${adminToken}`)
         .expect(404);
     });
@@ -560,6 +625,7 @@ describe('Items E2E', () => {
         .expect(200);
 
       expect(response.body.data.length).toBeLessThanOrEqual(1);
+      expect(response.body).toHaveProperty('hasMore');
     });
 
     it('should fail without token', async () => {
@@ -614,7 +680,7 @@ describe('Items E2E', () => {
         })
         .expect(200);
 
-      expect(response.body.packagePrice).toBe(99.99);
+      expect(Number(response.body.packagePrice)).toBe(99.99);
     });
 
     it('should update volume and recalculate totalVolume', async () => {
@@ -627,7 +693,7 @@ describe('Items E2E', () => {
         })
         .expect(200);
 
-      expect(response.body.totalVolume).toBe(10);
+      expect(Number(response.body.totalVolume)).toBe(10);
     });
 
     it('should update multiple fields', async () => {
@@ -643,10 +709,10 @@ describe('Items E2E', () => {
         .expect(200);
 
       expect(response.body.name).toBe('Multi Update');
-      expect(response.body.packagePrice).toBe(150.0);
+      expect(Number(response.body.packagePrice)).toBe(150.0);
       expect(response.body.packageQuantity).toBe(3);
-      expect(response.body.volume).toBe(1.5);
-      expect(response.body.totalVolume).toBe(4.5);
+      expect(Number(response.body.volume)).toBe(1.5);
+      expect(Number(response.body.totalVolume)).toBe(4.5);
     });
 
     it('should fail to update item with insufficient volume', async () => {
@@ -699,7 +765,7 @@ describe('Items E2E', () => {
 
     it('should fail for non-existent item', async () => {
       await request(app.getHttpServer())
-        .put('/v1/items/00000000-0000-0000-0000-000000000000')
+        .put('/v1/items/00000000-0000-4000-8000-000000000000')
         .set('Authorization', `Bearer ${adminToken}`)
         .send({
           name: 'Non Existent',
@@ -778,7 +844,7 @@ describe('Items E2E', () => {
 
     it('should fail to soft delete non-existent item', async () => {
       await request(app.getHttpServer())
-        .delete('/v1/items/00000000-0000-0000-0000-000000000000')
+        .delete('/v1/items/00000000-0000-4000-8000-000000000000')
         .set('Authorization', `Bearer ${adminToken}`)
         .expect(404);
     });
@@ -835,6 +901,46 @@ describe('Items E2E', () => {
     it('should fail to restore non-deleted item', async () => {
       await request(app.getHttpServer())
         .put(`/v1/items/${itemToRestoreId}/restore`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(400);
+    });
+
+    it('should fail to restore an item when its container is deleted', async () => {
+      const temporaryContainer = await request(app.getHttpServer())
+        .post('/v1/containers')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          customName: `Deleted Container Restore ${Date.now()}`,
+          totalVolume: 20,
+        })
+        .expect(201);
+
+      const item = await request(app.getHttpServer())
+        .post('/v1/items')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          uniqueNumber: `ITEM-DELETED-CONTAINER-${Date.now()}`,
+          name: 'Deleted Container Item',
+          packageQuantity: 1,
+          productsPerPackage: 1,
+          packagePrice: 10,
+          volume: 1,
+          containerId: temporaryContainer.body.id,
+        })
+        .expect(201);
+
+      await request(app.getHttpServer())
+        .delete(`/v1/items/${item.body.id}`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(204);
+
+      await request(app.getHttpServer())
+        .delete(`/v1/containers/${temporaryContainer.body.id}`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(204);
+
+      await request(app.getHttpServer())
+        .put(`/v1/items/${item.body.id}/restore`)
         .set('Authorization', `Bearer ${adminToken}`)
         .expect(400);
     });
@@ -937,7 +1043,7 @@ describe('Items E2E', () => {
 
     it('should fail to permanent delete non-existent item', async () => {
       await request(app.getHttpServer())
-        .delete('/v1/items/00000000-0000-0000-0000-000000000000/permanent')
+        .delete('/v1/items/00000000-0000-4000-8000-000000000000/permanent')
         .set('Authorization', `Bearer ${adminToken}`)
         .expect(404);
     });

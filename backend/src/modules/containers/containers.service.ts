@@ -168,10 +168,30 @@ export class ContainersService {
       queryBuilder.andWhere("container.status = :status", { status });
     }
 
-    const sortObject = buildSortObject(sort, ALLOWED_SORT_FIELDS.containers);
-    Object.entries(sortObject).forEach(([key, direction]) => {
-      queryBuilder.addOrderBy(`container.${key}`, direction);
-    });
+    const sortObject = buildSortObject(
+      sort,
+      ALLOWED_SORT_FIELDS.containers,
+    );
+
+    Object.entries(sortObject).forEach(
+      ([key, direction]) => {
+        if (key === 'deletedAt') {
+          queryBuilder.addOrderBy(
+            `container.${key}`,
+            direction,
+            direction === 'DESC'
+              ? 'NULLS LAST'
+              : 'NULLS FIRST',
+          );
+          return;
+        }
+
+        queryBuilder.addOrderBy(
+          `container.${key}`,
+          direction,
+        );
+      },
+    );
 
     queryBuilder.skip(offset).take(limit);
 

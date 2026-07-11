@@ -1,31 +1,69 @@
-import { Injectable, ExecutionContext, UnauthorizedException } from '@nestjs/common';
-import { AuthGuard } from '@nestjs/passport';
+// src/common/guards/jwt-auth.guard.ts
+
+import {
+  ExecutionContext,
+  Injectable,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
+import { AuthGuard } from '@nestjs/passport';
+
+import {
+  IS_PUBLIC_KEY,
+} from '../decorators/public.decorator';
 
 @Injectable()
-export class JwtAuthGuard extends AuthGuard('jwt') {
-  constructor(private reflector: Reflector) {
+export class JwtAuthGuard extends AuthGuard(
+  'jwt',
+) {
+  constructor(
+    private readonly reflector: Reflector,
+  ) {
     super();
   }
 
-  canActivate(context: ExecutionContext) {
-    const isPublic = this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, [
-      context.getHandler(),
-      context.getClass(),
-    ]);
+  canActivate(
+    context: ExecutionContext,
+  ) {
+    const isPublic =
+      this.reflector.getAllAndOverride<boolean>(
+        IS_PUBLIC_KEY,
+        [
+          context.getHandler(),
+          context.getClass(),
+        ],
+      );
 
     if (isPublic) {
       return true;
     }
 
-    return super.canActivate(context);
+    return super.canActivate(
+      context,
+    );
   }
 
-  handleRequest(err: any, user: any, info: any) {
-    if (err || !user) {
-      throw err || new UnauthorizedException('Invalid token');
+  handleRequest<TUser = unknown>(
+    error: unknown,
+    user: TUser | false | null,
+    info: unknown,
+  ): TUser {
+    if (error) {
+      throw error;
     }
+
+    if (!user) {
+      const message =
+        info instanceof Error &&
+        info.message
+          ? info.message
+          : 'Invalid or expired token';
+
+      throw new UnauthorizedException(
+        message,
+      );
+    }
+
     return user;
   }
 }

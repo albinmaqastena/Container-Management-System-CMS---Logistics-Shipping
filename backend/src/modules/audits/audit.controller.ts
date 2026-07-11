@@ -1,146 +1,264 @@
-// src/modules/audit/audit.controller.ts
+// src/modules/audits/audit.controller.ts
+
 import {
+  BadRequestException,
   Controller,
-  Get,
-  Post,
   Delete,
+  Get,
+  HttpCode,
+  HttpStatus,
   Param,
   Query,
   UseGuards,
-  HttpCode,
-  HttpStatus,
-  BadRequestException,
+  ValidationPipe,
 } from '@nestjs/common';
 import {
-  ApiTags,
+  ApiBearerAuth,
   ApiOperation,
   ApiResponse,
-  ApiBearerAuth,
-  ApiQuery,
+  ApiTags,
 } from '@nestjs/swagger';
-import { AuditService } from './audit.service';
-import { AuditLog, AuditAction, AuditStatus } from './entities/audit-log.entity';
+
+import {
+  AuditService,
+  AuditStats,
+} from './audit.service';
+import {
+  AuditAction,
+  AuditLog,
+} from './entities/audit-log.entity';
+import { AuditQueryDto } from './dto/audit-query.dto';
+import { AuditCleanupQueryDto } from './dto/audit-cleanup-query.dto';
+import { SkipAudit } from './decorators/audit.decorator';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { UserRole } from '../auth/entities/user.entity';
-import { PaginationDto, PaginatedResponseDto } from '../../common/dto/pagination.dto';
+import {
+  PaginatedResponseDto,
+  PaginationDto,
+} from '../../common/dto/pagination.dto';
 import { UUIDValidationPipe } from '../../common/pipes/uuid-validation.pipe';
-import { SkipAudit } from './decorators/audit.decorator';
 
 @ApiTags('Audit Logs')
-@Controller('audit')
-@UseGuards(JwtAuthGuard, RolesGuard)
-@Roles(UserRole.SUPER_ADMIN)
 @ApiBearerAuth()
+@Controller('audit')
+@UseGuards(
+  JwtAuthGuard,
+  RolesGuard,
+)
+@Roles(UserRole.SUPER_ADMIN)
 export class AuditController {
-  constructor(private readonly auditService: AuditService) {}
+  constructor(
+    private readonly auditService:
+      AuditService,
+  ) {}
 
   @Get()
-  @ApiOperation({ summary: 'Get all audit logs (Super Admin only)' })
-  @ApiQuery({ name: 'limit', type: Number, required: false, example: 10 })
-  @ApiQuery({ name: 'offset', type: Number, required: false, example: 0 })
-  @ApiQuery({ name: 'sort', type: String, required: false, example: 'createdAt:DESC' })
-  @ApiQuery({ name: 'userId', type: String, required: false })
-  @ApiQuery({ name: 'action', enum: AuditAction, required: false })
-  @ApiQuery({ name: 'status', enum: AuditStatus, required: false })
-  @ApiQuery({ name: 'fromDate', type: String, required: false })
-  @ApiQuery({ name: 'toDate', type: String, required: false })
-  @ApiResponse({ status: 200, description: 'Audit logs retrieved', type: PaginatedResponseDto })
+  @ApiOperation({
+    summary:
+      'Get all audit logs',
+  })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    type:
+      PaginatedResponseDto,
+  })
   async findAll(
-    @Query() paginationDto: PaginationDto,
-    @Query('userId') userId?: string,
-    @Query('action') action?: AuditAction,
-    @Query('status') status?: AuditStatus,
-    @Query('fromDate') fromDate?: string,
-    @Query('toDate') toDate?: string,
-  ): Promise<PaginatedResponseDto<AuditLog>> {
-    // ✅ Validimi i datës
-    let fromDateObj: Date | undefined;
-    let toDateObj: Date | undefined;
-
-    if (fromDate) {
-      fromDateObj = new Date(fromDate);
-      if (isNaN(fromDateObj.getTime())) {
-        throw new BadRequestException('Invalid fromDate format');
-      }
+    @Query(
+      new ValidationPipe({
+        transform: true,
+        whitelist: true,
+        forbidNonWhitelisted:
+          true,
+      }),
+    )
+    query: AuditQueryDto,
+  ): Promise<
+    PaginatedResponseDto<AuditLog>
+  > {
+    if (
+      query.fromDate &&
+      query.toDate &&
+      query.fromDate >
+        query.toDate
+    ) {
+      throw new BadRequestException(
+        'fromDate must be before or equal to toDate',
+      );
     }
 
-    if (toDate) {
-      toDateObj = new Date(toDate);
-      if (isNaN(toDateObj.getTime())) {
-        throw new BadRequestException('Invalid toDate format');
-      }
-    }
-
-    return this.auditService.findAll(paginationDto, {
-      userId,
-      action,
-      status,
-      fromDate: fromDateObj,
-      toDate: toDateObj,
-    });
+    return this.auditService.findAll(
+      this.createPaginationDto(
+        query,
+      ),
+      {
+        userId:
+          query.userId,
+        action:
+          query.action,
+        status:
+          query.status,
+        fromDate:
+          query.fromDate,
+        toDate:
+          query.toDate,
+      },
+    );
   }
 
   @Get('stats')
-  @ApiOperation({ summary: 'Get audit statistics (Super Admin only)' })
-  @ApiResponse({ status: 200, description: 'Audit statistics retrieved' })
-  async getStats(): Promise<{
-    total: number;
-    byAction: Record<string, number>;
-    byStatus: Record<string, number>;
-    last24h: number;
-    last7d: number;
-  }> {
+  @ApiOperation({
+    summary:
+      'Get audit statistics',
+  })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description:
+      'Audit statistics retrieved successfully',
+  })
+  async getStats(): Promise<AuditStats> {
     return this.auditService.getStats();
   }
 
-  @Get(':id')
-  @ApiOperation({ summary: 'Get audit log by ID (Super Admin only)' })
-  @ApiResponse({ status: 200, description: 'Audit log retrieved', type: AuditLog })
-  @ApiResponse({ status: 404, description: 'Audit log not found' })
-  async findOne(@Param('id', UUIDValidationPipe) id: string): Promise<AuditLog> {
-    return this.auditService.findOne(id);
-  }
-
   @Get('users/:userId')
-  @ApiOperation({ summary: 'Get audit logs by user (Super Admin only)' })
-  @ApiQuery({ name: 'limit', type: Number, required: false, example: 10 })
-  @ApiQuery({ name: 'offset', type: Number, required: false, example: 0 })
-  @ApiQuery({ name: 'sort', type: String, required: false, example: 'createdAt:DESC' })
-  @ApiResponse({ status: 200, description: 'Audit logs retrieved', type: PaginatedResponseDto })
+  @ApiOperation({
+    summary:
+      'Get audit logs by user',
+  })
   async findByUser(
-    @Param('userId', UUIDValidationPipe) userId: string,
-    @Query() paginationDto: PaginationDto,
-  ): Promise<PaginatedResponseDto<AuditLog>> {
-    return this.auditService.findByUser(userId, paginationDto);
+    @Param(
+      'userId',
+      UUIDValidationPipe,
+    )
+    userId: string,
+    @Query(
+      new ValidationPipe({
+        transform: true,
+        whitelist: true,
+        forbidNonWhitelisted:
+          true,
+      }),
+    )
+    query: PaginationDto,
+  ): Promise<
+    PaginatedResponseDto<AuditLog>
+  > {
+    return this.auditService.findByUser(
+      userId,
+      this.createPaginationDto(
+        query,
+      ),
+    );
   }
 
   @Get('actions/:action')
-  @ApiOperation({ summary: 'Get audit logs by action (Super Admin only)' })
-  @ApiQuery({ name: 'limit', type: Number, required: false, example: 10 })
-  @ApiQuery({ name: 'offset', type: Number, required: false, example: 0 })
-  @ApiQuery({ name: 'sort', type: String, required: false, example: 'createdAt:DESC' })
-  @ApiResponse({ status: 200, description: 'Audit logs retrieved', type: PaginatedResponseDto })
+  @ApiOperation({
+    summary:
+      'Get audit logs by action',
+  })
   async findByAction(
-    @Param('action') action: AuditAction,
-    @Query() paginationDto: PaginationDto,
-  ): Promise<PaginatedResponseDto<AuditLog>> {
-    return this.auditService.findByAction(action, paginationDto);
+    @Param('action')
+    action: AuditAction,
+    @Query(
+      new ValidationPipe({
+        transform: true,
+        whitelist: true,
+        forbidNonWhitelisted:
+          true,
+      }),
+    )
+    query: PaginationDto,
+  ): Promise<
+    PaginatedResponseDto<AuditLog>
+  > {
+    if (
+      !Object.values(
+        AuditAction,
+      ).includes(action)
+    ) {
+      throw new BadRequestException(
+        'Invalid audit action',
+      );
+    }
+
+    return this.auditService.findByAction(
+      action,
+      this.createPaginationDto(
+        query,
+      ),
+    );
   }
 
   @Delete('cleanup')
   @HttpCode(HttpStatus.OK)
   @SkipAudit()
-  @ApiOperation({ summary: 'Clean up old audit logs (Super Admin only)' })
-  @ApiQuery({ name: 'days', type: Number, required: false, example: 90 })
-  @ApiResponse({ status: 200, description: 'Audit logs cleaned up' })
-  async cleanup(@Query('days') days?: number): Promise<{ deleted: number; message: string }> {
-    const daysToKeep = days || 90;
-    const deleted = await this.auditService.cleanup(daysToKeep);
+  @ApiOperation({
+    summary:
+      'Clean up old audit logs',
+  })
+  async cleanup(
+    @Query(
+      new ValidationPipe({
+        transform: true,
+        whitelist: true,
+        forbidNonWhitelisted:
+          true,
+      }),
+    )
+    query:
+      AuditCleanupQueryDto,
+  ): Promise<{
+    deleted: number;
+    message: string;
+  }> {
+    const daysToKeep =
+      query.days ?? 90;
+
+    const deleted =
+      await this.auditService.cleanup(
+        daysToKeep,
+      );
+
     return {
       deleted,
-      message: `Deleted ${deleted} audit logs older than ${daysToKeep} days`,
+      message:
+        `Deleted ${deleted} audit logs older than ${daysToKeep} days`,
     };
+  }
+
+  @Get(':id')
+  @ApiOperation({
+    summary:
+      'Get audit log by ID',
+  })
+  async findOne(
+    @Param(
+      'id',
+      UUIDValidationPipe,
+    )
+    id: string,
+  ): Promise<AuditLog> {
+    return this.auditService.findOne(
+      id,
+    );
+  }
+
+  private createPaginationDto(
+    query: PaginationDto,
+  ): PaginationDto {
+    const paginationDto =
+      new PaginationDto();
+
+    paginationDto.limit =
+      query.limit ?? 10;
+
+    paginationDto.offset =
+      query.offset ?? 0;
+
+    paginationDto.sort =
+      query.sort;
+
+    return paginationDto;
   }
 }

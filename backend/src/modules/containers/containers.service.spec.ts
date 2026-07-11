@@ -10,7 +10,10 @@ import { Item } from '../items/entities/item.entity';
 import { User } from '../auth/entities/user.entity';
 import { CreateContainerDto } from './dto/create-container.dto';
 import { UpdateContainerDto } from './dto/update-container.dto';
-import { PaginationDto } from '../../common/dto/pagination.dto';
+import {
+  PaginatedResponseDto,
+  PaginationDto,
+} from '../../common/dto/pagination.dto';
 
 describe('ContainersService', () => {
   let service: ContainersService;
@@ -187,14 +190,14 @@ describe('ContainersService', () => {
       const pagination: PaginationDto = { limit: 10, offset: 0 };
       const spy = jest
         .spyOn(service, 'findAll')
-        .mockResolvedValue({
-            data: [],
-            total: 0,
-            limit: 10,
-            offset: 0,
-            totalPages: 0,
-            currentPage: 1,
-        });
+        .mockResolvedValue(
+          new PaginatedResponseDto<Container>(
+            [],
+            0,
+            10,
+            0,
+          ),
+        );
 
       await service.findActiveContainers(pagination);
       await service.findArchivedContainers(pagination);

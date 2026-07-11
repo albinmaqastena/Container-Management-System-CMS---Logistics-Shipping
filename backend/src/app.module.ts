@@ -7,7 +7,10 @@ import {
   RequestMethod,
   ValidationPipe,
 } from '@nestjs/common';
-import { ConfigModule, ConfigService } from '@nestjs/config';
+import {
+  ConfigModule,
+  ConfigService,
+} from '@nestjs/config';
 import {
   TypeOrmModule,
   TypeOrmModuleOptions,
@@ -18,6 +21,7 @@ import {
   ThrottlerModule,
 } from '@nestjs/throttler';
 import {
+  APP_FILTER,
   APP_GUARD,
   APP_INTERCEPTOR,
   APP_PIPE,
@@ -42,59 +46,201 @@ import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { RolesGuard } from './common/guards/roles.guard';
 import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
 import { LoggerMiddleware } from './common/middleware/logger.middleware';
+import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { HealthController } from './health/health.controller';
 
 import authConfig from './config/auth.config';
+import fileConfig from './config/file.config';
 
 @Module({
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
       cache: true,
-      load: [authConfig],
+      load: [
+        authConfig,
+        fileConfig,
+      ],
       envFilePath: [
-        `.env.${process.env.NODE_ENV || 'development'}`,
+        `.env.${
+          process.env.NODE_ENV ||
+          'development'
+        }`,
         '.env',
       ],
       validationSchema: Joi.object({
         NODE_ENV: Joi.string()
-          .valid('development', 'production', 'test')
+          .valid(
+            'development',
+            'production',
+            'test',
+          )
           .default('development'),
 
-        PORT: Joi.number().default(3000),
+        PORT:
+          Joi.number()
+            .integer()
+            .min(1)
+            .max(65535)
+            .default(3000),
 
-        DB_HOST: Joi.string().default('localhost'),
-        DB_PORT: Joi.number().default(5432),
-        DB_USERNAME: Joi.string().default('postgres'),
-        DB_PASSWORD: Joi.string().default('password'),
-        DB_DATABASE: Joi.string().default('container_db'),
-        DB_MAX_CONNECTIONS: Joi.number().default(20),
+        DB_HOST:
+          Joi.string()
+            .default('localhost'),
+        DB_PORT:
+          Joi.number()
+            .integer()
+            .min(1)
+            .max(65535)
+            .default(5432),
+        DB_USERNAME:
+          Joi.string()
+            .default('postgres'),
+        DB_PASSWORD:
+          Joi.string()
+            .default('password'),
+        DB_DATABASE:
+          Joi.string()
+            .default('container_db'),
+        DB_MAX_CONNECTIONS:
+          Joi.number()
+            .integer()
+            .min(1)
+            .default(20),
 
-        JWT_SECRET: Joi.string().min(32).required(),
-        JWT_EXPIRES_IN: Joi.string().default('7d'),
-        JWT_ISSUER: Joi.string().default(
-          'container-management-system',
-        ),
-        JWT_AUDIENCE: Joi.string().default(
-          'container-management-users',
-        ),
+        JWT_SECRET:
+          Joi.string()
+            .min(32)
+            .required(),
+        JWT_EXPIRES_IN:
+          Joi.string()
+            .default('15m'),
+        JWT_ACCESS_EXPIRES_IN:
+          Joi.string()
+            .default('15m'),
+        JWT_REFRESH_EXPIRES_IN:
+          Joi.string()
+            .default('7d'),
+        JWT_ISSUER:
+          Joi.string()
+            .default(
+              'container-management-system',
+            ),
+        JWT_AUDIENCE:
+          Joi.string()
+            .default(
+              'container-management-users',
+            ),
 
-        REDIS_HOST: Joi.string().default('localhost'),
-        REDIS_PORT: Joi.number().default(6379),
-        REDIS_PASSWORD: Joi.string().allow('').optional(),
-        REDIS_TTL: Joi.number().default(3600),
-        REDIS_MAX_CONNECTIONS: Joi.number().default(10),
+        AUTH_LOGIN_ATTEMPTS:
+          Joi.number()
+            .integer()
+            .min(1)
+            .default(5),
+        AUTH_BLOCK_DURATION_MS:
+          Joi.number()
+            .integer()
+            .min(1000)
+            .default(
+              15 * 60 * 1000,
+            ),
 
-        FRONTEND_URLS: Joi.string().default(
-          'http://localhost:3001',
-        ),
+        ENCRYPTION_KEY:
+          Joi.string()
+            .min(32)
+            .required(),
 
-        LOG_LEVEL: Joi.string()
-          .valid('debug', 'info', 'warn', 'error')
-          .default('debug'),
+        REDIS_HOST:
+          Joi.string()
+            .default('localhost'),
+        REDIS_PORT:
+          Joi.number()
+            .integer()
+            .min(1)
+            .max(65535)
+            .default(6379),
+        REDIS_PASSWORD:
+          Joi.string()
+            .allow('')
+            .optional(),
+        REDIS_DB:
+          Joi.number()
+            .integer()
+            .min(0)
+            .default(0),
+        REDIS_TTL:
+          Joi.number()
+            .integer()
+            .min(1)
+            .default(3600),
+        REDIS_MAX_CONNECTIONS:
+          Joi.number()
+            .integer()
+            .min(1)
+            .default(10),
 
-        THROTTLE_TTL: Joi.number().default(60),
-        THROTTLE_LIMIT: Joi.number().default(100),
+        FILE_MAX_SIZE_BYTES:
+          Joi.number()
+            .integer()
+            .min(1)
+            .default(
+              5 * 1024 * 1024,
+            ),
+        FILE_UPLOAD_DESTINATION:
+          Joi.string()
+            .default('./uploads'),
+        FILE_URL_PREFIX:
+          Joi.string()
+            .default('/uploads'),
+
+        IMAGE_OPTIMIZATION_ENABLED:
+          Joi.boolean()
+            .truthy('true')
+            .falsy('false')
+            .default(true),
+        IMAGE_MAX_WIDTH:
+          Joi.number()
+            .integer()
+            .min(1)
+            .default(1200),
+        IMAGE_MAX_HEIGHT:
+          Joi.number()
+            .integer()
+            .min(1)
+            .default(1200),
+        IMAGE_QUALITY:
+          Joi.number()
+            .integer()
+            .min(1)
+            .max(100)
+            .default(80),
+
+        FRONTEND_URLS:
+          Joi.string()
+            .default(
+              'http://localhost:3001',
+            ),
+
+        LOG_LEVEL:
+          Joi.string()
+            .valid(
+              'debug',
+              'info',
+              'warn',
+              'error',
+            )
+            .default('debug'),
+
+        THROTTLE_TTL:
+          Joi.number()
+            .integer()
+            .min(1)
+            .default(60),
+        THROTTLE_LIMIT:
+          Joi.number()
+            .integer()
+            .min(1)
+            .default(100),
       }),
       validationOptions: {
         abortEarly: false,
@@ -108,26 +254,26 @@ import authConfig from './config/auth.config';
         configService: ConfigService,
       ) => {
         const isTest =
-          configService.get<string>('NODE_ENV') === 'test';
+          configService.get<string>(
+            'NODE_ENV',
+          ) === 'test';
 
-        return {
-          throttlers: [
-            {
-              ttl: isTest
-                ? 1000
-                : configService.get<number>(
-                    'THROTTLE_TTL',
-                    60,
-                  ),
-              limit: isTest
-                ? 100000
-                : configService.get<number>(
-                    'THROTTLE_LIMIT',
-                    100,
-                  ),
-            },
-          ],
-        };
+        return [
+          {
+            ttl: isTest
+              ? 1000
+              : configService.get<number>(
+                  'THROTTLE_TTL',
+                  60,
+                ),
+            limit: isTest
+              ? 100000
+              : configService.get<number>(
+                  'THROTTLE_LIMIT',
+                  100,
+                ),
+          },
+        ];
       },
     }),
 
@@ -142,7 +288,10 @@ import authConfig from './config/auth.config';
             'NODE_ENV',
             'development',
           );
-        const isTest = nodeEnv === 'test';
+
+        const isTest =
+          nodeEnv === 'test';
+
         const isProduction =
           nodeEnv === 'production';
 
@@ -180,9 +329,10 @@ import authConfig from './config/auth.config';
           synchronize: false,
           dropSchema: false,
 
-          logging: isTest
-            ? false
-            : nodeEnv === 'development',
+          logging:
+            !isTest &&
+            nodeEnv === 'development',
+
           logger:
             nodeEnv === 'development'
               ? 'advanced-console'
@@ -197,24 +347,30 @@ import authConfig from './config/auth.config';
           migrations: [
             'dist/migrations/*{.ts,.js}',
           ],
-          migrationsRun: isProduction,
-          migrationsTableName: 'migrations',
-          migrationsTransactionMode: 'each',
+          migrationsRun:
+            isProduction,
+          migrationsTableName:
+            'migrations',
+          migrationsTransactionMode:
+            'each',
 
           extra: {
             max: isTest
               ? 5
               : configService.get<number>(
                   'DB_MAX_CONNECTIONS',
-                ) || 20,
+                  20,
+                ),
             idleTimeoutMillis: 30000,
             connectionTimeoutMillis: 2000,
             statement_timeout: 10000,
             query_timeout: 10000,
           },
 
-          retryAttempts: isTest ? 1 : 3,
-          retryDelay: isTest ? 1000 : 3000,
+          retryAttempts:
+            isTest ? 1 : 3,
+          retryDelay:
+            isTest ? 1000 : 3000,
 
           cache: {
             duration: 60000,
@@ -224,59 +380,59 @@ import authConfig from './config/auth.config';
     }),
 
     CacheModule.registerAsync({
+      isGlobal: true,
       imports: [ConfigModule],
       inject: [ConfigService],
       useFactory: (
         configService: ConfigService,
       ) => {
-        const isProduction =
-          configService.get<string>('NODE_ENV') ===
-          'production';
         const isTest =
-          configService.get<string>('NODE_ENV') ===
-          'test';
+          configService.get<string>(
+            'NODE_ENV',
+          ) === 'test';
 
         return {
           store: redisStore,
-          host: configService.get<string>(
-            'REDIS_HOST',
-            'localhost',
-          ),
-          port: configService.get<number>(
-            'REDIS_PORT',
-            6379,
-          ),
+          host:
+            configService.get<string>(
+              'REDIS_HOST',
+              'localhost',
+            ),
+          port:
+            configService.get<number>(
+              'REDIS_PORT',
+              6379,
+            ),
           password:
             configService.get<string>(
               'REDIS_PASSWORD',
-            ),
+            ) || undefined,
           ttl: isTest
             ? 60
             : configService.get<number>(
                 'REDIS_TTL',
                 3600,
               ),
-          max: isTest
-            ? 5
-            : configService.get<number>(
-                'REDIS_MAX_CONNECTIONS',
-                10,
-              ),
-          retryStrategy: (times: number) => {
-            if (isProduction) {
-              return Math.min(
-                times * 50,
-                2000,
-              );
-            }
-
-            return Math.min(
-              times * 100,
-              3000,
-            );
-          },
-          reconnectOnError: (error: Error) =>
-            error.message.includes('READONLY'),
+          max:
+            configService.get<number>(
+              'REDIS_MAX_CONNECTIONS',
+              10,
+            ),
+          retryStrategy: (
+            times: number,
+          ) =>
+            isTest
+              ? null
+              : Math.min(
+                  times * 100,
+                  3000,
+                ),
+          reconnectOnError: (
+            error: Error,
+          ) =>
+            error.message.includes(
+              'READONLY',
+            ),
           connectTimeout: 10000,
         };
       },
@@ -290,39 +446,56 @@ import authConfig from './config/auth.config';
     AuditModule,
   ],
 
-  controllers: [HealthController],
+  controllers: [
+    HealthController,
+  ],
 
   providers: [
     {
-      provide: APP_GUARD,
-      useClass: ThrottlerGuard,
+      provide: APP_FILTER,
+      useClass:
+        HttpExceptionFilter,
     },
     {
       provide: APP_GUARD,
-      useClass: JwtAuthGuard,
+      useClass:
+        ThrottlerGuard,
     },
     {
       provide: APP_GUARD,
-      useClass: RolesGuard,
+      useClass:
+        JwtAuthGuard,
+    },
+    {
+      provide: APP_GUARD,
+      useClass:
+        RolesGuard,
     },
     {
       provide: APP_PIPE,
-      useValue: new ValidationPipe({
-        whitelist: true,
-        transform: true,
-        forbidNonWhitelisted: false,
-        transformOptions: {
-          enableImplicitConversion: true,
-        },
-      }),
+      useValue:
+        new ValidationPipe({
+          whitelist: true,
+          transform: true,
+          forbidNonWhitelisted: true,
+          stopAtFirstError: false,
+          transformOptions: {
+            enableImplicitConversion:
+              true,
+          },
+        }),
     },
     {
-      provide: APP_INTERCEPTOR,
-      useClass: LoggingInterceptor,
+      provide:
+        APP_INTERCEPTOR,
+      useClass:
+        LoggingInterceptor,
     },
   ],
 })
-export class AppModule implements NestModule {
+export class AppModule
+  implements NestModule
+{
   configure(
     consumer: MiddlewareConsumer,
   ): void {
@@ -330,7 +503,8 @@ export class AppModule implements NestModule {
       .apply(LoggerMiddleware)
       .forRoutes({
         path: '*',
-        method: RequestMethod.ALL,
+        method:
+          RequestMethod.ALL,
       });
   }
 }

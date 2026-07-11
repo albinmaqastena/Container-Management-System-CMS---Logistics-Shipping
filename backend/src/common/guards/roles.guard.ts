@@ -1,34 +1,85 @@
 // src/common/guards/roles.guard.ts
-import { Injectable, CanActivate, ExecutionContext, UnauthorizedException, ForbiddenException } from '@nestjs/common';
+
+import {
+  CanActivate,
+  ExecutionContext,
+  ForbiddenException,
+  Injectable,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import { UserRole } from '../../modules/auth/entities/user.entity';
+
+import {
+  ROLES_KEY,
+} from '../decorators/roles.decorator';
+import {
+  User,
+  UserRole,
+} from '../../modules/auth/entities/user.entity';
+
+interface AuthenticatedRequest {
+  user?: Pick<
+    User,
+    'id' | 'role' | 'isActive'
+  >;
+}
 
 @Injectable()
-export class RolesGuard implements CanActivate {
-  constructor(private reflector: Reflector) {}
+export class RolesGuard
+  implements CanActivate
+{
+  constructor(
+    private readonly reflector: Reflector,
+  ) {}
 
-  canActivate(context: ExecutionContext): boolean {
-    const requiredRoles = this.reflector.getAllAndOverride<UserRole[]>('roles', [
-      context.getHandler(),
-      context.getClass(),
-    ]);
+  canActivate(
+    context: ExecutionContext,
+  ): boolean {
+    const requiredRoles =
+      this.reflector.getAllAndOverride<
+        UserRole[]
+      >(
+        ROLES_KEY,
+        [
+          context.getHandler(),
+          context.getClass(),
+        ],
+      );
 
-    if (!requiredRoles) {
+    if (
+      !requiredRoles ||
+      requiredRoles.length === 0
+    ) {
       return true;
     }
 
-    const { user } = context.switchToHttp().getRequest();
+    const request =
+      context
+        .switchToHttp()
+        .getRequest<AuthenticatedRequest>();
 
-    // ✅ Nëse user-i nuk është i autentikuar, kthe 401
+    const user = request.user;
+
     if (!user) {
-      throw new UnauthorizedException('User not authenticated');
+      throw new UnauthorizedException(
+        'User not authenticated',
+      );
     }
 
-    const hasRole = requiredRoles.some((role) => user?.role === role);
+    if (user.isActive === false) {
+      throw new ForbiddenException(
+        'User account is inactive',
+      );
+    }
 
-    // ✅ Nëse nuk ka rolin e duhur, kthe 403
-    if (!hasRole) {
-      throw new ForbiddenException('Insufficient permissions');
+    if (
+      !requiredRoles.includes(
+        user.role,
+      )
+    ) {
+      throw new ForbiddenException(
+        'Insufficient permissions',
+      );
     }
 
     return true;

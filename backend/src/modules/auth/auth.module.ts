@@ -1,7 +1,10 @@
 // src/modules/auth/auth.module.ts
 
 import { Module } from '@nestjs/common';
-import { ConfigModule, ConfigService } from '@nestjs/config';
+import {
+  ConfigModule,
+  ConfigService,
+} from '@nestjs/config';
 import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
 import { TypeOrmModule } from '@nestjs/typeorm';
@@ -42,11 +45,21 @@ import { RedisModule } from '../../common/redis/redis.module';
               'auth.jwt.accessTokenExpiresIn',
             ),
           algorithm: 'HS256',
+          issuer:
+            configService.getOrThrow<string>(
+              'auth.jwt.issuer',
+            ),
+          audience:
+            configService.getOrThrow<string>(
+              'auth.jwt.audience',
+            ),
         },
       }),
     }),
   ],
-  controllers: [AuthController],
+  controllers: [
+    AuthController,
+  ],
   providers: [
     AuthService,
     JwtStrategy,
@@ -54,6 +67,7 @@ import { RedisModule } from '../../common/redis/redis.module';
   exports: [
     AuthService,
     JwtModule,
+    PassportModule,
   ],
 })
 export class AuthModule {}

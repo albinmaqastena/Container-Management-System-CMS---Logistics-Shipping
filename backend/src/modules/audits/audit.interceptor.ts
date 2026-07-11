@@ -1,191 +1,615 @@
 // src/modules/audits/audit.interceptor.ts
+
 import {
-  Injectable,
-  NestInterceptor,
-  ExecutionContext,
   CallHandler,
-  Inject,
+  ExecutionContext,
+  Injectable,
+  Logger,
+  NestInterceptor,
 } from '@nestjs/common';
-import { Observable } from 'rxjs';
-import { tap, catchError } from 'rxjs/operators';
+import { ConfigService } from '@nestjs/config';
 import { Reflector } from '@nestjs/core';
+import {
+  Observable,
+  catchError,
+  tap,
+  throwError,
+} from 'rxjs';
+
 import { AuditService } from './audit.service';
-import { AuditAction, AuditStatus } from './entities/audit-log.entity';
-import { SKIP_AUDIT_KEY, AUDIT_ACTION_KEY } from './decorators/audit.decorator';
+import {
+  AuditAction,
+  AuditStatus,
+} from './entities/audit-log.entity';
+import {
+  AUDIT_ACTION_KEY,
+  SKIP_AUDIT_KEY,
+} from './decorators/audit.decorator';
 
 @Injectable()
-export class AuditInterceptor implements NestInterceptor {
+export class AuditInterceptor
+  implements NestInterceptor
+{
+  private readonly logger =
+    new Logger(
+      AuditInterceptor.name,
+    );
+
   constructor(
-    private auditService: AuditService,
-    private reflector: Reflector,
+    private readonly auditService:
+      AuditService,
+    private readonly reflector:
+      Reflector,
+    private readonly configService:
+      ConfigService,
   ) {}
 
-  intercept(context: ExecutionContext, next: CallHandler): Observable<any> {
-    const request = context.switchToHttp().getRequest();
-    const response = context.switchToHttp().getResponse();
+  intercept(
+    context: ExecutionContext,
+    next: CallHandler,
+  ): Observable<unknown> {
+    const skipAudit =
+      this.reflector
+        .getAllAndOverride<boolean>(
+          SKIP_AUDIT_KEY,
+          [
+            context.getHandler(),
+            context.getClass(),
+          ],
+        );
 
-    // ✅ Kontrollo nëse auditimi është i çaktivizuar për këtë endpoint
-    const skipAudit = this.reflector.get<boolean>(SKIP_AUDIT_KEY, context.getHandler());
-    if (skipAudit) {
+    const isTest =
+      this.configService.get<string>(
+        'NODE_ENV',
+      ) === 'test';
+
+    if (skipAudit || isTest) {
       return next.handle();
     }
 
-    if (process.env.NODE_ENV === 'test') {
-        return next.handle();
+    const request =
+      context.switchToHttp()
+        .getRequest();
+
+    const response =
+      context.switchToHttp()
+        .getResponse();
+
+    const rawUrl =
+      request.originalUrl ||
+      request.url;
+
+    const explicitAction =
+      this.reflector
+        .getAllAndOverride<AuditAction>(
+          AUDIT_ACTION_KEY,
+          [
+            context.getHandler(),
+            context.getClass(),
+          ],
+        );
+
+    const action =
+      explicitAction ??
+      this.detectAction(
+        request.method,
+        rawUrl,
+      );
+
+    /*
+     * Read-only endpoints and unrelated routes must not fill
+     * the audit table with UNKNOWN records.
+     */
+    if (
+      action ===
+      AuditAction.UNKNOWN
+    ) {
+      return next.handle();
     }
 
-    // ✅ Merr veprimin nga decoratori ose përcakto automatikisht
-    let action = this.reflector.get<AuditAction>(AUDIT_ACTION_KEY, context.getHandler());
-    if (!action) {
-      action = this.detectAction(request.method, request.url);
-    }
+    const userId =
+      request.user?.id;
 
-    const userId = request.user?.id;
-    const method = request.method;
-    const url = request.url;
-    const ip = request.ip || request.connection?.remoteAddress;
-    const userAgent = request.headers['user-agent'];
-    const startTime = Date.now();
+    const method =
+      request.method;
 
-    // ✅ Ruaj të dhënat e kërkesës për auditim
-    let requestBody = {};
-    try {
-      if (request.body && Object.keys(request.body).length > 0) {
-        // ✅ Mos ruaj password-et në audit log
-        const { password, currentPassword, newPassword, ...safeBody } = request.body;
-        requestBody = safeBody;
-      }
-    } catch {
-      // Nëse nuk mund të lexohet body, vazhdo
-    }
+    const url = rawUrl;
+
+    const ip =
+      request.ip ||
+      request.socket
+        ?.remoteAddress;
+
+    const userAgent =
+      request.headers?.[
+        'user-agent'
+      ];
+
+    const startedAt =
+      Date.now();
+
+    const requestBody =
+      this.sanitizeValue(
+        request.body,
+      );
 
     return next.handle().pipe(
-      tap({
-        next: (data) => {
-          const duration = Date.now() - startTime;
-          const statusCode = response.statusCode || 200;
-
-          // ✅ Përcakto targetId dhe targetType nga përgjigja
-          let targetId: string | undefined;
-          let targetType: string | undefined;
-
-          if (data && data.id) {
-            targetId = data.id;
-            targetType = this.getTargetType(url);
-          }
-
-          // ✅ Ruaj audit log në background (jo-blocking) me error handling
-          this.auditService
-            .log(
-              action,
-              userId,
-              targetId,
-              targetType,
-              Object.keys(requestBody).length > 0 ? requestBody : undefined,
-              {
-                ip,
-                userAgent,
-                method,
-                url,
-                statusCode,
-                duration,
-              },
-              AuditStatus.SUCCESS,
-            )
-            .catch((err) => {
-              // ✅ Nëse është gabim i lidhjes me databazën (Connection terminated),
-              // thjesht logojmë pa e hedhur më tej
-              if (err.message?.includes('Connection terminated')) {
-                console.debug('Audit log skipped: Database connection closed');
-                return;
-              }
-              console.error('Error saving audit log:', err);
-            });
-        },
-      }),
-      catchError((error) => {
-        const duration = Date.now() - startTime;
-        const statusCode = error.status || 500;
-
-        // ✅ Ruaj audit log edhe për gabime
-        this.auditService
+      tap((data) => {
+        void this.auditService
           .log(
             action,
             userId,
-            undefined,
-            this.getTargetType(url),
-            Object.keys(requestBody).length > 0 ? requestBody : undefined,
+            this.extractTargetId(
+              data,
+              request.params,
+            ),
+            this.getTargetType(
+              url,
+            ),
+            requestBody,
             {
               ip,
               userAgent,
               method,
               url,
-              statusCode,
-              duration,
+              statusCode:
+                response.statusCode ??
+                200,
+              duration:
+                Date.now() -
+                startedAt,
             },
-            AuditStatus.FAILED,
-            error.message,
+            AuditStatus.SUCCESS,
           )
-          .catch((err) => {
-            // ✅ Nëse është gabim i lidhjes me databazën (Connection terminated),
-            // thjesht logojmë pa e hedhur më tej
-            if (err.message?.includes('Connection terminated')) {
-              console.debug('Audit log (error) skipped: Database connection closed');
-              return;
-            }
-            console.error('Error saving audit log:', err);
-          });
-
-        throw error;
+          .catch(
+            (
+              error: unknown,
+            ) =>
+              this.logAuditFailure(
+                error,
+              ),
+          );
       }),
+
+      catchError(
+        (error: unknown) => {
+          const httpError =
+            error as {
+              status?: number;
+              statusCode?: number;
+              message?: string;
+            };
+
+          void this.auditService
+            .log(
+              action,
+              userId,
+              request.params?.id ||
+                request.params
+                  ?.userId,
+              this.getTargetType(
+                url,
+              ),
+              requestBody,
+              {
+                ip,
+                userAgent,
+                method,
+                url,
+                statusCode:
+                  httpError.status ??
+                  httpError.statusCode ??
+                  500,
+                duration:
+                  Date.now() -
+                  startedAt,
+              },
+              AuditStatus.FAILED,
+              error instanceof Error
+                ? error.message
+                : 'Unknown error',
+            )
+            .catch(
+              (
+                auditError:
+                  unknown,
+              ) =>
+                this.logAuditFailure(
+                  auditError,
+                ),
+            );
+
+          return throwError(
+            () => error,
+          );
+        },
+      ),
     );
   }
 
-  private detectAction(method: string, url: string): AuditAction {
-    const path = url.split('?')[0];
-
-    if (path === '/auth/login') return AuditAction.LOGIN;
-    if (path === '/auth/logout') return AuditAction.LOGOUT;
-    if (path === '/auth/register') return AuditAction.REGISTER;
-    if (path === '/auth/change-password') return AuditAction.PASSWORD_CHANGE;
-    if (path === '/auth/reset-password') return AuditAction.PASSWORD_RESET;
-
-    if (path.startsWith('/auth/users/')) {
-      if (path.endsWith('/restore')) return AuditAction.USER_RESTORE;
-      if (path.endsWith('/permanent')) return AuditAction.USER_PERMANENT_DELETE;
-      return AuditAction.USER_DELETE;
+  private sanitizeValue(
+    value: unknown,
+  ):
+    | Record<string, unknown>
+    | undefined {
+    if (
+      !value ||
+      typeof value !==
+        'object' ||
+      Array.isArray(value)
+    ) {
+      return undefined;
     }
 
-    if (path === '/containers' && method === 'POST') return AuditAction.CONTAINER_CREATE;
-    if (path.startsWith('/containers/') && method === 'PUT') {
-      if (path.includes('/status')) return AuditAction.CONTAINER_STATUS_CHANGE;
-      if (path.includes('/restore')) return AuditAction.CONTAINER_RESTORE;
-      return AuditAction.CONTAINER_UPDATE;
-    }
-    if (path.startsWith('/containers/') && method === 'DELETE') {
-      if (path.includes('/permanent')) return AuditAction.CONTAINER_PERMANENT_DELETE;
-      return AuditAction.CONTAINER_DELETE;
-    }
+    const sanitized =
+      this.sanitizeObject(
+        value as Record<
+          string,
+          unknown
+        >,
+      );
 
-    if (path === '/items' && method === 'POST') return AuditAction.ITEM_CREATE;
-    if (path.startsWith('/items/') && method === 'PUT') {
-      if (path.includes('/restore')) return AuditAction.ITEM_RESTORE;
-      return AuditAction.ITEM_UPDATE;
-    }
-    if (path.startsWith('/items/') && method === 'DELETE') {
-      if (path.includes('/permanent')) return AuditAction.ITEM_PERMANENT_DELETE;
-      return AuditAction.ITEM_DELETE;
-    }
-
-    // Default
-    return AuditAction.LOGIN;
+    return Object.keys(
+      sanitized,
+    ).length
+      ? sanitized
+      : undefined;
   }
 
-  private getTargetType(url: string): string {
-    if (url.startsWith('/auth/users')) return 'User';
-    if (url.startsWith('/containers')) return 'Container';
-    if (url.startsWith('/items')) return 'Item';
-    if (url.startsWith('/auth')) return 'Auth';
+  private sanitizeObject(
+    value: Record<
+      string,
+      unknown
+    >,
+  ): Record<string, unknown> {
+    const sensitiveKeys =
+      new Set([
+        'password',
+        'currentPassword',
+        'newPassword',
+        'refreshToken',
+        'accessToken',
+        'token',
+        'resetPasswordToken',
+      ]);
+
+    return Object.fromEntries(
+      Object.entries(value)
+        .filter(
+          ([key]) =>
+            !sensitiveKeys.has(
+              key,
+            ),
+        )
+        .map(
+          ([key, item]) => {
+            if (
+              Array.isArray(item)
+            ) {
+              return [
+                key,
+                item.map(
+                  (entry) =>
+                    entry &&
+                    typeof entry ===
+                      'object'
+                      ? this.sanitizeObject(
+                          entry as Record<
+                            string,
+                            unknown
+                          >,
+                        )
+                      : entry,
+                ),
+              ];
+            }
+
+            if (
+              item &&
+              typeof item ===
+                'object'
+            ) {
+              return [
+                key,
+                this.sanitizeObject(
+                  item as Record<
+                    string,
+                    unknown
+                  >,
+                ),
+              ];
+            }
+
+            return [
+              key,
+              item,
+            ];
+          },
+        ),
+    );
+  }
+
+  private extractTargetId(
+    data: unknown,
+    params?: Record<
+      string,
+      string
+    >,
+  ): string | undefined {
+    if (
+      data &&
+      typeof data ===
+        'object' &&
+      'id' in data &&
+      typeof (
+        data as {
+          id?: unknown;
+        }
+      ).id === 'string'
+    ) {
+      return (
+        data as {
+          id: string;
+        }
+      ).id;
+    }
+
+    return (
+      params?.id ||
+      params?.userId
+    );
+  }
+
+  private detectAction(
+    method: string,
+    rawUrl: string,
+  ): AuditAction {
+    const path = rawUrl
+      .split('?')[0]
+      .replace(
+        /^\/v\d+/,
+        '',
+      );
+
+    if (
+      path ===
+      '/auth/login'
+    ) {
+      return AuditAction.LOGIN;
+    }
+
+    if (
+      path ===
+      '/auth/logout'
+    ) {
+      return AuditAction.LOGOUT;
+    }
+
+    if (
+      path ===
+      '/auth/register'
+    ) {
+      return AuditAction.REGISTER;
+    }
+
+    if (
+      path ===
+      '/auth/change-password'
+    ) {
+      return AuditAction.PASSWORD_CHANGE;
+    }
+
+    if (
+      path ===
+      '/auth/reset-password'
+    ) {
+      return AuditAction.PASSWORD_RESET;
+    }
+
+    if (
+      path.startsWith(
+        '/auth/users/',
+      )
+    ) {
+      if (
+        path.endsWith(
+          '/restore',
+        )
+      ) {
+        return AuditAction.USER_RESTORE;
+      }
+
+      if (
+        path.endsWith(
+          '/permanent',
+        )
+      ) {
+        return AuditAction.USER_PERMANENT_DELETE;
+      }
+
+      if (
+        method === 'DELETE'
+      ) {
+        return AuditAction.USER_DELETE;
+      }
+
+      if (
+        method === 'PUT' ||
+        method === 'PATCH'
+      ) {
+        return AuditAction.USER_UPDATE;
+      }
+    }
+
+    if (
+      path ===
+        '/containers' &&
+      method === 'POST'
+    ) {
+      return AuditAction.CONTAINER_CREATE;
+    }
+
+    if (
+      path.startsWith(
+        '/containers/',
+      ) &&
+      (
+        method === 'PUT' ||
+        method === 'PATCH'
+      )
+    ) {
+      if (
+        path.endsWith(
+          '/status',
+        )
+      ) {
+        return AuditAction.CONTAINER_STATUS_CHANGE;
+      }
+
+      if (
+        path.endsWith(
+          '/restore',
+        )
+      ) {
+        return AuditAction.CONTAINER_RESTORE;
+      }
+
+      return AuditAction.CONTAINER_UPDATE;
+    }
+
+    if (
+      path.startsWith(
+        '/containers/',
+      ) &&
+      method === 'DELETE'
+    ) {
+      return path.endsWith(
+        '/permanent',
+      )
+        ? AuditAction.CONTAINER_PERMANENT_DELETE
+        : AuditAction.CONTAINER_DELETE;
+    }
+
+    if (
+      path === '/items' &&
+      method === 'POST'
+    ) {
+      return AuditAction.ITEM_CREATE;
+    }
+
+    if (
+      path.startsWith(
+        '/items/',
+      ) &&
+      (
+        method === 'PUT' ||
+        method === 'PATCH'
+      )
+    ) {
+      return path.endsWith(
+        '/restore',
+      )
+        ? AuditAction.ITEM_RESTORE
+        : AuditAction.ITEM_UPDATE;
+    }
+
+    if (
+      path.startsWith(
+        '/items/',
+      ) &&
+      method === 'DELETE'
+    ) {
+      return path.endsWith(
+        '/permanent',
+      )
+        ? AuditAction.ITEM_PERMANENT_DELETE
+        : AuditAction.ITEM_DELETE;
+    }
+
+    if (
+      path.startsWith(
+        '/files/upload',
+      ) &&
+      method === 'POST'
+    ) {
+      return AuditAction.FILE_UPLOAD;
+    }
+
+    if (
+      path.startsWith(
+        '/files/',
+      ) &&
+      method === 'DELETE'
+    ) {
+      return AuditAction.FILE_DELETE;
+    }
+
+    return AuditAction.UNKNOWN;
+  }
+
+  private getTargetType(
+    rawUrl: string,
+  ): string {
+    const path = rawUrl
+      .split('?')[0]
+      .replace(
+        /^\/v\d+/,
+        '',
+      );
+
+    if (
+      path.startsWith(
+        '/auth/users',
+      )
+    ) {
+      return 'User';
+    }
+
+    if (
+      path.startsWith(
+        '/containers',
+      )
+    ) {
+      return 'Container';
+    }
+
+    if (
+      path.startsWith(
+        '/items',
+      )
+    ) {
+      return 'Item';
+    }
+
+    if (
+      path.startsWith(
+        '/files',
+      )
+    ) {
+      return 'File';
+    }
+
+    if (
+      path.startsWith(
+        '/auth',
+      )
+    ) {
+      return 'Auth';
+    }
+
     return 'Unknown';
+  }
+
+  private logAuditFailure(
+    error: unknown,
+  ): void {
+    const message =
+      error instanceof Error
+        ? error.message
+        : String(error);
+
+    this.logger.warn(
+      `Unable to save audit log: ${message}`,
+    );
   }
 }

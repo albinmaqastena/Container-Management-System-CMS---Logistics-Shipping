@@ -15,6 +15,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { ConfigService } from '@nestjs/config';
 import Redis from 'ioredis';
 import { randomBytes } from 'crypto';
+import type { StringValue } from 'ms';
 
 import { User, UserRole } from './entities/user.entity';
 import { RefreshToken } from './entities/refresh-token.entity';
@@ -24,23 +25,39 @@ import { AuthResponseDto } from './dto/auth-response.dto';
 import { SessionDto } from './dto/session.dto';
 import { PaginationDto, PaginatedResponseDto } from '../../common/dto/pagination.dto';
 import { buildSortObject, ALLOWED_SORT_FIELDS } from '../../common/utils/sort.utils';
+import { REDIS_CLIENT } from '../../common/redis/redis.module';
+import { UserResponseDto } from './dto/user-response.dto';
 
 @Injectable()
 export class AuthService {
   private readonly logger = new Logger(AuthService.name);
-  private readonly SESSION_TTL = 604800; // 7 ditë
-  private readonly MAX_SESSIONS = 10;
+  private readonly sessionTtl: number;
+  private readonly maxSessions: number;
 
   constructor(
     @InjectRepository(User)
-    private userRepository: Repository<User>,
+    private readonly userRepository: Repository<User>,
     @InjectRepository(RefreshToken)
-    private refreshTokenRepository: Repository<RefreshToken>,
-    private jwtService: JwtService,
-    private configService: ConfigService,
-    @Inject('REDIS_CLIENT')
-    private redis: Redis,
-  ) {}
+    private readonly refreshTokenRepository: Repository<RefreshToken>,
+    private readonly jwtService: JwtService,
+    private readonly configService: ConfigService,
+    @Inject(REDIS_CLIENT)
+    private readonly redis: Redis,
+  ) {
+    this.sessionTtl =
+      this.parseDurationToSeconds(
+        this.configService.get<string>(
+          'auth.jwt.refreshTokenExpiresIn',
+          '7d',
+        ),
+      );
+
+    this.maxSessions =
+      this.configService.get<number>(
+        'AUTH_MAX_SESSIONS',
+        10,
+      );
+  }
 
   // ================================================================
   // LOGIN
@@ -76,8 +93,22 @@ export class AuthService {
       user.incrementFailedAttempts();
       await this.userRepository.save(user);
 
-      if (user.failedLoginAttempts >= 5) {
-        user.lockAccount(15 * 60 * 1000);
+      const maxAttempts =
+        this.configService.get<number>(
+          'auth.rateLimit.loginAttempts',
+          5,
+        );
+
+      if (
+        user.failedLoginAttempts >=
+        maxAttempts
+      ) {
+        user.lockAccount(
+          this.configService.get<number>(
+            'auth.rateLimit.blockDuration',
+            15 * 60 * 1000,
+          ),
+        );
         await this.userRepository.save(user);
         throw new UnauthorizedException(
           'Too many failed attempts. Account locked for 15 minutes.',
@@ -99,7 +130,7 @@ export class AuthService {
     const sessionId = uuidv4();
     const sessionKey = `session:${user.id}:${sessionId}`;
     const now = new Date();
-    const expiresAt = new Date(now.getTime() + this.SESSION_TTL * 1000);
+    const expiresAt = new Date(now.getTime() + this.sessionTtl * 1000);
 
     const accessToken = this.generateAccessToken(user);
     const refreshToken = await this.generateRefreshToken(user, ip, userAgent, sessionId);
@@ -118,7 +149,7 @@ export class AuthService {
         expiresAt: expiresAt.toISOString(),
       }),
       'EX',
-      this.SESSION_TTL,
+      this.sessionTtl,
     );
 
     return new AuthResponseDto(
@@ -197,7 +228,7 @@ export class AuthService {
               key,
               JSON.stringify(session),
               'EX',
-              this.SESSION_TTL,
+              this.sessionTtl,
             );
             this.logger.debug(`Session updated with new refresh token`);
             break;
@@ -324,7 +355,7 @@ export class AuthService {
     const savedUser =
       await this.userRepository.save(user);
 
-    return this.sanitizeUser(savedUser) as User;
+    return this.sanitizeUser(savedUser) as unknown as User;
   }
 
   // ================================================================
@@ -499,11 +530,11 @@ export class AuthService {
   // ================================================================
   // PROFILE
   // ================================================================
-  async getProfile(userId: string): Promise<Partial<User>> {
+  async getProfile(userId: string): Promise<UserResponseDto> {
     return this.findUserById(userId, false);
   }
 
-  async findUserById(id: string, includeDeleted = false): Promise<Partial<User>> {
+  async findUserById(id: string, includeDeleted = false): Promise<UserResponseDto> {
     const user = await this.userRepository.findOne({
       where: { id },
       withDeleted: includeDeleted,
@@ -605,7 +636,7 @@ export class AuthService {
 
   async findDeletedUsers(
     paginationDto: PaginationDto,
-  ): Promise<PaginatedResponseDto<Partial<User>>> {
+  ): Promise<PaginatedResponseDto<UserResponseDto>> {
     const limit = paginationDto.limit ?? 10;
     const offset = paginationDto.offset ?? 0;
     const sort = paginationDto.sort;
@@ -633,7 +664,7 @@ export class AuthService {
       this.sanitizeUser(user),
     );
 
-    return new PaginatedResponseDto<Partial<User>>(
+    return new PaginatedResponseDto<UserResponseDto>(
       sanitizedUsers,
       total,
       limit,
@@ -648,7 +679,7 @@ export class AuthService {
 
   private sanitizeUser(
     user: User,
-  ): Partial<User> {
+  ): UserResponseDto {
     const {
       password,
       resetPasswordToken,
@@ -658,15 +689,27 @@ export class AuthService {
       ...safeUser
     } = user;
 
-    return safeUser;
+    return safeUser as UserResponseDto;
   }
 
-  private generateAccessToken(user: User): string {
-    const payload = { sub: user.id, email: user.email, role: user.role };
-    return this.jwtService.sign(payload, {
-      secret: this.configService.get('auth.jwt.secret'),
-      expiresIn: this.configService.get('auth.jwt.accessTokenExpiresIn'),
-    });
+  private generateAccessToken(
+    user: User,
+  ): string {
+    const payload = {
+      sub: user.id,
+      email: user.email,
+      role: user.role,
+    };
+
+    return this.jwtService.sign(
+      payload,
+      {
+        expiresIn:
+          this.configService.getOrThrow<StringValue>(
+            'auth.jwt.accessTokenExpiresIn',
+          ),
+      },
+    );
   }
 
   private async generateRefreshToken(
@@ -676,8 +719,10 @@ export class AuthService {
     sessionId?: string,
   ): Promise<string> {
     const token = uuidv4();
-    const expiresAt = new Date();
-    expiresAt.setDate(expiresAt.getDate() + 7);
+    const expiresAt = new Date(
+      Date.now() +
+        this.sessionTtl * 1000,
+    );
 
     const refreshToken = new RefreshToken({
       token,
@@ -697,11 +742,11 @@ export class AuthService {
   private async enforceSessionLimit(userId: string): Promise<void> {
     try {
       const keys = await this.scanKeys(`session:${userId}:*`);
-      if (keys.length >= this.MAX_SESSIONS) {
+      if (keys.length >= this.maxSessions) {
         const oldestKey = keys[0];
         await this.redis.del(oldestKey);
         this.logger.debug(
-          `Removed oldest session for user ${userId} (limit: ${this.MAX_SESSIONS})`,
+          `Removed oldest session for user ${userId} (limit: ${this.maxSessions})`,
         );
       }
     } catch (error) {
@@ -739,4 +784,35 @@ export class AuthService {
 
     return keys;
   }
+  private parseDurationToSeconds(
+    value: string,
+  ): number {
+    const match =
+      /^(\d+)(s|m|h|d)$/i.exec(
+        value.trim(),
+      );
+
+    if (!match) {
+      throw new Error(
+        `Invalid duration format: ${value}`,
+      );
+    }
+
+    const amount = Number(match[1]);
+    const unit =
+      match[2].toLowerCase();
+
+    const multiplier: Record<
+      string,
+      number
+    > = {
+      s: 1,
+      m: 60,
+      h: 60 * 60,
+      d: 24 * 60 * 60,
+    };
+
+    return amount * multiplier[unit];
+  }
+
 }

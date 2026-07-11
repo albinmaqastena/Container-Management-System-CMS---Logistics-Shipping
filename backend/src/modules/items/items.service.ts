@@ -28,11 +28,11 @@ import {
 export class ItemsService {
   constructor(
     @InjectRepository(Item)
-    private itemRepository: Repository<Item>,
-    private containersService: ContainersService,
+    private readonly itemRepository: Repository<Item>,
+    private readonly containersService: ContainersService,
     @Inject(CACHE_MANAGER)
-    private cacheManager: Cache,
-    private dataSource: DataSource,
+    private readonly cacheManager: Cache,
+    private readonly dataSource: DataSource,
   ) {}
 
   private async clearContainerCache(containerId: string): Promise<void> {
@@ -154,10 +154,30 @@ export class ItemsService {
       queryBuilder.andWhere("item.containerId = :containerId", { containerId });
     }
 
-    const sortObject = buildSortObject(sort, ALLOWED_SORT_FIELDS.items);
-    Object.keys(sortObject).forEach((key) => {
-      queryBuilder.addOrderBy(`item.${key}`, sortObject[key]);
-    });
+    const sortObject = buildSortObject(
+      sort,
+      ALLOWED_SORT_FIELDS.items,
+    );
+
+    Object.entries(sortObject).forEach(
+      ([key, direction]) => {
+        if (key === 'deletedAt') {
+          queryBuilder.addOrderBy(
+            `item.${key}`,
+            direction,
+            direction === 'DESC'
+              ? 'NULLS LAST'
+              : 'NULLS FIRST',
+          );
+          return;
+        }
+
+        queryBuilder.addOrderBy(
+          `item.${key}`,
+          direction,
+        );
+      },
+    );
 
     queryBuilder.skip(offset).take(limit);
 
@@ -180,7 +200,7 @@ export class ItemsService {
       .leftJoinAndSelect("item.container", "container")
       .where("item.deletedAt IS NULL")
       .andWhere("(item.name ILIKE :query OR item.uniqueNumber ILIKE :query)", {
-        query: `%${query}%`,
+        query: `%${query.trim()}%`,
       });
 
     if (containerId) {
@@ -378,9 +398,20 @@ export class ItemsService {
       containerId = item.containerId;
 
       const container =
-        await this.containersService.findOneIncludingDeleted(containerId);
+        await this.containersService.findOneIncludingDeleted(
+          containerId,
+        );
 
-      if (container.availableVolume < item.totalVolume) {
+      if (container.deletedAt) {
+        throw new BadRequestException(
+          'Cannot restore an item into a deleted container',
+        );
+      }
+
+      if (
+        container.availableVolume <
+        item.totalVolume
+      ) {
         throw new BadRequestException(
           `Not enough volume in container. Available: ${container.availableVolume}, Required: ${item.totalVolume}`,
         );

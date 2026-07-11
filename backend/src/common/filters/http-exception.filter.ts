@@ -1,78 +1,221 @@
 // src/common/filters/http-exception.filter.ts
+
 import {
-  ExceptionFilter,
-  Catch,
   ArgumentsHost,
+  Catch,
+  ExceptionFilter,
   HttpException,
   HttpStatus,
   Logger,
 } from '@nestjs/common';
-import { Request, Response } from 'express';
+import type {
+  Request,
+  Response,
+} from 'express';
+
+import { BaseException } from '../exceptions/base.exception';
+
+interface ErrorResponseBody {
+  statusCode: number;
+  timestamp: string;
+  path: string;
+  message: string;
+  code: string;
+  errors?: string[];
+}
 
 @Catch()
-export class HttpExceptionFilter implements ExceptionFilter {
-  private readonly logger = new Logger('HttpExceptionFilter');
+export class HttpExceptionFilter
+  implements ExceptionFilter
+{
+  private readonly logger =
+    new Logger(HttpExceptionFilter.name);
 
-  catch(exception: unknown, host: ArgumentsHost) {
-    const ctx = host.switchToHttp();
-    const response = ctx.getResponse<Response>();
-    const request = ctx.getRequest<Request>();
+  catch(
+    exception: unknown,
+    host: ArgumentsHost,
+  ): void {
+    const context =
+      host.switchToHttp();
 
-    let status = HttpStatus.INTERNAL_SERVER_ERROR;
-    let message = 'Internal server error';
-    let code = 'INTERNAL_SERVER_ERROR';
+    const response =
+      context.getResponse<Response>();
 
-    // ✅ Nëse është HttpException (e.g., NotFound, BadRequest)
-    if (exception instanceof HttpException) {
-      status = exception.getStatus();
-      const exceptionResponse = exception.getResponse() as any;
-      
-      // Nëse është një objekt me message
-      if (typeof exceptionResponse === 'object' && exceptionResponse.message) {
-        message = Array.isArray(exceptionResponse.message)
-          ? exceptionResponse.message.join(', ')
-          : exceptionResponse.message;
-        code = exceptionResponse.error || 'HTTP_EXCEPTION';
-      } else {
-        message = exceptionResponse || exception.message;
-        code = 'HTTP_EXCEPTION';
-      }
-    }
+    const request =
+      context.getRequest<Request>();
 
-    // ✅ Loggo gabimin në server (me stack trace)
-    const logMessage = {
-      timestamp: new Date().toISOString(),
+    const normalized =
+      this.normalizeException(
+        exception,
+      );
+
+    const timestamp =
+      new Date().toISOString();
+
+    const logPayload = {
+      timestamp,
       method: request.method,
-      url: request.url,
-      status,
-      message,
-      ip: request.ip || request.connection?.remoteAddress,
-      userAgent: request.headers['user-agent'],
-      stack: exception instanceof Error ? exception.stack : undefined,
+      url:
+        request.originalUrl ||
+        request.url,
+      statusCode:
+        normalized.statusCode,
+      code: normalized.code,
+      message:
+        normalized.message,
+      ip:
+        request.ip ||
+        request.socket?.remoteAddress,
+      userAgent:
+        request.headers[
+          'user-agent'
+        ],
+      stack:
+        exception instanceof Error
+          ? exception.stack
+          : undefined,
     };
 
-    if (status >= 500) {
-      this.logger.error(JSON.stringify(logMessage, null, 2));
+    if (
+      normalized.statusCode >= 500
+    ) {
+      this.logger.error(
+        JSON.stringify(
+          logPayload,
+        ),
+      );
     } else {
-      this.logger.warn(JSON.stringify(logMessage, null, 2));
+      this.logger.warn(
+        JSON.stringify(
+          logPayload,
+        ),
+      );
     }
 
-    // ✅ Response për klientin (PA stack trace!)
-    const clientResponse: any = {
-      statusCode: status,
-      timestamp: new Date().toISOString(),
-      path: request.url,
-      message: message,
+    const body: ErrorResponseBody = {
+      statusCode:
+        normalized.statusCode,
+      timestamp,
+      path:
+        request.originalUrl ||
+        request.url,
+      message:
+        normalized.message,
+      code: normalized.code,
     };
 
-    // ✅ Nëse është validation error, shto detajet
-    if (exception instanceof HttpException && status === HttpStatus.BAD_REQUEST) {
-      const exceptionResponse = exception.getResponse() as any;
-      if (exceptionResponse.message && Array.isArray(exceptionResponse.message)) {
-        clientResponse.errors = exceptionResponse.message;
-      }
+    if (
+      normalized.errors?.length
+    ) {
+      body.errors =
+        normalized.errors;
     }
 
-    response.status(status).json(clientResponse);
+    response
+      .status(
+        normalized.statusCode,
+      )
+      .json(body);
+  }
+
+  private normalizeException(
+    exception: unknown,
+  ): {
+    statusCode: number;
+    message: string;
+    code: string;
+    errors?: string[];
+  } {
+    if (
+      exception instanceof BaseException
+    ) {
+      return {
+        statusCode:
+          exception.status,
+        message:
+          exception.message,
+        code:
+          exception.code,
+        errors:
+          'errors' in exception &&
+          Array.isArray(
+            exception.errors,
+          )
+            ? exception.errors
+            : undefined,
+      };
+    }
+
+    if (
+      exception instanceof HttpException
+    ) {
+      const statusCode =
+        exception.getStatus();
+
+      const response =
+        exception.getResponse();
+
+      if (
+        typeof response === 'string'
+      ) {
+        return {
+          statusCode,
+          message: response,
+          code:
+            HttpStatus[
+              statusCode
+            ] ||
+            'HTTP_EXCEPTION',
+        };
+      }
+
+      const payload =
+        response as Record<
+          string,
+          unknown
+        >;
+
+      const rawMessage =
+        payload.message;
+
+      const errors =
+        Array.isArray(rawMessage)
+          ? rawMessage.map(String)
+          : undefined;
+
+      return {
+        statusCode,
+        message: errors
+          ? errors.join(', ')
+          : String(
+              rawMessage ||
+                exception.message,
+            ),
+        code:
+          typeof payload.code ===
+          'string'
+            ? payload.code
+            : typeof payload.error ===
+                'string'
+              ? payload.error
+                  .toUpperCase()
+                  .replace(
+                    /\s+/g,
+                    '_',
+                  )
+              : 'HTTP_EXCEPTION',
+        errors,
+      };
+    }
+
+    return {
+      statusCode:
+        HttpStatus
+          .INTERNAL_SERVER_ERROR,
+      message:
+        'Internal server error',
+      code:
+        'INTERNAL_SERVER_ERROR',
+    };
   }
 }

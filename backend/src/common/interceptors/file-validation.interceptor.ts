@@ -1,96 +1,161 @@
 // src/common/interceptors/file-validation.interceptor.ts
+
 import {
+  BadRequestException,
+  CallHandler,
+  ExecutionContext,
   Injectable,
   NestInterceptor,
-  ExecutionContext,
-  CallHandler,
-  BadRequestException,
-  Logger,
 } from '@nestjs/common';
-import { Observable } from 'rxjs';
 import { ConfigService } from '@nestjs/config';
-import * as path from 'path';
-import { MulterFile } from '../types/multer-file.type';
+import { Observable } from 'rxjs';
+
+import type { MulterFile } from '../types/multer-file.type';
+
+interface FileValidationConfig {
+  upload?: {
+    maxFileSize?: number;
+    allowedMimeTypes?: string[];
+  };
+}
+
+interface MultipartRequest {
+  file?: MulterFile;
+  files?: MulterFile[] | Record<string, MulterFile[]>;
+}
+
+const DEFAULT_ALLOWED_MIME_TYPES = [
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+  'application/pdf',
+  'text/plain',
+  'text/csv',
+  'application/csv',
+  'application/json',
+  'application/zip',
+  'application/x-zip-compressed',
+  'application/octet-stream',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+];
 
 @Injectable()
-export class FileValidationInterceptor implements NestInterceptor {
-  private readonly logger = new Logger('FileValidation');
-  private readonly maxSize: number;
-  private readonly allowedMimeTypes: string[];
-  private readonly allowedExtensions: string[];
+export class FileValidationInterceptor
+  implements NestInterceptor
+{
+  private readonly maxFileSize: number;
+  private readonly allowedMimeTypes: Set<string>;
 
-  constructor(private configService: ConfigService) {
-    const fileConfig = this.configService.get('file');
-    this.maxSize = fileConfig?.upload?.maxFileSize || 5 * 1024 * 1024;
-    this.allowedMimeTypes = fileConfig?.upload?.allowedMimeTypes || [
-      'image/jpeg',
-      'image/png',
-      'image/gif',
-      'image/webp',
-    ];
-    this.allowedExtensions = fileConfig?.upload?.allowedExtensions || [
-      '.jpg', '.jpeg', '.png', '.gif', '.webp',
-    ];
+  constructor(
+    private readonly configService: ConfigService,
+  ) {
+    const fileConfig =
+      this.configService.get<FileValidationConfig>(
+        'file',
+      );
+
+    this.maxFileSize =
+      fileConfig?.upload?.maxFileSize ??
+      10 * 1024 * 1024;
+      
+    this.allowedMimeTypes = new Set([
+      ...DEFAULT_ALLOWED_MIME_TYPES,
+      ...(fileConfig?.upload?.allowedMimeTypes ?? []),
+    ]);
   }
 
-  async intercept(
+  intercept(
     context: ExecutionContext,
     next: CallHandler,
-  ): Promise<Observable<any>> {
-    const request = context.switchToHttp().getRequest();
-    const files = request.files || [];
-    const file = request.file;
+  ): Observable<unknown> {
+    const request =
+      context
+        .switchToHttp()
+        .getRequest<MultipartRequest>();
 
-    if (!file && (!files || files.length === 0)) {
+    const files = this.extractFiles(
+      request,
+    );
+
+    // Missing files are handled by the controller.
+    if (files.length === 0) {
       return next.handle();
     }
 
-    if (file) {
+    for (const file of files) {
       this.validateFile(file);
-    }
-
-    if (files && files.length > 0) {
-      for (const f of files) {
-        this.validateFile(f);
-      }
     }
 
     return next.handle();
   }
 
-  private validateFile(file: MulterFile): void {
-    // ✅ Kontrollo madhësinë
-    if (file.size > this.maxSize) {
-      this.logger.warn(`File too large: ${file.size} bytes`);
+  private extractFiles(
+    request: MultipartRequest,
+  ): MulterFile[] {
+    if (request.file) {
+      return [request.file];
+    }
+
+    if (Array.isArray(request.files)) {
+      return request.files;
+    }
+
+    if (
+      request.files &&
+      typeof request.files === 'object'
+    ) {
+      return Object.values(
+        request.files,
+      ).flat();
+    }
+
+    return [];
+  }
+
+  private validateFile(
+    file: MulterFile,
+  ): void {
+    if (
+      !file.buffer ||
+      file.buffer.length === 0 ||
+      file.size === 0
+    ) {
       throw new BadRequestException(
-        `File size exceeds ${this.maxSize / 1024 / 1024}MB limit`,
+        `File "${file.originalname}" is empty`,
       );
     }
 
-    // ✅ Kontrollo MIME Type
-    if (!this.allowedMimeTypes.includes(file.mimetype)) {
-      this.logger.warn(`Invalid MIME type: ${file.mimetype}`);
+    if (file.size > this.maxFileSize) {
       throw new BadRequestException(
-        `File type ${file.mimetype} is not allowed. Allowed types: ${this.allowedMimeTypes.join(', ')}`,
+        `File "${file.originalname}" exceeds the maximum allowed size of ${this.maxFileSize} bytes`,
       );
     }
 
-    // ✅ Kontrollo extension
-    const ext = path.extname(file.originalname).toLowerCase();
-    if (!this.allowedExtensions.includes(ext)) {
-      this.logger.warn(`Invalid extension: ${ext}`);
+    const normalizedMimeType =
+      file.mimetype
+        ?.split(';')[0]
+        .trim()
+        .toLowerCase();
+
+    if (
+      !normalizedMimeType ||
+      !this.allowedMimeTypes.has(
+        normalizedMimeType,
+      )
+    ) {
       throw new BadRequestException(
-        `File extension ${ext} is not allowed. Allowed extensions: ${this.allowedExtensions.join(', ')}`,
+        `File type "${file.mimetype}" is not allowed`,
       );
     }
 
-    // ✅ Kontrollo emrin e file-it
-    const filename = file.originalname.replace(/[^a-zA-Z0-9.\-]/g, '');
-    if (filename !== file.originalname) {
-      this.logger.warn(`Suspicious filename: ${file.originalname}`);
-      throw new BadRequestException('Invalid filename');
+    if (
+      !file.originalname ||
+      file.originalname.length > 255
+    ) {
+      throw new BadRequestException(
+        'Invalid file name',
+      );
     }
-
-    this.logger.debug(`File validated: ${file.originalname} (${file.size} bytes)`);
   }
 }

@@ -1,18 +1,33 @@
 // src/modules/items/entities/item.entity.ts
+
 import {
-  Entity,
-  Column,
-  PrimaryGeneratedColumn,
-  ManyToOne,
-  JoinColumn,
-  CreateDateColumn,
-  UpdateDateColumn,
-  DeleteDateColumn,
   BeforeInsert,
   BeforeUpdate,
+  Column,
+  CreateDateColumn,
+  DeleteDateColumn,
+  Entity,
+  JoinColumn,
+  ManyToOne,
+  PrimaryGeneratedColumn,
+  UpdateDateColumn,
+  ValueTransformer,
 } from 'typeorm';
-import { ApiProperty } from '@nestjs/swagger';
+import {
+  ApiProperty,
+  ApiPropertyOptional,
+} from '@nestjs/swagger';
+
 import { Container } from '../../containers/entities/container.entity';
+
+const decimalTransformer: ValueTransformer = {
+  to: (
+    value: number,
+  ): number => value,
+  from: (
+    value: string | number,
+  ): number => Number(value),
+};
 
 @Entity('items')
 export class Item {
@@ -21,46 +36,93 @@ export class Item {
   id!: string;
 
   @ApiProperty()
-  @Column({ type: 'varchar', unique: true })
+  @Column({
+    type: 'varchar',
+    length: 50,
+    unique: true,
+  })
   uniqueNumber!: string;
 
   @ApiProperty()
-  @Column({ type: 'varchar' })
+  @Column({
+    type: 'varchar',
+    length: 200,
+  })
   name!: string;
 
-  @ApiProperty()
-  @Column({ type: 'varchar', nullable: true })
+  @ApiPropertyOptional({
+    nullable: true,
+  })
+  @Column({
+    type: 'varchar',
+    length: 500,
+    nullable: true,
+  })
   photo!: string | null;
 
   @ApiProperty()
-  @Column({ type: 'int' })
+  @Column({
+    type: 'int',
+  })
   packageQuantity!: number;
 
   @ApiProperty()
-  @Column({ type: 'int' })
+  @Column({
+    type: 'int',
+  })
   productsPerPackage!: number;
 
   @ApiProperty()
-  @Column({ type: 'decimal', precision: 10, scale: 2 })
+  @Column({
+    type: 'decimal',
+    precision: 12,
+    scale: 2,
+    transformer:
+      decimalTransformer,
+  })
   packagePrice!: number;
 
   @ApiProperty()
-  @Column({ type: 'decimal', precision: 10, scale: 2 })
+  @Column({
+    type: 'decimal',
+    precision: 12,
+    scale: 2,
+    transformer:
+      decimalTransformer,
+  })
   volume!: number;
 
   @ApiProperty()
-  @Column({ type: 'decimal', precision: 10, scale: 2 })
+  @Column({
+    type: 'decimal',
+    precision: 14,
+    scale: 2,
+    transformer:
+      decimalTransformer,
+  })
   totalVolume!: number;
 
-  @ApiProperty({ type: () => Container })
-  @ManyToOne(() => Container, (container) => container.items, {
-    onDelete: 'CASCADE',
+  @ApiProperty({
+    type: () => Container,
   })
-  @JoinColumn({ name: 'containerId' })
+  @ManyToOne(
+    () => Container,
+    (container) =>
+      container.items,
+    {
+      nullable: false,
+      onDelete: 'CASCADE',
+    },
+  )
+  @JoinColumn({
+    name: 'containerId',
+  })
   container!: Container;
 
   @ApiProperty()
-  @Column()
+  @Column({
+    type: 'uuid',
+  })
   containerId!: string;
 
   @ApiProperty()
@@ -71,17 +133,34 @@ export class Item {
   @UpdateDateColumn()
   updatedAt!: Date;
 
-  @ApiProperty()
-  @DeleteDateColumn({ nullable: true })
+  @ApiPropertyOptional({
+    nullable: true,
+  })
+  @DeleteDateColumn({
+    nullable: true,
+  })
   deletedAt!: Date | null;
 
   @BeforeInsert()
   @BeforeUpdate()
-  calculateTotalVolume() {
-    this.totalVolume = this.packageQuantity * this.volume;
+  calculateTotalVolume(): void {
+    this.totalVolume =
+      Number(
+        (
+          this.packageQuantity *
+          this.volume
+        ).toFixed(2),
+      );
   }
 
-  constructor(partial: Partial<Item>) {
-    Object.assign(this, partial);
+  constructor(
+    partial?: Partial<Item>,
+  ) {
+    if (partial) {
+      Object.assign(
+        this,
+        partial,
+      );
+    }
   }
 }

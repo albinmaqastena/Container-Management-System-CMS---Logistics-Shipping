@@ -1,5 +1,6 @@
 // src/common/types/multer-file.type.ts
-import { Readable } from 'stream';
+
+import type { Readable } from 'stream';
 
 export interface MulterFile {
   fieldname: string;
@@ -7,9 +8,10 @@ export interface MulterFile {
   encoding: string;
   mimetype: string;
   size: number;
-  destination: string;
-  filename: string;
-  path: string;
   buffer: Buffer;
   stream: Readable;
+
+  destination?: string;
+  filename?: string;
+  path?: string;
 }

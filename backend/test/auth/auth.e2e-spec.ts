@@ -12,22 +12,21 @@ describe('Auth E2E', () => {
   let testUserId: string;
 
   beforeAll(async () => {
-    app = getApp(); // ✅ App-i inicializohet globalisht në setup.ts
-    adminToken = await getAuthToken('admin@example.com', 'Admin@123');
-    userToken = await getAuthToken('testuser@example.com', 'Password@123');
+    app = getApp();
+    superAdminToken =
+      await getAuthToken(
+        'admin@example.com',
+        'Admin@123',
+      );
 
-    const superAdminEmail = `superadmin_${Date.now()}@example.com`;
-    await request(app.getHttpServer())
-      .post('/v1/auth/register')
-      .set('Authorization', `Bearer ${adminToken}`)
-      .send({
-        username: `superadmin_${Date.now()}`,
-        email: superAdminEmail,
-        password: 'SuperAdmin123!',
-        role: 'super_admin',
-      })
-      .expect(201);
-    superAdminToken = await getAuthToken(superAdminEmail, 'SuperAdmin123!');
+    adminToken =
+      superAdminToken;
+
+    userToken =
+      await getAuthToken(
+        'testuser@example.com',
+        'Password@123',
+      );
   });
 
   // ================================================================
@@ -56,11 +55,14 @@ describe('Auth E2E', () => {
       testUserId = response.body.id;
     });
 
-    it('should register an admin (super admin only)', async () => {
+    it('should register an admin as super admin', async () => {
       const uniqueEmail = `e2eadmin_${Date.now()}@example.com`;
       const response = await request(app.getHttpServer())
         .post('/v1/auth/register')
-        .set('Authorization', `Bearer ${adminToken}`)
+        .set(
+          'Authorization',
+          `Bearer ${superAdminToken}`,
+        )
         .send({
           username: `e2eadmin_${Date.now()}`,
           email: uniqueEmail,
@@ -268,8 +270,19 @@ describe('Auth E2E', () => {
         .send({ refreshToken })
         .expect(200);
 
-      expect(response.body).toHaveProperty('accessToken');
-      expect(response.body).toHaveProperty('refreshToken');
+      expect(response.body).toHaveProperty(
+        'accessToken',
+      );
+      expect(response.body).toHaveProperty(
+        'refreshToken',
+      );
+
+      expect(
+        response.body.refreshToken,
+      ).not.toBe(refreshToken);
+
+      refreshToken =
+        response.body.refreshToken;
     });
 
     it('should fail with invalid refresh token', async () => {
@@ -584,7 +597,7 @@ describe('Auth E2E', () => {
 
     it('should fail to revoke non-existent session', async () => {
       await request(app.getHttpServer())
-        .delete('/v1/auth/sessions/00000000-0000-0000-0000-000000000000')
+        .delete('/v1/auth/sessions/00000000-0000-4000-8000-000000000000')
         .set('Authorization', `Bearer ${adminToken}`)
         .expect(404);
     });
@@ -629,8 +642,35 @@ describe('Auth E2E', () => {
           .set('Authorization', `Bearer ${superAdminToken}`)
           .expect(200);
 
-        expect(Array.isArray(response.body.data)).toBe(true);
-        const found = response.body.data.some((u: any) => u.id === deleteUserId);
+        expect(
+          Array.isArray(
+            response.body.data,
+          ),
+        ).toBe(true);
+        expect(
+          response.body,
+        ).toEqual(
+          expect.objectContaining({
+            total:
+              expect.any(Number),
+            limit: 100,
+            offset: 0,
+            totalPages:
+              expect.any(Number),
+            currentPage: 1,
+            hasMore:
+              expect.any(Boolean),
+          }),
+        );
+
+        const found =
+          response.body.data.some(
+            (user: {
+              id: string;
+            }) =>
+              user.id ===
+              deleteUserId,
+          );
         expect(found).toBe(true);
       });
 
@@ -664,7 +704,7 @@ describe('Auth E2E', () => {
 
       it('should fail to delete non-existent user', async () => {
         await request(app.getHttpServer())
-          .delete('/v1/auth/users/00000000-0000-0000-0000-000000000000')
+          .delete('/v1/auth/users/00000000-0000-4000-8000-000000000000')
           .set('Authorization', `Bearer ${superAdminToken}`)
           .expect(404);
       });

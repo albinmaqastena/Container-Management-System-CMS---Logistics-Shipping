@@ -118,6 +118,44 @@ describe('Containers E2E', () => {
         .expect(400);
     });
 
+    it('should accept a volume with at most two decimal places', async () => {
+      const uniqueName = `Decimal Volume ${Date.now()}`;
+
+      const response = await request(app.getHttpServer())
+        .post('/v1/containers')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          customName: uniqueName,
+          totalVolume: 10.25,
+        })
+        .expect(201);
+
+      expect(Number(response.body.totalVolume)).toBe(10.25);
+    });
+
+    it('should reject a volume with more than two decimal places', async () => {
+      await request(app.getHttpServer())
+        .post('/v1/containers')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          customName: `Invalid Decimal ${Date.now()}`,
+          totalVolume: 10.123,
+        })
+        .expect(400);
+    });
+
+    it('should reject unknown fields', async () => {
+      await request(app.getHttpServer())
+        .post('/v1/containers')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          customName: `Unknown Field ${Date.now()}`,
+          totalVolume: 10,
+          unknownField: true,
+        })
+        .expect(400);
+    });
+
     it('should fail with missing name', async () => {
       await request(app.getHttpServer())
         .post('/v1/containers')
@@ -167,6 +205,8 @@ describe('Containers E2E', () => {
       expect(response.body).toHaveProperty('offset');
       expect(response.body).toHaveProperty('totalPages');
       expect(response.body).toHaveProperty('currentPage');
+      expect(response.body).toHaveProperty('hasMore');
+      expect(typeof response.body.hasMore).toBe('boolean');
     });
 
     it('should return containers (user)', async () => {
@@ -207,6 +247,8 @@ describe('Containers E2E', () => {
       expect(response.body.offset).toBe(0);
       expect(response.body).toHaveProperty('totalPages');
       expect(response.body).toHaveProperty('currentPage');
+      expect(response.body).toHaveProperty('hasMore');
+      expect(typeof response.body.hasMore).toBe('boolean');
       expect(response.body.data.length).toBeLessThanOrEqual(2);
     });
 
@@ -252,7 +294,6 @@ describe('Containers E2E', () => {
         .set('Authorization', `Bearer ${adminToken}`)
         .expect(204);
 
-      await new Promise((resolve) => setTimeout(resolve, 500));
 
       const deletedCheck = await request(app.getHttpServer())
         .get(`/v1/containers/${container.body.id}?includeDeleted=true`)
@@ -367,7 +408,6 @@ describe('Containers E2E', () => {
         .set('Authorization', `Bearer ${adminToken}`)
         .expect(204);
 
-      await new Promise((resolve) => setTimeout(resolve, 500));
 
       const deletedCheck = await request(app.getHttpServer())
         .get(`/v1/containers/${container.body.id}?includeDeleted=true`)
@@ -426,7 +466,7 @@ describe('Containers E2E', () => {
       const code = container.body.containerCode;
 
       const response = await request(app.getHttpServer())
-        .get(`/v1/containers/search?query=${code}&limit=100`)
+        .get(`/v1/containers/search?query=${encodeURIComponent(code)}&limit=100`)
         .set('Authorization', `Bearer ${adminToken}`)
         .expect(200);
 
@@ -523,7 +563,7 @@ describe('Containers E2E', () => {
 
     it('should return 404 for non-existent container', async () => {
       await request(app.getHttpServer())
-        .get('/v1/containers/00000000-0000-0000-0000-000000000000')
+        .get('/v1/containers/00000000-0000-4000-8000-000000000000')
         .set('Authorization', `Bearer ${adminToken}`)
         .expect(404);
     });
@@ -609,7 +649,7 @@ describe('Containers E2E', () => {
 
     it('should fail for non-existent container', async () => {
       await request(app.getHttpServer())
-        .put('/v1/containers/00000000-0000-0000-0000-000000000000')
+        .put('/v1/containers/00000000-0000-4000-8000-000000000000')
         .set('Authorization', `Bearer ${adminToken}`)
         .send({
           name: 'Non Existent',
@@ -893,7 +933,7 @@ describe('Containers E2E', () => {
 
     it('should fail to restore non-existent container', async () => {
       await request(app.getHttpServer())
-        .put('/v1/containers/00000000-0000-0000-0000-000000000000/restore')
+        .put('/v1/containers/00000000-0000-4000-8000-000000000000/restore')
         .set('Authorization', `Bearer ${adminToken}`)
         .expect(404);
     });
@@ -961,7 +1001,7 @@ describe('Containers E2E', () => {
 
     it('should fail to permanently delete non-existent container', async () => {
       await request(app.getHttpServer())
-        .delete('/v1/containers/00000000-0000-0000-0000-000000000000/permanent')
+        .delete('/v1/containers/00000000-0000-4000-8000-000000000000/permanent')
         .set('Authorization', `Bearer ${adminToken}`)
         .expect(404);
     });

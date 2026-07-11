@@ -1,20 +1,57 @@
-import { Injectable, NestMiddleware, Logger } from '@nestjs/common';
-import { Request, Response, NextFunction } from 'express';
+// src/common/middleware/logger.middleware.ts
+
+import {
+  Injectable,
+  Logger,
+  NestMiddleware,
+} from '@nestjs/common';
+import type {
+  NextFunction,
+  Request,
+  Response,
+} from 'express';
 
 @Injectable()
-export class LoggerMiddleware implements NestMiddleware {
-  private logger = new Logger('HTTP');
+export class LoggerMiddleware
+  implements NestMiddleware
+{
+  private readonly logger =
+    new Logger(LoggerMiddleware.name);
 
-  use(req: Request, res: Response, next: NextFunction): void {
-    const { method, originalUrl, ip } = req;
-    const userAgent = req.get('user-agent') || '';
+  use(
+    request: Request,
+    response: Response,
+    next: NextFunction,
+  ): void {
+    const startedAt =
+      process.hrtime.bigint();
 
-    res.on('finish', () => {
-      const { statusCode } = res;
-      const contentLength = res.get('content-length');
+    response.once('finish', () => {
+      const durationMs =
+        Number(
+          process.hrtime.bigint() -
+            startedAt,
+        ) / 1_000_000;
+
+      const userAgent =
+        request.get('user-agent') ||
+        'unknown';
+
+      const contentLength =
+        response.getHeader(
+          'content-length',
+        ) || 0;
+
+      const ip =
+        request.ip ||
+        request.socket
+          .remoteAddress ||
+        'unknown';
 
       this.logger.log(
-        `${method} ${originalUrl} ${statusCode} ${contentLength} - ${userAgent} ${ip}`
+        `${request.method} ${request.originalUrl} ${response.statusCode} ${contentLength}B ${durationMs.toFixed(
+          2,
+        )}ms - ${ip} - ${userAgent}`,
       );
     });
 

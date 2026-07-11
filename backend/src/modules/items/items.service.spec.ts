@@ -306,6 +306,33 @@ describe("ItemsService", () => {
       expect(result.total).toBe(1);
       expect(result.totalPages).toBe(1);
       expect(result.currentPage).toBe(1);
+      expect(result.hasMore).toBe(false);
+    });
+
+    it("should sort deletedAt DESC with NULLS LAST", async () => {
+      const qb = createListQueryBuilder();
+
+      itemRepository.createQueryBuilder.mockReturnValue(
+        qb,
+      );
+
+      await service.findAll(
+        {
+          limit: 10,
+          offset: 0,
+          sort: "deletedAt:DESC",
+        },
+        undefined,
+        true,
+      );
+
+      expect(
+        qb.addOrderBy,
+      ).toHaveBeenCalledWith(
+        "item.deletedAt",
+        "DESC",
+        "NULLS LAST",
+      );
     });
 
     it("should support filtering and including deleted items", async () => {
@@ -338,6 +365,7 @@ describe("ItemsService", () => {
       const result = await service.findDeleted({ limit: 10, offset: 0 });
 
       expect(result.data).toEqual([deletedItem]);
+      expect(result.hasMore).toBe(false);
       expect(qb.withDeleted).toHaveBeenCalled();
     });
   });
@@ -525,6 +553,36 @@ describe("ItemsService", () => {
       await expect(service.restore("item-1")).rejects.toThrow(
         BadRequestException,
       );
+    });
+
+    it("should reject restore when the container is deleted", async () => {
+      const { manager, itemRepo } = createManagerMocks();
+
+      itemRepo.findOne.mockResolvedValue(
+        createMockItem({
+          deletedAt: new Date(),
+        }),
+      );
+
+      containersService.findOneIncludingDeleted.mockResolvedValue(
+        createMockContainer({
+          deletedAt: new Date(),
+        }),
+      );
+
+      dataSource.transaction.mockImplementation(
+        async (callback) => callback(manager),
+      );
+
+      await expect(
+        service.restore("item-1"),
+      ).rejects.toThrow(
+        BadRequestException,
+      );
+
+      expect(
+        itemRepo.restore,
+      ).not.toHaveBeenCalled();
     });
 
     it("should reject restore when capacity is insufficient", async () => {

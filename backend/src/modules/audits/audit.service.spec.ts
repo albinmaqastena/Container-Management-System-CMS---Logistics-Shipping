@@ -1,70 +1,114 @@
 // src/modules/audit/audit.service.spec.ts
+
+import {
+  NotFoundException,
+} from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import {
+  DeleteResult,
+  Repository,
+} from 'typeorm';
+
 import { AuditService } from './audit.service';
-import { AuditLog, AuditAction, AuditStatus } from './entities/audit-log.entity';
-import { PaginationDto } from '../../common/dto/pagination.dto';
-import { NotFoundException } from '@nestjs/common';
+import {
+  AuditAction,
+  AuditLog,
+  AuditStatus,
+} from './entities/audit-log.entity';
+import {
+  PaginatedResponseDto,
+  PaginationDto,
+} from '../../common/dto/pagination.dto';
 
 describe('AuditService', () => {
   let service: AuditService;
-  let repository: jest.Mocked<Repository<AuditLog>>;
+  let repository: jest.Mocked<
+    Repository<AuditLog>
+  >;
 
   const mockAuditLog = {
-    id: 'audit-1',
+    id: '550e8400-e29b-41d4-a716-446655440000',
     action: AuditAction.LOGIN,
     status: AuditStatus.SUCCESS,
-    userId: 'user-1',
-    targetId: 'target-1',
+    userId:
+      '550e8400-e29b-41d4-a716-446655440001',
+    user: null,
+    targetId:
+      '550e8400-e29b-41d4-a716-446655440002',
     targetType: 'User',
     changes: null,
-    metadata: { ip: '127.0.0.1' },
+    metadata: {
+      ip: '127.0.0.1',
+    },
     errorMessage: null,
     createdAt: new Date(),
-    updatedAt: new Date(),
-    user: { id: 'user-1', username: 'admin' },
-  };
+  } as AuditLog;
 
-  const createQueryBuilderMock = (): any => ({
-    leftJoinAndSelect: jest.fn().mockReturnThis(),
-    where: jest.fn().mockReturnThis(),
-    andWhere: jest.fn().mockReturnThis(),
-    orderBy: jest.fn().mockReturnThis(),
-    addOrderBy: jest.fn().mockReturnThis(),
-    skip: jest.fn().mockReturnThis(),
-    take: jest.fn().mockReturnThis(),
-    getManyAndCount: jest.fn().mockResolvedValue([[mockAuditLog], 1]),
-    select: jest.fn().mockReturnThis(),
-    addSelect: jest.fn().mockReturnThis(),
-    groupBy: jest.fn().mockReturnThis(),
-    getRawMany: jest.fn().mockResolvedValue([
-      { action: 'login', count: '50' },
-      { action: 'logout', count: '30' },
-    ]),
-    getCount: jest.fn().mockResolvedValue(10),
-    delete: jest.fn().mockReturnThis(),
-    execute: jest.fn().mockResolvedValue({ affected: 5 }),
+  const createQueryBuilderMock = () => ({
+    leftJoinAndSelect:
+      jest.fn().mockReturnThis(),
+    where:
+      jest.fn().mockReturnThis(),
+    andWhere:
+      jest.fn().mockReturnThis(),
+    orderBy:
+      jest.fn().mockReturnThis(),
+    addOrderBy:
+      jest.fn().mockReturnThis(),
+    skip:
+      jest.fn().mockReturnThis(),
+    take:
+      jest.fn().mockReturnThis(),
+    getManyAndCount:
+      jest.fn().mockResolvedValue([
+        [mockAuditLog],
+        1,
+      ]),
+    select:
+      jest.fn().mockReturnThis(),
+    addSelect:
+      jest.fn().mockReturnThis(),
+    groupBy:
+      jest.fn().mockReturnThis(),
+    getRawMany:
+      jest.fn(),
   });
 
   beforeEach(async () => {
-    const module: TestingModule = await Test.createTestingModule({
-      providers: [
-        AuditService,
-        {
-          provide: getRepositoryToken(AuditLog),
-          useValue: {
-            save: jest.fn(),
-            findOne: jest.fn(),
-            count: jest.fn(),
-            createQueryBuilder: jest.fn(() => createQueryBuilderMock()),
+    const module: TestingModule =
+      await Test.createTestingModule({
+        providers: [
+          AuditService,
+          {
+            provide:
+              getRepositoryToken(
+                AuditLog,
+              ),
+            useValue: {
+              create: jest.fn(),
+              save: jest.fn(),
+              findOne: jest.fn(),
+              count: jest.fn(),
+              delete: jest.fn(),
+              createQueryBuilder:
+                jest.fn(),
+            },
           },
-        },
-      ],
-    }).compile();
+        ],
+      }).compile();
 
-    service = module.get<AuditService>(AuditService);
-    repository = module.get(getRepositoryToken(AuditLog));
+    service =
+      module.get<AuditService>(
+        AuditService,
+      );
+
+    repository =
+      module.get(
+        getRepositoryToken(
+          AuditLog,
+        ),
+      );
   });
 
   afterEach(() => {
@@ -73,41 +117,107 @@ describe('AuditService', () => {
 
   describe('log', () => {
     it('should create and save an audit log', async () => {
-      const logData = {
-        action: AuditAction.LOGIN,
-        userId: 'user-1',
-        targetId: 'target-1',
-        targetType: 'User',
-        changes: { field: 'value' },
-        metadata: { ip: '127.0.0.1' },
-        status: AuditStatus.SUCCESS,
-        errorMessage: undefined,
-      };
+      const createdLog = {
+        ...mockAuditLog,
+        changes: {
+          field: 'value',
+        },
+      } as AuditLog;
 
-      const savedLog = { ...mockAuditLog, ...logData };
-      repository.save.mockResolvedValue(savedLog as any);
-
-      const result = await service.log(
-        logData.action,
-        logData.userId,
-        logData.targetId,
-        logData.targetType,
-        logData.changes,
-        logData.metadata,
-        logData.status,
+      repository.create.mockReturnValue(
+        createdLog,
       );
 
-      expect(result).toEqual(savedLog);
-      expect(repository.save).toHaveBeenCalled();
-    });
-
-    it('should create audit log with error message when status is failed', async () => {
-      const errorMessage = 'Invalid credentials';
-      repository.save.mockResolvedValue({ ...mockAuditLog, status: AuditStatus.FAILED, errorMessage } as any);
+      repository.save.mockResolvedValue(
+        createdLog,
+      );
 
       const result = await service.log(
         AuditAction.LOGIN,
-        'user-1',
+        mockAuditLog.userId!,
+        mockAuditLog.targetId!,
+        'User',
+        {
+          field: 'value',
+        },
+        {
+          ip: '127.0.0.1',
+        },
+        AuditStatus.SUCCESS,
+      );
+
+      expect(
+        repository.create,
+      ).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: AuditAction.LOGIN,
+          userId:
+            mockAuditLog.userId,
+          targetId:
+            mockAuditLog.targetId,
+          targetType: 'User',
+          changes: {
+            field: 'value',
+          },
+          status:
+            AuditStatus.SUCCESS,
+          errorMessage: null,
+        }),
+      );
+
+      expect(
+        repository.save,
+      ).toHaveBeenCalledWith(
+        createdLog,
+      );
+
+      expect(result).toEqual(
+        createdLog,
+      );
+    });
+
+    it('should store nulls for missing optional fields', async () => {
+      repository.create.mockReturnValue(
+        mockAuditLog,
+      );
+
+      repository.save.mockResolvedValue(
+        mockAuditLog,
+      );
+
+      await service.log(
+        AuditAction.LOGIN,
+      );
+
+      expect(
+        repository.create,
+      ).toHaveBeenCalledWith(
+        expect.objectContaining({
+          userId: null,
+          targetId: null,
+          targetType: null,
+          changes: null,
+          metadata: null,
+          errorMessage: null,
+        }),
+      );
+    });
+
+    it('should truncate very long error messages', async () => {
+      repository.create.mockReturnValue(
+        mockAuditLog,
+      );
+
+      repository.save.mockResolvedValue(
+        mockAuditLog,
+      );
+
+      const errorMessage =
+        'x'.repeat(6000);
+
+      await service.log(
+        AuditAction.LOGIN,
+        undefined,
         undefined,
         undefined,
         undefined,
@@ -116,137 +226,419 @@ describe('AuditService', () => {
         errorMessage,
       );
 
-      expect(result.status).toBe(AuditStatus.FAILED);
-      expect(result.errorMessage).toBe(errorMessage);
+      const createArgument =
+        repository.create.mock
+          .calls[0][0];
+
+      expect(
+        createArgument.errorMessage,
+      ).toHaveLength(5000);
     });
   });
 
   describe('findAll', () => {
     it('should return paginated audit logs', async () => {
-      const paginationDto: PaginationDto = { limit: 10, offset: 0, sort: 'createdAt:DESC' };
-      const result = await service.findAll(paginationDto);
+      const qb =
+        createQueryBuilderMock();
 
-      expect(result.data).toHaveLength(1);
+      repository.createQueryBuilder
+        .mockReturnValue(qb as any);
+
+      const paginationDto: PaginationDto =
+        {
+          limit: 10,
+          offset: 0,
+          sort: 'createdAt:DESC',
+        };
+
+      const result =
+        await service.findAll(
+          paginationDto,
+        );
+
+      expect(result.data).toEqual([
+        mockAuditLog,
+      ]);
+
       expect(result.total).toBe(1);
       expect(result.limit).toBe(10);
       expect(result.offset).toBe(0);
+      expect(result.totalPages).toBe(1);
+      expect(result.currentPage).toBe(1);
+      expect(result.hasMore).toBe(false);
+
+      expect(qb.skip).toHaveBeenCalledWith(
+        0,
+      );
+
+      expect(qb.take).toHaveBeenCalledWith(
+        10,
+      );
     });
 
-    it('should filter by userId', async () => {
-      const paginationDto: PaginationDto = { limit: 10, offset: 0 };
-      await service.findAll(paginationDto, { userId: 'user-1' });
-      expect(repository.createQueryBuilder).toHaveBeenCalled();
+    it('should apply all filters', async () => {
+      const qb =
+        createQueryBuilderMock();
+
+      repository.createQueryBuilder
+        .mockReturnValue(qb as any);
+
+      const fromDate = new Date(
+        '2026-01-01T00:00:00.000Z',
+      );
+
+      const toDate = new Date(
+        '2026-01-31T23:59:59.999Z',
+      );
+
+      await service.findAll(
+        {
+          limit: 10,
+          offset: 0,
+        },
+        {
+          userId:
+            mockAuditLog.userId!,
+          action:
+            AuditAction.LOGIN,
+          status:
+            AuditStatus.SUCCESS,
+          fromDate,
+          toDate,
+        },
+      );
+
+      expect(qb.andWhere).toHaveBeenCalledWith(
+        'audit.userId = :userId',
+        {
+          userId:
+            mockAuditLog.userId,
+        },
+      );
+
+      expect(qb.andWhere).toHaveBeenCalledWith(
+        'audit.action = :action',
+        {
+          action:
+            AuditAction.LOGIN,
+        },
+      );
+
+      expect(qb.andWhere).toHaveBeenCalledWith(
+        'audit.status = :status',
+        {
+          status:
+            AuditStatus.SUCCESS,
+        },
+      );
+
+      expect(qb.andWhere).toHaveBeenCalledWith(
+        'audit.createdAt BETWEEN :fromDate AND :toDate',
+        {
+          fromDate,
+          toDate,
+        },
+      );
     });
 
-    it('should filter by action', async () => {
-      const paginationDto: PaginationDto = { limit: 10, offset: 0 };
-      await service.findAll(paginationDto, { action: AuditAction.LOGIN });
-      expect(repository.createQueryBuilder).toHaveBeenCalled();
+    it('should apply only fromDate filter', async () => {
+      const qb =
+        createQueryBuilderMock();
+
+      repository.createQueryBuilder
+        .mockReturnValue(qb as any);
+
+      const fromDate = new Date(
+        '2026-01-01T00:00:00.000Z',
+      );
+
+      await service.findAll(
+        {} as PaginationDto,
+        { fromDate },
+      );
+
+      expect(qb.andWhere).toHaveBeenCalledWith(
+        'audit.createdAt >= :fromDate',
+        { fromDate },
+      );
     });
 
-    it('should filter by status', async () => {
-      const paginationDto: PaginationDto = { limit: 10, offset: 0 };
-      await service.findAll(paginationDto, { status: AuditStatus.SUCCESS });
-      expect(repository.createQueryBuilder).toHaveBeenCalled();
+    it('should apply only toDate filter', async () => {
+      const qb =
+        createQueryBuilderMock();
+
+      repository.createQueryBuilder
+        .mockReturnValue(qb as any);
+
+      const toDate = new Date(
+        '2026-01-31T23:59:59.999Z',
+      );
+
+      await service.findAll(
+        {} as PaginationDto,
+        { toDate },
+      );
+
+      expect(qb.andWhere).toHaveBeenCalledWith(
+        'audit.createdAt <= :toDate',
+        { toDate },
+      );
     });
 
-    it('should filter by fromDate', async () => {
-      const paginationDto: PaginationDto = { limit: 10, offset: 0 };
-      const fromDate = new Date('2024-01-01');
-      await service.findAll(paginationDto, { fromDate });
-      expect(repository.createQueryBuilder).toHaveBeenCalled();
+    it('should use orderBy for the first sort and addOrderBy for additional sorts', async () => {
+      const qb =
+        createQueryBuilderMock();
+
+      repository.createQueryBuilder
+        .mockReturnValue(qb as any);
+
+      await service.findAll({
+        limit: 10,
+        offset: 0,
+        sort: 'action:ASC,createdAt:DESC',
+      });
+
+      expect(
+        qb.orderBy,
+      ).toHaveBeenCalledWith(
+        'audit.action',
+        'ASC',
+      );
+
+      expect(
+        qb.addOrderBy,
+      ).toHaveBeenCalledWith(
+        'audit.createdAt',
+        'DESC',
+      );
     });
 
-    it('should filter by toDate', async () => {
-      const paginationDto: PaginationDto = { limit: 10, offset: 0 };
-      const toDate = new Date('2024-01-31');
-      await service.findAll(paginationDto, { toDate });
-      expect(repository.createQueryBuilder).toHaveBeenCalled();
-    });
+    it('should use default sorting when sort is missing', async () => {
+      const qb =
+        createQueryBuilderMock();
 
-    it('should sort by multiple fields', async () => {
-      const paginationDto: PaginationDto = { limit: 10, offset: 0, sort: 'createdAt:DESC,action:ASC' };
-      await service.findAll(paginationDto);
-      expect(repository.createQueryBuilder).toHaveBeenCalled();
+      repository.createQueryBuilder
+        .mockReturnValue(qb as any);
+
+      await service.findAll(
+        {} as PaginationDto,
+      );
+
+      expect(
+        qb.orderBy,
+      ).toHaveBeenCalledWith(
+        'audit.createdAt',
+        'DESC',
+      );
+
+      expect(
+        qb.addOrderBy,
+      ).not.toHaveBeenCalled();
     });
   });
 
   describe('findOne', () => {
-    it('should return audit log by id', async () => {
-      repository.findOne.mockResolvedValue(mockAuditLog as any);
+    it('should return audit log by ID', async () => {
+      repository.findOne.mockResolvedValue(
+        mockAuditLog,
+      );
 
-      const result = await service.findOne('audit-1');
-      expect(result).toEqual(mockAuditLog);
-      expect(repository.findOne).toHaveBeenCalledWith({
-        where: { id: 'audit-1' },
-        relations: { user: true },
+      const result =
+        await service.findOne(
+          mockAuditLog.id,
+        );
+
+      expect(result).toEqual(
+        mockAuditLog,
+      );
+
+      expect(
+        repository.findOne,
+      ).toHaveBeenCalledWith({
+        where: {
+          id: mockAuditLog.id,
+        },
+        relations: {
+          user: true,
+        },
       });
     });
 
-    it('should throw NotFoundException if log not found', async () => {
-      repository.findOne.mockResolvedValue(null);
+    it('should throw when log is not found', async () => {
+      repository.findOne.mockResolvedValue(
+        null,
+      );
 
-      await expect(service.findOne('invalid-id')).rejects.toThrow(NotFoundException);
+      await expect(
+        service.findOne(
+          mockAuditLog.id,
+        ),
+      ).rejects.toThrow(
+        NotFoundException,
+      );
     });
   });
 
   describe('findByUser', () => {
-    it('should return audit logs by user', async () => {
-      const paginationDto: PaginationDto = { limit: 10, offset: 0 };
-      const spy = jest.spyOn(service, 'findAll');
+    it('should delegate to findAll', async () => {
+      const paginationDto = {
+        limit: 10,
+        offset: 0,
+      } as PaginationDto;
 
-      await service.findByUser('user-1', paginationDto);
-      expect(spy).toHaveBeenCalledWith(paginationDto, { userId: 'user-1' });
+      const spy = jest
+        .spyOn(service, 'findAll')
+        .mockResolvedValue(
+          new PaginatedResponseDto(
+            [],
+            0,
+            10,
+            0,
+          ),
+        );
+
+      await service.findByUser(
+        mockAuditLog.userId!,
+        paginationDto,
+      );
+
+      expect(spy).toHaveBeenCalledWith(
+        paginationDto,
+        {
+          userId:
+            mockAuditLog.userId,
+        },
+      );
     });
   });
 
   describe('findByAction', () => {
-    it('should return audit logs by action', async () => {
-      const paginationDto: PaginationDto = { limit: 10, offset: 0 };
-      const spy = jest.spyOn(service, 'findAll');
+    it('should delegate to findAll', async () => {
+      const paginationDto = {
+        limit: 10,
+        offset: 0,
+      } as PaginationDto;
 
-      await service.findByAction(AuditAction.LOGIN, paginationDto);
-      expect(spy).toHaveBeenCalledWith(paginationDto, { action: AuditAction.LOGIN });
+      const spy = jest
+        .spyOn(service, 'findAll')
+        .mockResolvedValue(
+          new PaginatedResponseDto(
+            [],
+            0,
+            10,
+            0,
+          ),
+        );
+
+      await service.findByAction(
+        AuditAction.LOGIN,
+        paginationDto,
+      );
+
+      expect(spy).toHaveBeenCalledWith(
+        paginationDto,
+        {
+          action:
+            AuditAction.LOGIN,
+        },
+      );
     });
   });
 
   describe('getStats', () => {
     it('should return audit statistics', async () => {
-      const queryBuilderMock = createQueryBuilderMock();
-      repository.createQueryBuilder.mockReturnValue(queryBuilderMock);
+      const actionQb =
+        createQueryBuilderMock();
 
-      repository.count.mockResolvedValue(100);
-      queryBuilderMock.getRawMany
-        .mockResolvedValueOnce([
-          { action: 'login', count: '50' },
-          { action: 'logout', count: '30' },
-        ])
-        .mockResolvedValueOnce([
-          { status: 'success', count: '80' },
-          { status: 'failed', count: '20' },
-        ]);
-      queryBuilderMock.getCount.mockResolvedValue(10);
+      const statusQb =
+        createQueryBuilderMock();
 
-      const result = await service.getStats();
+      actionQb.getRawMany.mockResolvedValue([
+        {
+          action: 'login',
+          count: '50',
+        },
+        {
+          action: 'logout',
+          count: '30',
+        },
+      ]);
+
+      statusQb.getRawMany.mockResolvedValue([
+        {
+          status: 'success',
+          count: '80',
+        },
+        {
+          status: 'failed',
+          count: '20',
+        },
+      ]);
+
+      repository.createQueryBuilder
+        .mockReturnValueOnce(
+          actionQb as any,
+        )
+        .mockReturnValueOnce(
+          statusQb as any,
+        );
+
+      repository.count
+        .mockResolvedValueOnce(100)
+        .mockResolvedValueOnce(10)
+        .mockResolvedValueOnce(50);
+
+      const result =
+        await service.getStats();
 
       expect(result).toEqual({
         total: 100,
-        byAction: { login: 50, logout: 30 },
-        byStatus: { success: 80, failed: 20 },
+        byAction: {
+          login: 50,
+          logout: 30,
+        },
+        byStatus: {
+          success: 80,
+          failed: 20,
+        },
         last24h: 10,
-        last7d: 10,
+        last7d: 50,
       });
+
+      expect(
+        repository.count,
+      ).toHaveBeenCalledTimes(3);
     });
 
-    it('should handle empty statistics gracefully', async () => {
-      const queryBuilderMock = createQueryBuilderMock();
-      repository.createQueryBuilder.mockReturnValue(queryBuilderMock);
+    it('should handle empty statistics', async () => {
+      const actionQb =
+        createQueryBuilderMock();
 
-      repository.count.mockResolvedValue(0);
-      queryBuilderMock.getRawMany.mockResolvedValue([]);
-      queryBuilderMock.getCount.mockResolvedValue(0);
+      const statusQb =
+        createQueryBuilderMock();
 
-      const result = await service.getStats();
+      actionQb.getRawMany.mockResolvedValue(
+        [],
+      );
+
+      statusQb.getRawMany.mockResolvedValue(
+        [],
+      );
+
+      repository.createQueryBuilder
+        .mockReturnValueOnce(
+          actionQb as any,
+        )
+        .mockReturnValueOnce(
+          statusQb as any,
+        );
+
+      repository.count.mockResolvedValue(
+        0,
+      );
+
+      const result =
+        await service.getStats();
 
       expect(result).toEqual({
         total: 0,
@@ -259,40 +651,113 @@ describe('AuditService', () => {
   });
 
   describe('cleanup', () => {
-    it('should delete audit logs older than specified days', async () => {
-      const queryBuilderMock = createQueryBuilderMock();
-      repository.createQueryBuilder.mockReturnValue(queryBuilderMock);
-      queryBuilderMock.execute.mockResolvedValue({ affected: 5 });
+    it('should delete logs older than the cutoff date', async () => {
+      repository.delete.mockResolvedValue({
+        affected: 5,
+        raw: [],
+      } as DeleteResult);
 
-      const result = await service.cleanup(90);
+      const before = Date.now();
+
+      const result =
+        await service.cleanup(90);
+
+      const after = Date.now();
+
       expect(result).toBe(5);
-      expect(queryBuilderMock.delete).toHaveBeenCalled();
-      expect(queryBuilderMock.where).toHaveBeenCalledWith(
-        'createdAt < NOW() - INTERVAL :days DAY',
-        { days: 90 },
+
+      expect(
+        repository.delete,
+      ).toHaveBeenCalledTimes(1);
+
+      const deleteCriteria =
+        repository.delete.mock.calls[0][0] as unknown as {
+          createdAt: {
+            _value: Date;
+          };
+        };
+
+      const cutoff =
+        deleteCriteria.createdAt._value;
+
+      const expectedMin =
+        before -
+        90 *
+          24 *
+          60 *
+          60 *
+          1000;
+
+      const expectedMax =
+        after -
+        90 *
+          24 *
+          60 *
+          60 *
+          1000;
+
+      expect(
+        cutoff.getTime(),
+      ).toBeGreaterThanOrEqual(
+        expectedMin,
+      );
+
+      expect(
+        cutoff.getTime(),
+      ).toBeLessThanOrEqual(
+        expectedMax,
       );
     });
 
-    it('should return 0 if no logs deleted', async () => {
-      const queryBuilderMock = createQueryBuilderMock();
-      repository.createQueryBuilder.mockReturnValue(queryBuilderMock);
-      queryBuilderMock.execute.mockResolvedValue({ affected: 0 });
+    it('should return zero when no rows are deleted', async () => {
+      repository.delete.mockResolvedValue({
+        affected: 0,
+        raw: [],
+      } as DeleteResult);
 
-      const result = await service.cleanup(30);
+      const result =
+        await service.cleanup(30);
+
       expect(result).toBe(0);
     });
 
-    it('should use default 90 days if not specified', async () => {
-      const queryBuilderMock = createQueryBuilderMock();
-      repository.createQueryBuilder.mockReturnValue(queryBuilderMock);
-      queryBuilderMock.execute.mockResolvedValue({ affected: 3 });
+    it('should use 90 days by default', async () => {
+      repository.delete.mockResolvedValue({
+        affected: 3,
+        raw: [],
+      } as DeleteResult);
 
-      const result = await service.cleanup();
+      const before = Date.now();
+
+      const result =
+        await service.cleanup();
+
       expect(result).toBe(3);
-      expect(queryBuilderMock.where).toHaveBeenCalledWith(
-        'createdAt < NOW() - INTERVAL :days DAY',
-        { days: 90 },
-      );
+
+      const deleteCriteria =
+        repository.delete.mock.calls[0][0] as unknown as {
+          createdAt: {
+            _value: Date;
+          };
+        };
+
+      const cutoff =
+        deleteCriteria.createdAt._value;
+
+      const expected =
+        before -
+        90 *
+          24 *
+          60 *
+          60 *
+          1000;
+
+      expect(
+        Math.abs(
+          cutoff.getTime() -
+            expected,
+        ),
+      ).toBeLessThan(1000);
     });
   });
 });

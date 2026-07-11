@@ -1,13 +1,46 @@
 // src/modules/files/dto/file-upload.dto.ts
-import { ApiProperty } from '@nestjs/swagger';
-import { IsOptional, IsString } from 'class-validator';
+
+import { ApiPropertyOptional } from '@nestjs/swagger';
+import { Transform } from 'class-transformer';
+import {
+  IsOptional,
+  IsString,
+  Matches,
+  MaxLength,
+} from 'class-validator';
 
 export class FileUploadDto {
-  @ApiProperty({ type: 'string', format: 'binary' })
-  file: any;
+  @ApiPropertyOptional({
+    example: 'items/photos',
+    description:
+      'Optional relative folder inside the configured upload directory',
+  })
+  @Transform(({ value }) => {
+    if (typeof value !== 'string') {
+      return value;
+    }
 
-  @ApiProperty({ required: false })
-  @IsString()
+    const normalized = value
+      .trim()
+      .replace(/\\/g, '/')
+      .replace(/^\/+|\/+$/g, '');
+
+    return normalized || undefined;
+  })
   @IsOptional()
+  @IsString({
+    message: 'Folder must be a string',
+  })
+  @MaxLength(150, {
+    message:
+      'Folder must not exceed 150 characters',
+  })
+  @Matches(
+    /^(?!.*(?:^|\/)\.{1,2}(?:\/|$))[a-zA-Z0-9_.-]+(?:\/[a-zA-Z0-9_.-]+)*$/,
+    {
+      message:
+        'Folder may only contain valid folder names separated by forward slashes',
+    },
+  )
   folder?: string;
 }

@@ -13,14 +13,20 @@ import {
   StrategyOptionsWithoutRequest,
 } from 'passport-jwt';
 import { Repository } from 'typeorm';
-import { User } from '../entities/user.entity';
+
+import {
+  User,
+  UserRole,
+} from '../entities/user.entity';
 
 interface JwtPayload {
   sub: string;
   email: string;
-  role: string;
+  role: UserRole;
   iat?: number;
   exp?: number;
+  iss?: string;
+  aud?: string | string[];
 }
 
 @Injectable()
@@ -40,23 +46,46 @@ export class JwtStrategy extends PassportStrategy(
         configService.getOrThrow<string>(
           'auth.jwt.secret',
         ),
+      issuer:
+        configService.getOrThrow<string>(
+          'auth.jwt.issuer',
+        ),
+      audience:
+        configService.getOrThrow<string>(
+          'auth.jwt.audience',
+        ),
+      algorithms: ['HS256'],
     };
 
     super(options);
   }
 
-  async validate(payload: JwtPayload): Promise<User> {
-    if (!payload?.sub) {
+  async validate(
+    payload: JwtPayload,
+  ): Promise<User> {
+    if (
+      !payload?.sub ||
+      !payload.email ||
+      !payload.role
+    ) {
       throw new UnauthorizedException(
         'Invalid token payload',
       );
     }
 
-    const user = await this.userRepository
-      .createQueryBuilder('user')
-      .where('user.id = :id', { id: payload.sub })
-      .andWhere('user.deletedAt IS NULL')
-      .getOne();
+    const user =
+      await this.userRepository
+        .createQueryBuilder('user')
+        .where(
+          'user.id = :id',
+          {
+            id: payload.sub,
+          },
+        )
+        .andWhere(
+          'user.deletedAt IS NULL',
+        )
+        .getOne();
 
     if (!user) {
       throw new UnauthorizedException(

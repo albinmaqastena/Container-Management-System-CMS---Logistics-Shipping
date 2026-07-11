@@ -1,40 +1,152 @@
 // src/common/utils/sort.utils.ts
+
+import {
+  BadRequestException,
+} from '@nestjs/common';
+
+export type SortDirection =
+  | 'ASC'
+  | 'DESC';
+
 export interface SortOptions {
   field: string;
-  order: 'ASC' | 'DESC';
+  order: SortDirection;
 }
 
 export const ALLOWED_SORT_FIELDS = {
-  containers: ['id', 'name', 'containerCode', 'totalVolume', 'usedVolume', 'status', 'createdAt', 'updatedAt'],
-  items: ['id', 'uniqueNumber', 'name', 'packageQuantity', 'productsPerPackage', 'packagePrice', 'volume', 'totalVolume', 'createdAt', 'updatedAt'],
-  users: ['id', 'username', 'email', 'role', 'isActive', 'createdAt', 'updatedAt'],
-  audit: ['id', 'action', 'status', 'userId', 'targetId', 'targetType', 'createdAt'],
-};
+  containers: [
+    'id',
+    'name',
+    'containerCode',
+    'totalVolume',
+    'usedVolume',
+    'status',
+    'createdAt',
+    'updatedAt',
+    'deletedAt',
+  ],
+  items: [
+    'id',
+    'uniqueNumber',
+    'name',
+    'packageQuantity',
+    'productsPerPackage',
+    'packagePrice',
+    'volume',
+    'totalVolume',
+    'createdAt',
+    'updatedAt',
+    'deletedAt',
+  ],
+  users: [
+    'id',
+    'username',
+    'email',
+    'role',
+    'isActive',
+    'createdAt',
+    'updatedAt',
+    'deletedAt',
+  ],
+  audit: [
+    'id',
+    'action',
+    'status',
+    'userId',
+    'targetId',
+    'targetType',
+    'createdAt',
+  ],
+} as const;
 
-export const parseSort = (sortString?: string, allowedFields: string[] = []): SortOptions[] => {
-  if (!sortString) {
-    return [{ field: 'createdAt', order: 'DESC' }];
+export const parseSort = (
+  sortString?: string,
+  allowedFields: readonly string[] = [],
+): SortOptions[] => {
+  if (!sortString?.trim()) {
+    return [
+      {
+        field: 'createdAt',
+        order: 'DESC',
+      },
+    ];
   }
 
-  const parts = sortString.split(',').map((s) => {
-    const [field, order] = s.split(':');
-    const normalizedOrder = order?.toUpperCase() === 'ASC' ? 'ASC' : 'DESC';
-    return { field: field.trim(), order: normalizedOrder as 'ASC' | 'DESC' };
-  });
+  const sorts =
+    sortString
+      .split(',')
+      .map((part) =>
+        part.trim(),
+      )
+      .filter(Boolean)
+      .map((part) => {
+        const [
+          rawField,
+          rawOrder,
+        ] = part.split(':');
 
-  // Filter only allowed fields to prevent SQL injection
-  const validSorts: SortOptions[] = allowedFields.length > 0
-    ? parts.filter((s) => allowedFields.includes(s.field))
-    : parts;
+        const field =
+          rawField?.trim();
+        const order =
+          rawOrder
+            ?.trim()
+            .toUpperCase();
 
-  return validSorts.length > 0 ? validSorts : [{ field: 'createdAt', order: 'DESC' }];
+        if (
+          !field ||
+          !['ASC', 'DESC'].includes(
+            order,
+          )
+        ) {
+          throw new BadRequestException(
+            `Invalid sort expression: ${part}`,
+          );
+        }
+
+        if (
+          allowedFields.length > 0 &&
+          !allowedFields.includes(
+            field,
+          )
+        ) {
+          throw new BadRequestException(
+            `Sorting by "${field}" is not allowed`,
+          );
+        }
+
+        return {
+          field,
+          order:
+            order as SortDirection,
+        };
+      });
+
+  return sorts.length
+    ? sorts
+    : [
+        {
+          field: 'createdAt',
+          order: 'DESC',
+        },
+      ];
 };
 
-export const buildSortObject = (sortString?: string, allowedFields: string[] = []): Record<string, 'ASC' | 'DESC'> => {
-  const sorts = parseSort(sortString, allowedFields);
-  const sortObject: Record<string, 'ASC' | 'DESC'> = {};
-  sorts.forEach((s) => {
-    sortObject[s.field] = s.order;
-  });
-  return sortObject;
+export const buildSortObject = (
+  sortString?: string,
+  allowedFields: readonly string[] = [],
+): Record<
+  string,
+  SortDirection
+> => {
+  return Object.fromEntries(
+    parseSort(
+      sortString,
+      allowedFields,
+    ).map(
+      ({ field, order }) => [
+        field,
+        order,
+      ],
+    ),
+  );
 };
