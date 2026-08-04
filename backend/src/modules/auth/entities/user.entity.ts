@@ -72,6 +72,7 @@ export class User {
   resetPasswordExpires?: Date | null;
 
   @ApiHideProperty()
+  @Exclude()
   @Column({
     name: 'failed_login_attempts',
     type: 'integer',
@@ -80,6 +81,7 @@ export class User {
   failedLoginAttempts!: number;
 
   @ApiHideProperty()
+  @Exclude()
   @Column({
     name: 'locked_until',
     type: 'timestamp with time zone',
@@ -151,9 +153,26 @@ export class User {
 
   @BeforeInsert()
   @BeforeUpdate()
+  normalizeFields(): void {
+    if (typeof this.email === 'string') {
+      this.email = this.email.trim().toLowerCase();
+    }
+
+    if (typeof this.username === 'string') {
+      this.username = this.username.trim().toLowerCase();
+    }
+  }
+
+  @BeforeInsert()
+  @BeforeUpdate()
   async hashPassword(): Promise<void> {
     if (this.password && !this.password.startsWith('$argon2')) {
-      this.password = await argon2.hash(this.password);
+      this.password = await argon2.hash(this.password, {
+        type: argon2.argon2id,
+        memoryCost: 65536,
+        timeCost: 3,
+        parallelism: 1,
+      });
     }
   }
 
@@ -170,6 +189,9 @@ export class User {
   }
 
   lockAccount(durationMs: number): void {
+    if (!Number.isFinite(durationMs) || durationMs <= 0) {
+      throw new Error('Lock duration must be a positive number');
+    }
     this.lockedUntil = new Date(Date.now() + durationMs);
     this.failedLoginAttempts = 0;
   }
@@ -184,6 +206,9 @@ export class User {
   }
 
   setResetToken(token: string, expiresInMs: number): void {
+    if (!Number.isFinite(expiresInMs) || expiresInMs <= 0) {
+      throw new Error('Reset token expiration must be a positive number');
+    }
     this.resetPasswordToken = token;
     this.resetPasswordExpires = new Date(Date.now() + expiresInMs);
   }

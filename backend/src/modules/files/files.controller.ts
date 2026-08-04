@@ -7,6 +7,7 @@ import {
   Delete,
   HttpCode,
   HttpStatus,
+  Logger,
   Param,
   Post,
   UploadedFile,
@@ -26,7 +27,7 @@ import {
 } from '@nestjs/swagger';
 import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express';
 
-import { FilesService } from './files.service';
+import { FilesService, SavedFileResult } from './files.service';
 import { FileUploadDto } from './dto/file-upload.dto';
 import { FileValidationInterceptor } from '../../common/interceptors/file-validation.interceptor';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
@@ -43,25 +44,33 @@ interface UploadedFileResponse {
 
 interface UploadedFilesResponse {
   message: string;
-  files: Array<{
-    filename: string;
-    path: string;
-    url: string;
-  }>;
+  files: SavedFileResult[];
 }
+
+const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024;
+const MAX_FILES_PER_UPLOAD = 10;
 
 @ApiTags('Files')
 @ApiBearerAuth()
 @Controller('files')
 @UseGuards(JwtAuthGuard)
 export class FilesController {
+  private readonly logger = new Logger(FilesController.name);
+
   constructor(private readonly filesService: FilesService) {}
 
   @Post('upload')
   @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)
-  @UseInterceptors(FileInterceptor('file'), FileValidationInterceptor)
+  @UseInterceptors(
+    FileInterceptor('file', {
+      limits: {
+        fileSize: MAX_FILE_SIZE_BYTES,
+      },
+    }),
+    FileValidationInterceptor,
+  )
   @ApiOperation({
-    summary: 'Upload a single file',
+    summary: 'Upload a single image',
   })
   @ApiConsumes('multipart/form-data')
   @ApiBody({
@@ -86,7 +95,11 @@ export class FilesController {
   })
   @ApiResponse({
     status: HttpStatus.BAD_REQUEST,
-    description: 'Invalid or missing file',
+    description: 'Invalid or missing image',
+  })
+  @ApiResponse({
+    status: HttpStatus.INTERNAL_SERVER_ERROR,
+    description: 'The uploaded image could not be processed safely',
   })
   async uploadFile(
     @UploadedFile()
@@ -102,10 +115,10 @@ export class FilesController {
     body: FileUploadDto = {},
   ): Promise<UploadedFileResponse> {
     if (!file) {
-      throw new BadRequestException('No file provided');
+      throw new BadRequestException('File is required');
     }
 
-    const result = await this.filesService.saveFile(file, body.folder);
+    const result = await this.filesService.saveFile(file, body.folder ?? '');
 
     return {
       message: 'File uploaded successfully',
@@ -115,9 +128,17 @@ export class FilesController {
 
   @Post('upload/multiple')
   @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)
-  @UseInterceptors(FilesInterceptor('files', 10), FileValidationInterceptor)
+  @UseInterceptors(
+    FilesInterceptor('files', MAX_FILES_PER_UPLOAD, {
+      limits: {
+        fileSize: MAX_FILE_SIZE_BYTES,
+        files: MAX_FILES_PER_UPLOAD,
+      },
+    }),
+    FileValidationInterceptor,
+  )
   @ApiOperation({
-    summary: 'Upload multiple files',
+    summary: 'Upload multiple images',
   })
   @ApiConsumes('multipart/form-data')
   @ApiBody({
@@ -130,7 +151,8 @@ export class FilesController {
             type: 'string',
             format: 'binary',
           },
-          maxItems: 10,
+          minItems: 1,
+          maxItems: MAX_FILES_PER_UPLOAD,
         },
         folder: {
           type: 'string',
@@ -146,7 +168,11 @@ export class FilesController {
   })
   @ApiResponse({
     status: HttpStatus.BAD_REQUEST,
-    description: 'Invalid or missing files',
+    description: 'Invalid or missing images',
+  })
+  @ApiResponse({
+    status: HttpStatus.INTERNAL_SERVER_ERROR,
+    description: 'One or more images could not be processed safely',
   })
   async uploadMultipleFiles(
     @UploadedFiles()
@@ -162,24 +188,61 @@ export class FilesController {
     body: FileUploadDto = {},
   ): Promise<UploadedFilesResponse> {
     if (!files?.length) {
-      throw new BadRequestException('No files provided');
+      throw new BadRequestException('At least one file is required');
     }
 
-    const results = await Promise.all(
-      files.map((file) => this.filesService.saveFile(file, body.folder)),
-    );
+    const folder = body.folder ?? '';
+    const savedFiles: SavedFileResult[] = [];
 
-    return {
-      message: `${results.length} files uploaded successfully`,
-      files: results,
-    };
+    try {
+      /*
+       * Upload sequentially so that successfully saved
+       * files are known and can be removed if a later
+       * upload fails.
+       */
+      for (const file of files) {
+        const savedFile = await this.filesService.saveFile(file, folder);
+
+        savedFiles.push(savedFile);
+      }
+
+      return {
+        message: `${savedFiles.length} files uploaded successfully`,
+        files: savedFiles,
+      };
+    } catch (error) {
+      const cleanupResults = await Promise.allSettled(
+        savedFiles.map((savedFile) => this.filesService.deleteFile(savedFile.path)),
+      );
+
+      cleanupResults.forEach((result, index) => {
+        if (result.status === 'fulfilled') {
+          return;
+        }
+
+        const savedFile = savedFiles[index];
+
+        this.logger.error(
+          `Failed to clean up partially uploaded file ${savedFile?.path ?? 'unknown'}: ${
+            result.reason instanceof Error ? result.reason.message : 'Unknown cleanup error'
+          }`,
+          result.reason instanceof Error ? result.reason.stack : undefined,
+        );
+      });
+
+      /*
+       * Preserve the original upload error even when
+       * one or more cleanup attempts fail.
+       */
+      throw error;
+    }
   }
 
   @Delete('*path')
   @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
-    summary: 'Delete a file',
+    summary: 'Delete an uploaded image',
   })
   @ApiParam({
     name: 'path',

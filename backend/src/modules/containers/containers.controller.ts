@@ -1,7 +1,6 @@
 // src/modules/containers/containers.controller.ts
 
 import {
-  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -10,22 +9,27 @@ import {
   HttpStatus,
   Param,
   ParseBoolPipe,
+  ParseEnumPipe,
+  Patch,
   Post,
   Put,
   Query,
-  Request,
+  Req,
   UseGuards,
   ValidationPipe,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
   ApiExtraModels,
+  ApiForbiddenResponse,
   ApiOperation,
   ApiQuery,
   ApiResponse,
   ApiTags,
+  ApiUnauthorizedResponse,
   getSchemaPath,
 } from '@nestjs/swagger';
+import type { Request as ExpressRequest } from 'express';
 
 import { ContainersService } from './containers.service';
 import { CreateContainerDto } from './dto/create-container.dto';
@@ -41,9 +45,25 @@ import { UUIDValidationPipe } from '../../common/pipes/uuid-validation.pipe';
 import { PaginatedResponseDto, PaginationDto } from '../../common/dto/pagination.dto';
 import { User, UserRole } from '../auth/entities/user.entity';
 
+interface AuthenticatedRequest extends ExpressRequest {
+  user: User;
+}
+
+const QUERY_VALIDATION_PIPE = new ValidationPipe({
+  transform: true,
+  whitelist: true,
+  forbidNonWhitelisted: true,
+});
+
 @ApiTags('Containers')
 @ApiExtraModels(Container, PaginatedResponseDto)
-@ApiBearerAuth()
+@ApiBearerAuth('JWT-auth')
+@ApiUnauthorizedResponse({
+  description: 'Authentication is required',
+})
+@ApiForbiddenResponse({
+  description: 'Insufficient permissions',
+})
 @Controller('containers')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class ContainersController {
@@ -59,15 +79,15 @@ export class ContainersController {
   })
   @ApiResponse({
     status: HttpStatus.BAD_REQUEST,
-    description: 'Invalid data or duplicate container name',
+    description: 'Invalid container data',
   })
   @ApiResponse({
-    status: HttpStatus.UNAUTHORIZED,
-    description: 'Unauthorized',
+    status: HttpStatus.CONFLICT,
+    description: 'Container name or code already exists',
   })
   async create(
     @Body() createContainerDto: CreateContainerDto,
-    @Request() req: { user: User },
+    @Req() req: AuthenticatedRequest,
   ): Promise<Container> {
     return this.containersService.create(createContainerDto, req.user);
   }
@@ -96,22 +116,10 @@ export class ContainersController {
     },
   })
   async findAll(
-    @Query(
-      new ValidationPipe({
-        transform: true,
-        whitelist: true,
-        forbidNonWhitelisted: true,
-      }),
-    )
+    @Query(QUERY_VALIDATION_PIPE)
     query: ContainerQueryDto,
   ): Promise<PaginatedResponseDto<Container>> {
-    const paginationDto = this.createPaginationDto(query);
-
-    return this.containersService.findAll(
-      paginationDto,
-      query.status,
-      query.includeDeleted === 'true',
-    );
+    return this.containersService.findAll(query, query.status, query.includeDeleted ?? false);
   }
 
   @Get('deleted')
@@ -139,16 +147,10 @@ export class ContainersController {
     },
   })
   async findDeleted(
-    @Query(
-      new ValidationPipe({
-        transform: true,
-        whitelist: true,
-        forbidNonWhitelisted: true,
-      }),
-    )
+    @Query(QUERY_VALIDATION_PIPE)
     query: PaginationDto,
   ): Promise<PaginatedResponseDto<Container>> {
-    return this.containersService.findDeleted(this.createPaginationDto(query));
+    return this.containersService.findDeleted(query);
   }
 
   @Get('active')
@@ -175,16 +177,10 @@ export class ContainersController {
     },
   })
   async getActiveContainers(
-    @Query(
-      new ValidationPipe({
-        transform: true,
-        whitelist: true,
-        forbidNonWhitelisted: true,
-      }),
-    )
+    @Query(QUERY_VALIDATION_PIPE)
     query: PaginationDto,
   ): Promise<PaginatedResponseDto<Container>> {
-    return this.containersService.findActiveContainers(this.createPaginationDto(query));
+    return this.containersService.findActiveContainers(query);
   }
 
   @Get('archived')
@@ -211,16 +207,10 @@ export class ContainersController {
     },
   })
   async getArchivedContainers(
-    @Query(
-      new ValidationPipe({
-        transform: true,
-        whitelist: true,
-        forbidNonWhitelisted: true,
-      }),
-    )
+    @Query(QUERY_VALIDATION_PIPE)
     query: PaginationDto,
   ): Promise<PaginatedResponseDto<Container>> {
-    return this.containersService.findArchivedContainers(this.createPaginationDto(query));
+    return this.containersService.findArchivedContainers(query);
   }
 
   @Get('search')
@@ -251,16 +241,10 @@ export class ContainersController {
     description: 'Search query is missing or invalid',
   })
   async searchContainers(
-    @Query(
-      new ValidationPipe({
-        transform: true,
-        whitelist: true,
-        forbidNonWhitelisted: true,
-      }),
-    )
+    @Query(QUERY_VALIDATION_PIPE)
     query: SearchContainerQueryDto,
   ): Promise<PaginatedResponseDto<Container>> {
-    return this.containersService.searchContainers(query.query, this.createPaginationDto(query));
+    return this.containersService.searchContainers(query.query, query);
   }
 
   @Get(':id')
@@ -277,6 +261,10 @@ export class ContainersController {
     type: Container,
   })
   @ApiResponse({
+    status: HttpStatus.BAD_REQUEST,
+    description: 'Invalid container UUID or includeDeleted value',
+  })
+  @ApiResponse({
     status: HttpStatus.NOT_FOUND,
     description: 'Container not found',
   })
@@ -288,13 +276,25 @@ export class ContainersController {
     return this.containersService.findOne(id, includeDeleted ?? false);
   }
 
-  @Put(':id')
+  @Patch(':id')
   @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)
   @ApiOperation({ summary: 'Update a container' })
   @ApiResponse({
     status: HttpStatus.OK,
     description: 'Container updated successfully',
     type: Container,
+  })
+  @ApiResponse({
+    status: HttpStatus.BAD_REQUEST,
+    description: 'Invalid container data',
+  })
+  @ApiResponse({
+    status: HttpStatus.CONFLICT,
+    description: 'Container name or code already exists',
+  })
+  @ApiResponse({
+    status: HttpStatus.NOT_FOUND,
+    description: 'Container not found',
   })
   async update(
     @Param('id', UUIDValidationPipe) id: string,
@@ -303,7 +303,7 @@ export class ContainersController {
     return this.containersService.update(id, updateContainerDto);
   }
 
-  @Put(':id/status')
+  @Patch(':id/status')
   @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)
   @ApiOperation({ summary: 'Update container status' })
   @ApiQuery({
@@ -316,18 +316,24 @@ export class ContainersController {
     description: 'Container status updated successfully',
     type: Container,
   })
+  @ApiResponse({
+    status: HttpStatus.BAD_REQUEST,
+    description: 'Invalid container UUID or status value',
+  })
+  @ApiResponse({
+    status: HttpStatus.NOT_FOUND,
+    description: 'Container not found',
+  })
   async updateStatus(
     @Param('id', UUIDValidationPipe) id: string,
-    @Query('status') status: ContainerStatus,
+    @Query(
+      'status',
+      new ParseEnumPipe(ContainerStatus, {
+        errorHttpStatusCode: HttpStatus.BAD_REQUEST,
+      }),
+    )
+    status: ContainerStatus,
   ): Promise<Container> {
-    if (!status || !Object.values(ContainerStatus).includes(status)) {
-      throw new BadRequestException(
-        `Invalid status value: ${status}. Allowed values: ${Object.values(ContainerStatus).join(
-          ', ',
-        )}`,
-      );
-    }
-
     return this.containersService.updateStatus(id, status);
   }
 
@@ -338,6 +344,14 @@ export class ContainersController {
   @ApiResponse({
     status: HttpStatus.NO_CONTENT,
     description: 'Container soft-deleted successfully',
+  })
+  @ApiResponse({
+    status: HttpStatus.BAD_REQUEST,
+    description: 'Invalid container UUID',
+  })
+  @ApiResponse({
+    status: HttpStatus.NOT_FOUND,
+    description: 'Container not found',
   })
   async remove(@Param('id', UUIDValidationPipe) id: string): Promise<void> {
     await this.containersService.softDelete(id);
@@ -353,6 +367,14 @@ export class ContainersController {
     description: 'Container restored successfully',
     type: Container,
   })
+  @ApiResponse({
+    status: HttpStatus.BAD_REQUEST,
+    description: 'Container is not deleted, has active items, or restored items exceed capacity',
+  })
+  @ApiResponse({
+    status: HttpStatus.NOT_FOUND,
+    description: 'Container not found or could not be restored',
+  })
   async restore(@Param('id', UUIDValidationPipe) id: string): Promise<Container> {
     return this.containersService.restore(id);
   }
@@ -367,19 +389,15 @@ export class ContainersController {
     status: HttpStatus.NO_CONTENT,
     description: 'Container permanently deleted successfully',
   })
+  @ApiResponse({
+    status: HttpStatus.BAD_REQUEST,
+    description: 'Container must be soft-deleted before permanent deletion',
+  })
+  @ApiResponse({
+    status: HttpStatus.NOT_FOUND,
+    description: 'Container not found',
+  })
   async permanentDelete(@Param('id', UUIDValidationPipe) id: string): Promise<void> {
     await this.containersService.permanentDelete(id);
-  }
-
-  private createPaginationDto(query: PaginationDto): PaginationDto {
-    const limit = Number(query.limit);
-    const offset = Number(query.offset);
-
-    const paginationDto = new PaginationDto();
-    paginationDto.limit = Number.isInteger(limit) && limit > 0 ? limit : 10;
-    paginationDto.offset = Number.isInteger(offset) && offset >= 0 ? offset : 0;
-    paginationDto.sort = query.sort || undefined;
-
-    return paginationDto;
   }
 }

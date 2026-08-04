@@ -1,18 +1,24 @@
+// src/types/auth.types.ts
+import { ROLES } from '../utilis/constants';
+
 // ============================================
 // AUTH TYPES
 // ============================================
+
+export type UserRole = (typeof ROLES)[keyof typeof ROLES];
+
 export interface User {
   id: string;
   username: string;
   email: string;
-  role: 'super_admin' | 'admin' | 'user';
+  role: UserRole;
   isActive: boolean;
-  lastLogin?: Date;
-  lastLoginIp?: string;
-  lastLoginUserAgent?: string;
-  createdAt: Date;
-  updatedAt: Date;
-  deletedAt?: Date; // Shtojmë deletedAt për soft delete
+  lastLogin: string | null;
+  lastLoginIp: string | null;
+  lastLoginUserAgent: string | null;
+  createdAt: string;
+  updatedAt: string;
+  deletedAt: string | null;
 }
 
 export interface RefreshTokenResponse {
@@ -29,7 +35,7 @@ export interface RegisterData {
   username: string;
   email: string;
   password: string;
-  role?: 'super_admin' | 'admin' | 'user';
+  role?: UserRole;
 }
 
 export interface AuthResponse {
@@ -55,10 +61,10 @@ export interface ResetPasswordData {
 export interface Session {
   id: string;
   userId: string;
-  token: string;
   ip?: string;
   userAgent?: string;
-  expiresAt: Date;
+  expiresAt: string;
+  createdAt: string;
   isActive: boolean;
-  createdAt: Date;
+  isCurrent: boolean;
 }

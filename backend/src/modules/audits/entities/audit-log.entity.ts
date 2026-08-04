@@ -16,9 +16,15 @@ import { User } from '../../auth/entities/user.entity';
 export enum AuditAction {
   LOGIN = 'login',
   LOGOUT = 'logout',
+  LOGOUT_ALL = 'logout_all',
+
   REGISTER = 'register',
+
   PASSWORD_CHANGE = 'password_change',
+  PASSWORD_RESET_REQUEST = 'password_reset_request',
   PASSWORD_RESET = 'password_reset',
+
+  SESSION_REVOKE = 'session_revoke',
 
   USER_CREATE = 'user_create',
   USER_UPDATE = 'user_update',

@@ -15,13 +15,14 @@ import { User } from './user.entity';
 @Entity('refresh_tokens')
 @Index('IDX_refresh_tokens_user_active', ['userId', 'isActive'])
 @Index('IDX_refresh_tokens_session_id', ['sessionId'])
+@Index('IDX_refresh_tokens_user_session_active', ['userId', 'sessionId', 'isActive'])
 export class RefreshToken {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
 
   @Column({
     type: 'varchar',
-    length: 500,
+    length: 64,
     unique: true,
   })
   token!: string;
@@ -99,9 +100,8 @@ export class RefreshToken {
   @Column({
     name: 'session_id',
     type: 'uuid',
-    nullable: true,
   })
-  sessionId?: string | null;
+  sessionId!: string;
 
   constructor(partial?: Partial<RefreshToken>) {
     if (partial) {

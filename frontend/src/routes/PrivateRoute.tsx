@@ -1,14 +1,33 @@
-import React from 'react';
-import { Navigate, Outlet } from 'react-router-dom';
-import { useAuth } from '../hooks/useAuth';
-import { LoadingSpinner } from '../components/common/UI/LoadingSpinner';
+import {
+  Navigate,
+  Outlet,
+  useLocation,
+} from 'react-router-dom';
 
-export const PrivateRoute: React.FC = () => {
-  const { isAuthenticated, isLoading } = useAuth();
+import { LoadingSpinner } from '../components/common/UI/LoadingSpinner';
+import { useAuth } from '../hooks/useAuth';
+
+export const PrivateRoute = () => {
+  const {
+    isAuthenticated,
+    isLoading,
+  } = useAuth();
+
+  const location = useLocation();
 
   if (isLoading) {
     return <LoadingSpinner />;
   }
 
-  return isAuthenticated ? <Outlet /> : <Navigate to="/login" />;
+  if (!isAuthenticated) {
+    return (
+      <Navigate
+        to="/login"
+        replace
+        state={{ from: location }}
+      />
+    );
+  }
+
+  return <Outlet />;
 };

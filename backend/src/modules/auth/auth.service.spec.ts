@@ -2,7 +2,15 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { JwtService } from '@nestjs/jwt';
-import { UnauthorizedException, ConflictException, NotFoundException } from '@nestjs/common';
+import {
+  UnauthorizedException,
+  ConflictException,
+  NotFoundException,
+  BadRequestException,
+  ServiceUnavailableException,
+} from '@nestjs/common';
+import { DataSource } from 'typeorm';
+import { createHash } from 'crypto';
 import { AuthService } from './auth.service';
 import { User, UserRole } from './entities/user.entity';
 import { RefreshToken } from './entities/refresh-token.entity';
@@ -10,23 +18,8 @@ import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
 import { ConfigService } from '@nestjs/config';
 import { REDIS_CLIENT } from '../../common/redis/redis.module';
-
-jest.mock('uuid', () => ({
-  v4: jest
-    .fn()
-    .mockReturnValueOnce('refresh-token-1')
-    .mockReturnValueOnce('refresh-token-2')
-    .mockReturnValue('mock-uuid-token'),
-}));
-
-const mockRedis = {
-  set: jest.fn().mockResolvedValue('OK'),
-  get: jest.fn().mockResolvedValue(null),
-  del: jest.fn().mockResolvedValue(1),
-  exists: jest.fn().mockResolvedValue(1),
-  scan: jest.fn().mockResolvedValue(['0', []]),
-  keys: jest.fn().mockResolvedValue([]),
-};
+import { MailService } from '../mail/mail.service';
+import { AuthenticatedUser } from './interfaces/authenticated-request.interface';
 
 describe('AuthService', () => {
   let service: AuthService;
@@ -35,6 +28,8 @@ describe('AuthService', () => {
   let jwtService: any;
   let configService: any;
   let redis: any;
+  let dataSource: any;
+  let mailService: any;
 
   const createMockUser = (overrides: Partial<User> = {}): User => {
     const defaultUser: Partial<User> = {
@@ -68,6 +63,39 @@ describe('AuthService', () => {
     return { ...defaultUser, ...overrides } as User;
   };
 
+  const createUserQueryBuilder = (user: User | null) => ({
+    setLock: jest.fn().mockReturnThis(),
+    where: jest.fn().mockReturnThis(),
+    andWhere: jest.fn().mockReturnThis(),
+    withDeleted: jest.fn().mockReturnThis(),
+    leftJoinAndSelect: jest.fn().mockReturnThis(),
+    addOrderBy: jest.fn().mockReturnThis(),
+    skip: jest.fn().mockReturnThis(),
+    take: jest.fn().mockReturnThis(),
+    getOne: jest.fn().mockResolvedValue(user),
+    getManyAndCount: jest.fn().mockResolvedValue([[], 0]),
+  });
+
+  const createRedisMulti = () => ({
+    set: jest.fn().mockReturnThis(),
+    zadd: jest.fn().mockReturnThis(),
+    del: jest.fn().mockReturnThis(),
+    zrem: jest.fn().mockReturnThis(),
+    exec: jest.fn().mockResolvedValue([
+      [null, 'OK'],
+      [null, 1],
+    ]),
+  });
+
+  const currentUser: AuthenticatedUser = {
+    id: 'admin-id',
+    username: 'admin',
+    email: 'admin@example.com',
+    role: UserRole.SUPER_ADMIN,
+    isActive: true,
+    sid: 'session-id',
+  };
+
   beforeEach(async () => {
     userRepository = {
       findOne: jest.fn(),
@@ -78,18 +106,7 @@ describe('AuthService', () => {
       restore: jest.fn(),
       remove: jest.fn(),
       update: jest.fn(),
-      createQueryBuilder: jest.fn(() => ({
-        withDeleted: jest.fn().mockReturnThis(),
-        where: jest.fn().mockReturnThis(),
-        andWhere: jest.fn().mockReturnThis(),
-        addSelect: jest.fn().mockReturnThis(),
-        getOne: jest.fn().mockResolvedValue(null),
-        orderBy: jest.fn().mockReturnThis(),
-        addOrderBy: jest.fn().mockReturnThis(),
-        skip: jest.fn().mockReturnThis(),
-        take: jest.fn().mockReturnThis(),
-        getManyAndCount: jest.fn().mockResolvedValue([[], 0]),
-      })),
+      createQueryBuilder: jest.fn(() => createUserQueryBuilder(null)),
     };
 
     refreshTokenRepository = {
@@ -97,6 +114,7 @@ describe('AuthService', () => {
       save: jest.fn(),
       create: jest.fn(),
       update: jest.fn(),
+      delete: jest.fn(),
     };
 
     jwtService = {
@@ -111,9 +129,7 @@ describe('AuthService', () => {
       'auth.jwt.audience': 'container-management-users',
       'auth.rateLimit.loginAttempts': 5,
       'auth.rateLimit.blockDuration': 15 * 60 * 1000,
-      AUTH_MAX_SESSIONS: 10,
-      REDIS_HOST: 'localhost',
-      REDIS_PORT: 6379,
+      'auth.sessions.max': 10,
     };
 
     configService = {
@@ -122,12 +138,33 @@ describe('AuthService', () => {
         if (configValues[key] === undefined) {
           throw new Error(`Missing config: ${key}`);
         }
-
         return configValues[key];
       }),
     };
 
-    redis = { ...mockRedis };
+    // Create fresh Redis mock for each test
+    redis = {
+      get: jest.fn(),
+      set: jest.fn(),
+      del: jest.fn(),
+      exists: jest.fn(),
+      zadd: jest.fn(),
+      zrem: jest.fn(),
+      zrange: jest.fn(),
+      zcard: jest.fn(),
+      zpopmin: jest.fn(),
+      eval: jest.fn(),
+      multi: jest.fn(createRedisMulti),
+      pipeline: jest.fn(),
+    };
+
+    dataSource = {
+      transaction: jest.fn(),
+    };
+
+    mailService = {
+      sendPasswordResetEmail: jest.fn().mockResolvedValue(undefined),
+    };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -151,6 +188,14 @@ describe('AuthService', () => {
         {
           provide: REDIS_CLIENT,
           useValue: redis,
+        },
+        {
+          provide: DataSource,
+          useValue: dataSource,
+        },
+        {
+          provide: MailService,
+          useValue: mailService,
         },
       ],
     }).compile();
@@ -178,22 +223,40 @@ describe('AuthService', () => {
         resetFailedAttempts: jest.fn(),
         failedLoginAttempts: 0,
       });
-      userRepository.findOne.mockResolvedValue(user);
-      userRepository.save.mockResolvedValue(user);
+
+      const manager = {
+        getRepository: jest.fn().mockReturnValue({
+          createQueryBuilder: jest.fn(() => createUserQueryBuilder(user)),
+          save: jest.fn().mockResolvedValue(user),
+        }),
+      };
+
+      dataSource.transaction.mockImplementation(async (callback: (manager: any) => Promise<any>) =>
+        callback(manager),
+      );
+
       refreshTokenRepository.save.mockResolvedValue({ token: 'refresh-token-1' });
       jwtService.sign.mockReturnValue('test-access-token');
 
-      redis.scan.mockResolvedValue(['0', []]);
+      const redisMulti = createRedisMulti();
+      redis.multi.mockReturnValue(redisMulti);
+      redis.zcard.mockResolvedValue(0);
 
       const result = await service.login(loginDto, ip, userAgent);
 
       expect(result.accessToken).toBe('test-access-token');
-      // ✅ Nuk kontrollojmë vlerë specifike të refresh token-it
       expect(result.refreshToken).toBeDefined();
       expect(typeof result.refreshToken).toBe('string');
+      expect(result.refreshToken).toHaveLength(96);
+      expect(result.refreshToken).toMatch(/^[a-f0-9]{96}$/);
       expect(result.user).not.toHaveProperty('password');
-      expect(redis.set).toHaveBeenCalled();
+      expect(redis.multi).toHaveBeenCalled();
       expect(refreshTokenRepository.save).toHaveBeenCalled();
+
+      expect(user.resetFailedAttempts).toHaveBeenCalled();
+      expect(user.lastLogin).toBeInstanceOf(Date);
+      expect(user.lastLoginIp).toBe(ip);
+      expect(user.lastLoginUserAgent).toBe(userAgent);
     });
 
     it('should throw UnauthorizedException if user is inactive', async () => {
@@ -202,13 +265,36 @@ describe('AuthService', () => {
         validatePassword: jest.fn().mockResolvedValue(true),
         isLocked: jest.fn().mockReturnValue(false),
       });
-      userRepository.findOne.mockResolvedValue(user);
-      await expect(service.login(loginDto, ip, userAgent)).rejects.toThrow(UnauthorizedException);
+
+      const manager = {
+        getRepository: jest.fn().mockReturnValue({
+          createQueryBuilder: jest.fn(() => createUserQueryBuilder(user)),
+        }),
+      };
+
+      dataSource.transaction.mockImplementation(async (callback: (manager: any) => Promise<any>) =>
+        callback(manager),
+      );
+
+      await expect(service.login(loginDto, ip, userAgent)).rejects.toThrow(
+        'Invalid credentials or account unavailable',
+      );
     });
 
     it('should throw UnauthorizedException if user not found', async () => {
-      userRepository.findOne.mockResolvedValue(null);
-      await expect(service.login(loginDto, ip, userAgent)).rejects.toThrow(UnauthorizedException);
+      const manager = {
+        getRepository: jest.fn().mockReturnValue({
+          createQueryBuilder: jest.fn(() => createUserQueryBuilder(null)),
+        }),
+      };
+
+      dataSource.transaction.mockImplementation(async (callback: (manager: any) => Promise<any>) =>
+        callback(manager),
+      );
+
+      await expect(service.login(loginDto, ip, userAgent)).rejects.toThrow(
+        'Invalid credentials or account unavailable',
+      );
     });
 
     it('should throw UnauthorizedException if password is invalid', async () => {
@@ -218,8 +304,21 @@ describe('AuthService', () => {
         failedLoginAttempts: 0,
         isLocked: jest.fn().mockReturnValue(false),
       });
-      userRepository.findOne.mockResolvedValue(user);
-      await expect(service.login(loginDto, ip, userAgent)).rejects.toThrow(UnauthorizedException);
+
+      const manager = {
+        getRepository: jest.fn().mockReturnValue({
+          createQueryBuilder: jest.fn(() => createUserQueryBuilder(user)),
+          save: jest.fn().mockResolvedValue(user),
+        }),
+      };
+
+      dataSource.transaction.mockImplementation(async (callback: (manager: any) => Promise<any>) =>
+        callback(manager),
+      );
+
+      await expect(service.login(loginDto, ip, userAgent)).rejects.toThrow(
+        'Invalid credentials or account unavailable',
+      );
       expect(user.incrementFailedAttempts).toHaveBeenCalled();
     });
 
@@ -234,11 +333,19 @@ describe('AuthService', () => {
         user.failedLoginAttempts++;
       });
 
-      userRepository.findOne.mockResolvedValue(user);
-      userRepository.save.mockResolvedValue(user);
+      const manager = {
+        getRepository: jest.fn().mockReturnValue({
+          createQueryBuilder: jest.fn(() => createUserQueryBuilder(user)),
+          save: jest.fn().mockResolvedValue(user),
+        }),
+      };
+
+      dataSource.transaction.mockImplementation(async (callback: (manager: any) => Promise<any>) =>
+        callback(manager),
+      );
 
       await expect(service.login(loginDto, ip, userAgent)).rejects.toThrow(
-        'Too many failed attempts. Account locked for 15 minutes.',
+        'Invalid credentials or account unavailable',
       );
 
       expect(user.incrementFailedAttempts).toHaveBeenCalled();
@@ -252,9 +359,19 @@ describe('AuthService', () => {
         validatePassword: jest.fn().mockResolvedValue(true),
         isLocked: jest.fn().mockReturnValue(false),
       });
-      userRepository.findOne.mockResolvedValue(user);
+
+      const manager = {
+        getRepository: jest.fn().mockReturnValue({
+          createQueryBuilder: jest.fn(() => createUserQueryBuilder(user)),
+        }),
+      };
+
+      dataSource.transaction.mockImplementation(async (callback: (manager: any) => Promise<any>) =>
+        callback(manager),
+      );
+
       await expect(service.login(loginDto, ip, userAgent)).rejects.toThrow(
-        'Account has been deactivated',
+        'Invalid credentials or account unavailable',
       );
     });
 
@@ -263,9 +380,19 @@ describe('AuthService', () => {
         isLocked: jest.fn().mockReturnValue(true),
         validatePassword: jest.fn().mockResolvedValue(true),
       });
-      userRepository.findOne.mockResolvedValue(user);
+
+      const manager = {
+        getRepository: jest.fn().mockReturnValue({
+          createQueryBuilder: jest.fn(() => createUserQueryBuilder(user)),
+        }),
+      };
+
+      dataSource.transaction.mockImplementation(async (callback: (manager: any) => Promise<any>) =>
+        callback(manager),
+      );
+
       await expect(service.login(loginDto, ip, userAgent)).rejects.toThrow(
-        'Account is temporarily locked',
+        'Invalid credentials or account unavailable',
       );
     });
   });
@@ -278,17 +405,7 @@ describe('AuthService', () => {
       role: UserRole.USER,
     };
 
-    it('should create first user as SUPER_ADMIN when no users exist', async () => {
-      userRepository.count.mockResolvedValue(0);
-      userRepository.findOne.mockResolvedValue(null);
-      userRepository.save.mockImplementation((user) => Promise.resolve(user));
-
-      const result = await service.register(registerDto);
-      expect(result.role).toBe(UserRole.SUPER_ADMIN);
-    });
-
     it('should create a user with specified role when SUPER_ADMIN is logged in', async () => {
-      const currentUser = createMockUser({ role: UserRole.SUPER_ADMIN });
       userRepository.findOne.mockResolvedValue(null);
       userRepository.save.mockImplementation((user) => Promise.resolve(user));
 
@@ -297,7 +414,6 @@ describe('AuthService', () => {
     });
 
     it('should allow SUPER_ADMIN to create ADMIN', async () => {
-      const currentUser = createMockUser({ role: UserRole.SUPER_ADMIN });
       const dto = { ...registerDto, role: UserRole.ADMIN };
       userRepository.findOne.mockResolvedValue(null);
       userRepository.save.mockImplementation((user) => Promise.resolve(user));
@@ -307,68 +423,104 @@ describe('AuthService', () => {
     });
 
     it('should allow ADMIN to create ADMIN', async () => {
-      const currentUser = createMockUser({ role: UserRole.ADMIN });
+      const adminUser: AuthenticatedUser = {
+        ...currentUser,
+        role: UserRole.ADMIN,
+      };
       const dto = { ...registerDto, role: UserRole.ADMIN };
       userRepository.findOne.mockResolvedValue(null);
       userRepository.save.mockImplementation((user) => Promise.resolve(user));
 
-      const result = await service.register(dto, currentUser);
+      const result = await service.register(dto, adminUser);
       expect(result.role).toBe(UserRole.ADMIN);
     });
 
     it('should throw UnauthorizedException if ADMIN tries to create SUPER_ADMIN', async () => {
-      const currentUser = createMockUser({ role: UserRole.ADMIN });
+      const adminUser: AuthenticatedUser = {
+        ...currentUser,
+        role: UserRole.ADMIN,
+      };
       const dto = { ...registerDto, role: UserRole.SUPER_ADMIN };
-      await expect(service.register(dto, currentUser)).rejects.toThrow(UnauthorizedException);
+      await expect(service.register(dto, adminUser)).rejects.toThrow(UnauthorizedException);
     });
 
     it('should throw UnauthorizedException if regular USER tries to register', async () => {
-      const currentUser = createMockUser({ role: UserRole.USER });
-      await expect(service.register(registerDto, currentUser)).rejects.toThrow(
+      const regularUser: AuthenticatedUser = {
+        ...currentUser,
+        role: UserRole.USER,
+      };
+      await expect(service.register(registerDto, regularUser)).rejects.toThrow(
         UnauthorizedException,
       );
     });
 
     it('should throw ConflictException if user already exists', async () => {
       userRepository.findOne.mockResolvedValue(createMockUser());
-      await expect(service.register(registerDto)).rejects.toThrow(ConflictException);
+      await expect(service.register(registerDto, currentUser)).rejects.toThrow(ConflictException);
+    });
+
+    it('should handle DB unique violation 23505', async () => {
+      userRepository.findOne.mockResolvedValue(null);
+      const dbError = new Error('duplicate key');
+      (dbError as any).code = '23505';
+      userRepository.save.mockRejectedValue(dbError);
+      await expect(service.register(registerDto, currentUser)).rejects.toThrow(ConflictException);
     });
   });
 
   describe('logout', () => {
     it('should revoke refresh token and delete Redis session', async () => {
       const userId = '70dd2947-2b10-4ddb-aa44-48f1d5f71e1d';
-      const refreshToken = 'refresh-token-1';
-      const mockToken = { id: 'token-id', isActive: true };
+      const sessionId = 'session-id-123';
+      const mockToken = { id: 'token-id', userId, sessionId, isActive: true };
+
+      refreshTokenRepository.findOne.mockResolvedValue(mockToken);
+      refreshTokenRepository.save.mockImplementation(async (token) => token);
+
+      const redisMulti = createRedisMulti();
+      redis.multi.mockReturnValue(redisMulti);
+
+      await service.logout(userId, sessionId);
+
+      expect(refreshTokenRepository.findOne).toHaveBeenCalledWith({
+        where: {
+          userId,
+          sessionId,
+          isActive: true,
+        },
+      });
+      expect(refreshTokenRepository.save).toHaveBeenCalled();
+      expect(redis.multi).toHaveBeenCalled();
+      expect(redisMulti.del).toHaveBeenCalledWith(`session:${userId}:${sessionId}`);
+      expect(redisMulti.zrem).toHaveBeenCalledWith(`user-sessions:${userId}`, sessionId);
+
+      const savedToken = refreshTokenRepository.save.mock.calls[0][0];
+      expect(savedToken.isActive).toBe(false);
+      expect(savedToken.revokedReason).toBe('logout');
+      expect(savedToken.revokedAt).toBeInstanceOf(Date);
+    });
+
+    it('should throw UnauthorizedException if session not found', async () => {
+      refreshTokenRepository.findOne.mockResolvedValue(null);
+      await expect(service.logout('user-id', 'session-id')).rejects.toThrow(
+        'Current session is not active',
+      );
+    });
+
+    it('should continue even if Redis cleanup fails', async () => {
+      const userId = '70dd2947-2b10-4ddb-aa44-48f1d5f71e1d';
+      const sessionId = 'session-id-123';
+      const mockToken = { id: 'token-id', userId, sessionId, isActive: true };
+
       refreshTokenRepository.findOne.mockResolvedValue(mockToken);
       refreshTokenRepository.save.mockResolvedValue(mockToken);
 
-      redis.scan.mockResolvedValue(['0', [`session:${userId}:123`]]);
-      redis.get.mockResolvedValue(
-        JSON.stringify({
-          refreshToken,
-          accessToken: 'access-token',
-          ip: '127.0.0.1',
-          userAgent: 'chrome',
-          createdAt: new Date().toISOString(),
-          expiresAt: new Date(Date.now() + 604800000).toISOString(),
-        }),
-      );
-      redis.del.mockResolvedValue(1);
+      const redisMulti = createRedisMulti();
+      redisMulti.exec.mockRejectedValue(new Error('Redis error'));
+      redis.multi.mockReturnValue(redisMulti);
 
-      await service.logout(userId, refreshToken);
-
-      expect(refreshTokenRepository.findOne).toHaveBeenCalled();
+      await expect(service.logout(userId, sessionId)).resolves.not.toThrow();
       expect(refreshTokenRepository.save).toHaveBeenCalled();
-      expect(redis.scan).toHaveBeenCalled();
-      expect(redis.del).toHaveBeenCalledWith(`session:${userId}:123`);
-    });
-
-    it('should throw UnauthorizedException if refresh token not found', async () => {
-      refreshTokenRepository.findOne.mockResolvedValue(null);
-      await expect(service.logout('user-id', 'invalid-token')).rejects.toThrow(
-        UnauthorizedException,
-      );
     });
   });
 
@@ -377,14 +529,22 @@ describe('AuthService', () => {
       const userId = '70dd2947-2b10-4ddb-aa44-48f1d5f71e1d';
       refreshTokenRepository.update.mockResolvedValue({ affected: 2 });
 
-      redis.scan.mockResolvedValue(['0', [`session:${userId}:123`, `session:${userId}:456`]]);
-      redis.del.mockResolvedValue(2);
+      redis.zrange.mockResolvedValue(['session-1', 'session-2']);
+
+      const redisMulti = createRedisMulti();
+      redis.multi.mockReturnValue(redisMulti);
+      redisMulti.exec.mockResolvedValue([
+        [null, 1],
+        [null, 1],
+        [null, 1],
+      ]);
 
       await service.logoutAll(userId);
 
       expect(refreshTokenRepository.update).toHaveBeenCalled();
-      expect(redis.scan).toHaveBeenCalled();
-      expect(redis.del).toHaveBeenCalledWith(`session:${userId}:123`, `session:${userId}:456`);
+      expect(redis.zrange).toHaveBeenCalledWith(`user-sessions:${userId}`, 0, -1);
+      expect(redis.multi).toHaveBeenCalled();
+      expect(redisMulti.exec).toHaveBeenCalled();
     });
   });
 
@@ -392,59 +552,325 @@ describe('AuthService', () => {
     it('should return new access and refresh tokens and update Redis session', async () => {
       const refreshToken = 'refresh-token-1';
       const userId = '70dd2947-2b10-4ddb-aa44-48f1d5f71e1d';
+      const sessionId = 'session-123';
+      const tokenHash = createHash('sha256').update(refreshToken).digest('hex');
+
       const user = createMockUser({ id: userId });
 
-      const storedToken = {
-        token: refreshToken,
-        user,
-        isActive: true,
-        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+      const tokenReference = {
+        id: 'token-id',
+        userId,
+        sessionId,
       };
-      refreshTokenRepository.findOne.mockResolvedValue(storedToken);
-      refreshTokenRepository.save.mockResolvedValue({});
 
-      const mockNewRefresh = 'new-refresh-token';
-      (jest.requireMock('uuid').v4 as jest.Mock).mockReturnValueOnce(mockNewRefresh);
+      refreshTokenRepository.findOne.mockResolvedValue(tokenReference);
 
-      redis.scan.mockResolvedValue(['0', [`session:${userId}:123`]]);
+      const transactionalTokenRepository = {
+        createQueryBuilder: jest.fn(() => ({
+          setLock: jest.fn().mockReturnThis(),
+          leftJoinAndSelect: jest.fn().mockReturnThis(),
+          where: jest.fn().mockReturnThis(),
+          andWhere: jest.fn().mockReturnThis(),
+          getOne: jest.fn().mockResolvedValue({
+            id: 'token-id',
+            token: tokenHash,
+            user,
+            isActive: true,
+            expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+            sessionId,
+            userId,
+          }),
+        })),
+        save: jest.fn().mockResolvedValue({ token: 'new-refresh-token' }),
+      };
+
+      const manager = {
+        getRepository: jest.fn((entity: any) => {
+          if (entity === RefreshToken) {
+            return transactionalTokenRepository;
+          }
+          if (entity === User) {
+            return {
+              createQueryBuilder: jest.fn(() => ({
+                setLock: jest.fn().mockReturnThis(),
+                where: jest.fn().mockReturnThis(),
+                withDeleted: jest.fn().mockReturnThis(),
+                getOne: jest.fn().mockResolvedValue(user),
+              })),
+            };
+          }
+          throw new Error(`Unexpected repository: ${String(entity)}`);
+        }),
+      };
+
+      dataSource.transaction.mockImplementation(async (callback: (manager: any) => Promise<any>) =>
+        callback(manager),
+      );
+
       redis.get.mockResolvedValue(
         JSON.stringify({
-          refreshToken,
-          accessToken: 'old-access-token',
+          refreshTokenHash: tokenHash,
           ip: '127.0.0.1',
           userAgent: 'chrome',
           createdAt: new Date().toISOString(),
           expiresAt: new Date(Date.now() + 604800000).toISOString(),
         }),
       );
-      redis.set.mockResolvedValue('OK');
+
+      redis.eval.mockResolvedValue(1);
 
       const result = await service.refreshAccessToken(refreshToken);
       expect(result.accessToken).toBe('test-access-token');
-      expect(result.refreshToken).toBe(mockNewRefresh);
-      expect(storedToken.isActive).toBe(false);
-      expect(redis.scan).toHaveBeenCalled();
-      expect(redis.set).toHaveBeenCalled();
+      expect(result.refreshToken).toBeDefined();
+      expect(typeof result.refreshToken).toBe('string');
+      expect(transactionalTokenRepository.save).toHaveBeenCalledTimes(2);
+      expect(redis.eval).toHaveBeenCalledWith(
+        expect.any(String),
+        1,
+        `session:${userId}:${sessionId}`,
+        tokenHash,
+        expect.any(String),
+        expect.any(Number),
+      );
     });
 
     it('should throw UnauthorizedException for invalid refresh token', async () => {
       refreshTokenRepository.findOne.mockResolvedValue(null);
       await expect(service.refreshAccessToken('invalid-token')).rejects.toThrow(
-        UnauthorizedException,
+        'Invalid or expired refresh token',
       );
     });
 
     it('should throw UnauthorizedException for expired refresh token', async () => {
-      const storedToken = {
-        token: 'expired-token',
-        user: createMockUser(),
-        isActive: true,
-        expiresAt: new Date(Date.now() - 1000),
+      const refreshToken = 'expired-token';
+      const tokenHash = createHash('sha256').update(refreshToken).digest('hex');
+
+      const tokenReference = {
+        id: 'token-id',
+        userId: 'user-id',
+        sessionId: 'session-id',
       };
-      refreshTokenRepository.findOne.mockResolvedValue(storedToken);
-      await expect(service.refreshAccessToken('expired-token')).rejects.toThrow(
-        UnauthorizedException,
+
+      refreshTokenRepository.findOne.mockResolvedValue(tokenReference);
+
+      redis.get.mockResolvedValue(
+        JSON.stringify({
+          refreshTokenHash: tokenHash,
+          createdAt: new Date().toISOString(),
+          expiresAt: new Date(Date.now() + 60000).toISOString(),
+        }),
       );
+
+      const transactionalTokenRepository = {
+        createQueryBuilder: jest.fn(() => ({
+          setLock: jest.fn().mockReturnThis(),
+          leftJoinAndSelect: jest.fn().mockReturnThis(),
+          where: jest.fn().mockReturnThis(),
+          andWhere: jest.fn().mockReturnThis(),
+          getOne: jest.fn().mockResolvedValue({
+            id: 'token-id',
+            token: tokenHash,
+            user: createMockUser(),
+            isActive: true,
+            expiresAt: new Date(Date.now() - 1000),
+            sessionId: 'session-id',
+            userId: 'user-id',
+          }),
+        })),
+      };
+
+      const manager = {
+        getRepository: jest.fn((entity: any) => {
+          if (entity === RefreshToken) {
+            return transactionalTokenRepository;
+          }
+          throw new Error(`Unexpected repository: ${String(entity)}`);
+        }),
+      };
+
+      dataSource.transaction.mockImplementation(async (callback: (manager: any) => Promise<any>) =>
+        callback(manager),
+      );
+
+      await expect(service.refreshAccessToken(refreshToken)).rejects.toThrow(
+        'Invalid or expired refresh token',
+      );
+    });
+
+    it('should throw UnauthorizedException on CAS mismatch with cleanup', async () => {
+      const refreshToken = 'refresh-token-1';
+      const userId = '70dd2947-2b10-4ddb-aa44-48f1d5f71e1d';
+      const sessionId = 'session-123';
+      const tokenHash = createHash('sha256').update(refreshToken).digest('hex');
+
+      const user = createMockUser({ id: userId });
+
+      const tokenReference = {
+        id: 'token-id',
+        userId,
+        sessionId,
+      };
+
+      refreshTokenRepository.findOne.mockResolvedValue(tokenReference);
+
+      const transactionalTokenRepository = {
+        createQueryBuilder: jest.fn(() => ({
+          setLock: jest.fn().mockReturnThis(),
+          leftJoinAndSelect: jest.fn().mockReturnThis(),
+          where: jest.fn().mockReturnThis(),
+          andWhere: jest.fn().mockReturnThis(),
+          getOne: jest.fn().mockResolvedValue({
+            id: 'token-id',
+            token: tokenHash,
+            user,
+            isActive: true,
+            expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+            sessionId,
+            userId,
+          }),
+        })),
+        save: jest.fn().mockResolvedValue({ token: 'new-refresh-token' }),
+      };
+
+      const manager = {
+        getRepository: jest.fn((entity: any) => {
+          if (entity === RefreshToken) {
+            return transactionalTokenRepository;
+          }
+          if (entity === User) {
+            return {
+              createQueryBuilder: jest.fn(() => ({
+                setLock: jest.fn().mockReturnThis(),
+                where: jest.fn().mockReturnThis(),
+                withDeleted: jest.fn().mockReturnThis(),
+                getOne: jest.fn().mockResolvedValue(user),
+              })),
+            };
+          }
+          throw new Error(`Unexpected repository: ${String(entity)}`);
+        }),
+      };
+
+      dataSource.transaction.mockImplementation(async (callback: (manager: any) => Promise<any>) =>
+        callback(manager),
+      );
+
+      redis.get.mockResolvedValue(
+        JSON.stringify({
+          refreshTokenHash: tokenHash,
+          ip: '127.0.0.1',
+          userAgent: 'chrome',
+          createdAt: new Date().toISOString(),
+          expiresAt: new Date(Date.now() + 604800000).toISOString(),
+        }),
+      );
+
+      redis.eval.mockResolvedValue(0);
+
+      const redisMulti = createRedisMulti();
+      redis.multi.mockReturnValue(redisMulti);
+
+      await expect(service.refreshAccessToken(refreshToken)).rejects.toThrow(UnauthorizedException);
+      expect(refreshTokenRepository.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          userId,
+          isActive: true,
+        }),
+        expect.objectContaining({
+          isActive: false,
+          revokedReason: 'redis_cas_mismatch',
+        }),
+      );
+      expect(redis.multi).toHaveBeenCalled();
+      expect(redisMulti.del).toHaveBeenCalledWith(`session:${userId}:${sessionId}`);
+    });
+
+    it('should throw UnauthorizedException on Redis error (CAS helper returns false with mismatch cleanup)', async () => {
+      const refreshToken = 'refresh-token-1';
+      const userId = '70dd2947-2b10-4ddb-aa44-48f1d5f71e1d';
+      const sessionId = 'session-123';
+      const tokenHash = createHash('sha256').update(refreshToken).digest('hex');
+
+      const user = createMockUser({ id: userId });
+
+      const tokenReference = {
+        id: 'token-id',
+        userId,
+        sessionId,
+      };
+
+      refreshTokenRepository.findOne.mockResolvedValue(tokenReference);
+
+      const transactionalTokenRepository = {
+        createQueryBuilder: jest.fn(() => ({
+          setLock: jest.fn().mockReturnThis(),
+          leftJoinAndSelect: jest.fn().mockReturnThis(),
+          where: jest.fn().mockReturnThis(),
+          andWhere: jest.fn().mockReturnThis(),
+          getOne: jest.fn().mockResolvedValue({
+            id: 'token-id',
+            token: tokenHash,
+            user,
+            isActive: true,
+            expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+            sessionId,
+            userId,
+          }),
+        })),
+        save: jest.fn().mockResolvedValue({ token: 'new-refresh-token' }),
+      };
+
+      const manager = {
+        getRepository: jest.fn((entity: any) => {
+          if (entity === RefreshToken) {
+            return transactionalTokenRepository;
+          }
+          if (entity === User) {
+            return {
+              createQueryBuilder: jest.fn(() => ({
+                setLock: jest.fn().mockReturnThis(),
+                where: jest.fn().mockReturnThis(),
+                withDeleted: jest.fn().mockReturnThis(),
+                getOne: jest.fn().mockResolvedValue(user),
+              })),
+            };
+          }
+          throw new Error(`Unexpected repository: ${String(entity)}`);
+        }),
+      };
+
+      dataSource.transaction.mockImplementation(async (callback: (manager: any) => Promise<any>) =>
+        callback(manager),
+      );
+
+      redis.get.mockResolvedValue(
+        JSON.stringify({
+          refreshTokenHash: tokenHash,
+          ip: '127.0.0.1',
+          userAgent: 'chrome',
+          createdAt: new Date().toISOString(),
+          expiresAt: new Date(Date.now() + 604800000).toISOString(),
+        }),
+      );
+
+      redis.eval.mockRejectedValue(new Error('Redis unavailable'));
+
+      const redisMulti = createRedisMulti();
+      redis.multi.mockReturnValue(redisMulti);
+
+      await expect(service.refreshAccessToken(refreshToken)).rejects.toThrow(UnauthorizedException);
+      expect(refreshTokenRepository.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          userId,
+          isActive: true,
+        }),
+        expect.objectContaining({
+          isActive: false,
+          revokedReason: 'redis_cas_mismatch',
+        }),
+      );
+      expect(redis.multi).toHaveBeenCalled();
+      expect(redisMulti.del).toHaveBeenCalledWith(`session:${userId}:${sessionId}`);
     });
   });
 
@@ -455,22 +881,98 @@ describe('AuthService', () => {
 
     it('should change password successfully and invalidate sessions', async () => {
       const user = createMockUser({
-        validatePassword: jest.fn().mockResolvedValue(true),
+        validatePassword: jest.fn().mockResolvedValueOnce(true).mockResolvedValueOnce(false),
         resetFailedAttempts: jest.fn(),
       });
-      userRepository.findOne.mockResolvedValue(user);
-      userRepository.save.mockResolvedValue(user);
-      redis.scan.mockResolvedValue(['0', [`session:${userId}:123`]]);
-      redis.del.mockResolvedValue(1);
+
+      const transactionalUserRepository = {
+        createQueryBuilder: jest.fn(() => ({
+          setLock: jest.fn().mockReturnThis(),
+          where: jest.fn().mockReturnThis(),
+          withDeleted: jest.fn().mockReturnThis(),
+          getOne: jest.fn().mockResolvedValue(user),
+        })),
+        save: jest.fn().mockResolvedValue(user),
+      };
+
+      const transactionalTokenRepository = {
+        update: jest.fn().mockResolvedValue({ affected: 1 }),
+      };
+
+      const manager = {
+        getRepository: jest.fn((entity: any) => {
+          if (entity === User) {
+            return transactionalUserRepository;
+          }
+          if (entity === RefreshToken) {
+            return transactionalTokenRepository;
+          }
+          throw new Error(`Unexpected repository: ${String(entity)}`);
+        }),
+      };
+
+      dataSource.transaction.mockImplementation(async (callback: (manager: any) => Promise<any>) =>
+        callback(manager),
+      );
+
+      redis.zrange.mockResolvedValue(['session-1']);
+      const redisMulti = createRedisMulti();
+      redis.multi.mockReturnValue(redisMulti);
+      redisMulti.exec.mockResolvedValue([
+        [null, 1],
+        [null, 1],
+      ]);
 
       await service.changePassword(userId, currentPassword, newPassword);
+      expect(transactionalUserRepository.save).toHaveBeenCalled();
+      expect(transactionalTokenRepository.update).toHaveBeenCalled();
+      expect(redis.multi).toHaveBeenCalled();
       expect(user.password).toBe(newPassword);
-      expect(redis.scan).toHaveBeenCalled();
-      expect(redis.del).toHaveBeenCalledWith(`session:${userId}:123`);
+      expect(user.resetFailedAttempts).toHaveBeenCalled();
+    });
+
+    it('should throw BadRequestException if new password is same as current', async () => {
+      const user = createMockUser({
+        validatePassword: jest.fn().mockResolvedValueOnce(true).mockResolvedValueOnce(true),
+        resetFailedAttempts: jest.fn(),
+      });
+
+      const manager = {
+        getRepository: jest.fn().mockReturnValue({
+          createQueryBuilder: jest.fn(() => ({
+            setLock: jest.fn().mockReturnThis(),
+            where: jest.fn().mockReturnThis(),
+            withDeleted: jest.fn().mockReturnThis(),
+            getOne: jest.fn().mockResolvedValue(user),
+          })),
+        }),
+      };
+
+      dataSource.transaction.mockImplementation(async (callback: (manager: any) => Promise<any>) =>
+        callback(manager),
+      );
+
+      await expect(service.changePassword(userId, currentPassword, newPassword)).rejects.toThrow(
+        BadRequestException,
+      );
     });
 
     it('should throw UnauthorizedException if user not found', async () => {
-      userRepository.findOne.mockResolvedValue(null);
+      const manager = {
+        getRepository: jest.fn().mockReturnValue({
+          createQueryBuilder: jest.fn(() => ({
+            setLock: jest.fn().mockReturnThis(),
+            where: jest.fn().mockReturnThis(),
+            withDeleted: jest.fn().mockReturnThis(),
+            getOne: jest.fn().mockResolvedValue(null),
+          })),
+        }),
+      };
+
+      dataSource.transaction.mockImplementation(async (callback: (manager: any) => Promise<any>) =>
+        callback(manager),
+      );
+
       await expect(service.changePassword(userId, currentPassword, newPassword)).rejects.toThrow(
         UnauthorizedException,
       );
@@ -480,7 +982,22 @@ describe('AuthService', () => {
       const user = createMockUser({
         validatePassword: jest.fn().mockResolvedValue(false),
       });
-      userRepository.findOne.mockResolvedValue(user);
+
+      const manager = {
+        getRepository: jest.fn().mockReturnValue({
+          createQueryBuilder: jest.fn(() => ({
+            setLock: jest.fn().mockReturnThis(),
+            where: jest.fn().mockReturnThis(),
+            withDeleted: jest.fn().mockReturnThis(),
+            getOne: jest.fn().mockResolvedValue(user),
+          })),
+        }),
+      };
+
+      dataSource.transaction.mockImplementation(async (callback: (manager: any) => Promise<any>) =>
+        callback(manager),
+      );
+
       await expect(service.changePassword(userId, currentPassword, newPassword)).rejects.toThrow(
         UnauthorizedException,
       );
@@ -492,29 +1009,55 @@ describe('AuthService', () => {
 
     it('should generate reset token and save user', async () => {
       const user = createMockUser({
+        email,
         setResetToken: jest.fn(),
       });
+
       userRepository.findOne.mockResolvedValue(user);
       userRepository.save.mockResolvedValue(user);
 
+      mailService.sendPasswordResetEmail.mockResolvedValue(undefined);
+
       const result = await service.forgotPassword(email);
-      expect(user.setResetToken).toHaveBeenCalledWith(expect.any(String), 3600000);
-      expect(userRepository.save).toHaveBeenCalled();
+      expect(user.setResetToken).toHaveBeenCalledWith(
+        expect.stringMatching(/^[a-f0-9]{64}$/),
+        3600000,
+      );
+      expect(mailService.sendPasswordResetEmail).toHaveBeenCalledWith(
+        email,
+        expect.stringMatching(/^[a-f0-9]{64}$/),
+      );
       expect(result).toEqual({ message: 'If this email exists, a reset link has been sent' });
     });
 
     it('should return same message if user not found', async () => {
       userRepository.findOne.mockResolvedValue(null);
+
       const result = await service.forgotPassword(email);
       expect(result).toEqual({ message: 'If this email exists, a reset link has been sent' });
       expect(userRepository.save).not.toHaveBeenCalled();
+    });
+
+    it('should throw ServiceUnavailableException if email fails and clear token', async () => {
+      const user = createMockUser({
+        email,
+        setResetToken: jest.fn(),
+        clearResetToken: jest.fn(),
+      });
+
+      userRepository.findOne.mockResolvedValue(user);
+      userRepository.save.mockResolvedValue(user);
+      mailService.sendPasswordResetEmail.mockRejectedValue(new Error('SMTP unavailable'));
+
+      await expect(service.forgotPassword(email)).rejects.toThrow(ServiceUnavailableException);
+      expect(user.clearResetToken).toHaveBeenCalled();
+      expect(userRepository.save).toHaveBeenCalled();
     });
   });
 
   describe('resetPassword', () => {
     const token = 'valid-token';
     const newPassword = 'NewPassword@123';
-    const userId = '70dd2947-2b10-4ddb-aa44-48f1d5f71e1d';
 
     it('should reset password successfully', async () => {
       const user = createMockUser({
@@ -522,30 +1065,146 @@ describe('AuthService', () => {
         clearResetToken: jest.fn(),
         resetFailedAttempts: jest.fn(),
       });
-      userRepository.findOne.mockResolvedValue(user);
-      userRepository.save.mockResolvedValue(user);
-      redis.scan.mockResolvedValue(['0', [`session:${userId}:123`]]);
-      redis.del.mockResolvedValue(1);
+
+      const transactionalUserRepository = {
+        createQueryBuilder: jest.fn(() => ({
+          setLock: jest.fn().mockReturnThis(),
+          where: jest.fn().mockReturnThis(),
+          withDeleted: jest.fn().mockReturnThis(),
+          getOne: jest.fn().mockResolvedValue(user),
+        })),
+        save: jest.fn().mockResolvedValue(user),
+      };
+
+      const transactionalTokenRepository = {
+        update: jest.fn().mockResolvedValue({ affected: 1 }),
+      };
+
+      const manager = {
+        getRepository: jest.fn((entity: any) => {
+          if (entity === User) {
+            return transactionalUserRepository;
+          }
+          if (entity === RefreshToken) {
+            return transactionalTokenRepository;
+          }
+          throw new Error(`Unexpected repository: ${String(entity)}`);
+        }),
+      };
+
+      dataSource.transaction.mockImplementation(async (callback: (manager: any) => Promise<any>) =>
+        callback(manager),
+      );
+
+      redis.zrange.mockResolvedValue(['session-1']);
+      const redisMulti = createRedisMulti();
+      redis.multi.mockReturnValue(redisMulti);
+      redisMulti.exec.mockResolvedValue([
+        [null, 1],
+        [null, 1],
+      ]);
 
       const result = await service.resetPassword(token, newPassword);
       expect(user.clearResetToken).toHaveBeenCalled();
       expect(user.resetFailedAttempts).toHaveBeenCalled();
-      expect(user.password).toBe(newPassword);
+      expect(transactionalUserRepository.save).toHaveBeenCalled();
+      expect(transactionalTokenRepository.update).toHaveBeenCalled();
       expect(result).toEqual({ message: 'Password reset successfully' });
+    });
+
+    it('should throw UnauthorizedException if user is deleted', async () => {
+      const user = createMockUser({
+        deletedAt: new Date(),
+        isResetTokenValid: jest.fn().mockReturnValue(true),
+      });
+
+      const manager = {
+        getRepository: jest.fn().mockReturnValue({
+          createQueryBuilder: jest.fn(() => ({
+            setLock: jest.fn().mockReturnThis(),
+            where: jest.fn().mockReturnThis(),
+            withDeleted: jest.fn().mockReturnThis(),
+            getOne: jest.fn().mockResolvedValue(user),
+          })),
+        }),
+      };
+
+      dataSource.transaction.mockImplementation(async (callback: (manager: any) => Promise<any>) =>
+        callback(manager),
+      );
+
+      await expect(service.resetPassword(token, newPassword)).rejects.toThrow(
+        UnauthorizedException,
+      );
+    });
+
+    it('should throw UnauthorizedException if user is inactive', async () => {
+      const user = createMockUser({
+        isActive: false,
+        isResetTokenValid: jest.fn().mockReturnValue(true),
+      });
+
+      const manager = {
+        getRepository: jest.fn().mockReturnValue({
+          createQueryBuilder: jest.fn(() => ({
+            setLock: jest.fn().mockReturnThis(),
+            where: jest.fn().mockReturnThis(),
+            withDeleted: jest.fn().mockReturnThis(),
+            getOne: jest.fn().mockResolvedValue(user),
+          })),
+        }),
+      };
+
+      dataSource.transaction.mockImplementation(async (callback: (manager: any) => Promise<any>) =>
+        callback(manager),
+      );
+
+      await expect(service.resetPassword(token, newPassword)).rejects.toThrow(
+        UnauthorizedException,
+      );
     });
 
     it('should throw UnauthorizedException if token invalid', async () => {
       const user = createMockUser({
         isResetTokenValid: jest.fn().mockReturnValue(false),
       });
-      userRepository.findOne.mockResolvedValue(user);
+
+      const manager = {
+        getRepository: jest.fn().mockReturnValue({
+          createQueryBuilder: jest.fn(() => ({
+            setLock: jest.fn().mockReturnThis(),
+            where: jest.fn().mockReturnThis(),
+            withDeleted: jest.fn().mockReturnThis(),
+            getOne: jest.fn().mockResolvedValue(user),
+          })),
+        }),
+      };
+
+      dataSource.transaction.mockImplementation(async (callback: (manager: any) => Promise<any>) =>
+        callback(manager),
+      );
+
       await expect(service.resetPassword(token, newPassword)).rejects.toThrow(
         UnauthorizedException,
       );
     });
 
     it('should throw UnauthorizedException if user not found', async () => {
-      userRepository.findOne.mockResolvedValue(null);
+      const manager = {
+        getRepository: jest.fn().mockReturnValue({
+          createQueryBuilder: jest.fn(() => ({
+            setLock: jest.fn().mockReturnThis(),
+            where: jest.fn().mockReturnThis(),
+            withDeleted: jest.fn().mockReturnThis(),
+            getOne: jest.fn().mockResolvedValue(null),
+          })),
+        }),
+      };
+
+      dataSource.transaction.mockImplementation(async (callback: (manager: any) => Promise<any>) =>
+        callback(manager),
+      );
+
       await expect(service.resetPassword(token, newPassword)).rejects.toThrow(
         UnauthorizedException,
       );
@@ -560,18 +1219,16 @@ describe('AuthService', () => {
         createMockUser({ id: '1', username: 'user1', deletedAt: new Date() }),
         createMockUser({ id: '2', username: 'user2', deletedAt: new Date() }),
       ];
+
       const queryBuilderMock = {
         withDeleted: jest.fn().mockReturnThis(),
         where: jest.fn().mockReturnThis(),
-        andWhere: jest.fn().mockReturnThis(),
-        addSelect: jest.fn().mockReturnThis(),
-        getOne: jest.fn().mockResolvedValue(null),
-        orderBy: jest.fn().mockReturnThis(),
         addOrderBy: jest.fn().mockReturnThis(),
         skip: jest.fn().mockReturnThis(),
         take: jest.fn().mockReturnThis(),
         getManyAndCount: jest.fn().mockResolvedValue([mockUsers, 2]),
       };
+
       userRepository.createQueryBuilder.mockReturnValue(queryBuilderMock);
 
       const result = await service.findDeletedUsers(paginationDto);
@@ -592,20 +1249,16 @@ describe('AuthService', () => {
       const queryBuilderMock = {
         withDeleted: jest.fn().mockReturnThis(),
         where: jest.fn().mockReturnThis(),
-        andWhere: jest.fn().mockReturnThis(),
-        addSelect: jest.fn().mockReturnThis(),
-        getOne: jest.fn().mockResolvedValue(null),
-        orderBy: jest.fn().mockReturnThis(),
         addOrderBy: jest.fn().mockReturnThis(),
         skip: jest.fn().mockReturnThis(),
         take: jest.fn().mockReturnThis(),
         getManyAndCount: jest.fn().mockResolvedValue([[], 0]),
       };
+
       userRepository.createQueryBuilder.mockReturnValue(queryBuilderMock);
 
       await service.findDeletedUsers({});
 
-      // ✅ Testojmë vetëm skip dhe take – service nuk garanton orderBy default
       expect(queryBuilderMock.skip).toHaveBeenCalledWith(0);
       expect(queryBuilderMock.take).toHaveBeenCalledWith(10);
     });
@@ -613,45 +1266,79 @@ describe('AuthService', () => {
 
   describe('getUserSessionsDetailed', () => {
     const userId = '70dd2947-2b10-4ddb-aa44-48f1d5f71e1d';
+    const currentSessionId = '123';
 
     it('should return detailed sessions from Redis', async () => {
-      const sessionData = JSON.stringify({
-        accessToken: 'token1',
+      const sessionData1 = JSON.stringify({
+        refreshTokenHash: 'hash-1',
         ip: '127.0.0.1',
         userAgent: 'chrome',
         createdAt: new Date().toISOString(),
         expiresAt: new Date(Date.now() + 604800000).toISOString(),
       });
 
-      redis.scan.mockResolvedValue(['0', [`session:${userId}:123`, `session:${userId}:456`]]);
-      redis.get.mockResolvedValueOnce(sessionData).mockResolvedValueOnce(sessionData);
+      const sessionData2 = JSON.stringify({
+        refreshTokenHash: 'hash-2',
+        ip: '127.0.0.2',
+        userAgent: 'firefox',
+        createdAt: new Date().toISOString(),
+        expiresAt: new Date(Date.now() + 604800000).toISOString(),
+      });
 
-      const sessions = await service.getUserSessionsDetailed(userId);
+      redis.zrange.mockResolvedValue(['123', '456']);
+
+      const redisPipeline = {
+        get: jest.fn().mockReturnThis(),
+        exec: jest.fn().mockResolvedValue([
+          [null, sessionData1],
+          [null, sessionData2],
+        ]),
+      };
+      redis.pipeline.mockReturnValue(redisPipeline);
+
+      const sessions = await service.getUserSessionsDetailed(userId, currentSessionId);
       expect(sessions).toHaveLength(2);
       expect(sessions[0]).toHaveProperty('userId', userId);
       expect(sessions[0]).toHaveProperty('id', '123');
       expect(sessions[0]).toHaveProperty('ip', '127.0.0.1');
       expect(sessions[0]).toHaveProperty('isActive', true);
+      expect(sessions[0].isCurrent).toBe(true);
+      expect(sessions[1].isCurrent).toBe(false);
     });
 
     it('should return empty array if no sessions', async () => {
-      redis.scan.mockResolvedValue(['0', []]);
-      const sessions = await service.getUserSessionsDetailed(userId);
+      redis.zrange.mockResolvedValue([]);
+      const sessions = await service.getUserSessionsDetailed(userId, currentSessionId);
       expect(sessions).toEqual([]);
     });
-  });
 
-  describe('getUserSessions', () => {
-    it('should return array of access tokens from Redis', async () => {
-      const userId = '70dd2947-2b10-4ddb-aa44-48f1d5f71e1d';
+    it('should handle pipeline.exec() === null', async () => {
+      redis.zrange.mockResolvedValue(['123']);
+      const redisPipeline = {
+        get: jest.fn().mockReturnThis(),
+        exec: jest.fn().mockResolvedValue(null),
+      };
+      redis.pipeline.mockReturnValue(redisPipeline);
 
-      redis.scan.mockResolvedValue(['0', [`session:${userId}:123`, `session:${userId}:456`]]);
-      redis.get
-        .mockResolvedValueOnce(JSON.stringify({ accessToken: 'token1' }))
-        .mockResolvedValueOnce(JSON.stringify({ accessToken: 'token2' }));
+      await expect(service.getUserSessionsDetailed(userId, currentSessionId)).rejects.toThrow(
+        ServiceUnavailableException,
+      );
+    });
 
-      const sessions = await service.getUserSessions(userId);
-      expect(sessions).toEqual(['token1', 'token2']);
+    it('should remove corrupted session data from ZSET', async () => {
+      redis.zrange.mockResolvedValue(['123']);
+
+      const redisPipeline = {
+        get: jest.fn().mockReturnThis(),
+        exec: jest.fn().mockResolvedValue([[null, 'invalid-json']]),
+      };
+      redis.pipeline.mockReturnValue(redisPipeline);
+
+      redis.zrem.mockResolvedValue(1);
+
+      const sessions = await service.getUserSessionsDetailed(userId, currentSessionId);
+      expect(sessions).toEqual([]);
+      expect(redis.zrem).toHaveBeenCalledWith(`user-sessions:${userId}`, '123');
     });
   });
 
@@ -674,12 +1361,25 @@ describe('AuthService', () => {
 
   describe('getProfile', () => {
     it('should return user profile (same as findUserById)', async () => {
-      const user = createMockUser();
-      const findUserSpy = jest.spyOn(service, 'findUserById').mockResolvedValue(user);
+      const userResponse = {
+        id: 'user-id',
+        username: 'admin',
+        email: 'admin@example.com',
+        role: UserRole.ADMIN,
+        isActive: true,
+        lastLogin: null,
+        lastLoginIp: null,
+        lastLoginUserAgent: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        deletedAt: null,
+      };
 
-      const result = await service.getProfile(user.id);
-      expect(findUserSpy).toHaveBeenCalledWith(user.id, false);
-      expect(result).toBe(user);
+      const findUserSpy = jest.spyOn(service, 'findUserById').mockResolvedValue(userResponse);
+
+      const result = await service.getProfile('user-id');
+      expect(findUserSpy).toHaveBeenCalledWith('user-id', false);
+      expect(result).toBe(userResponse);
     });
   });
 
@@ -689,18 +1389,23 @@ describe('AuthService', () => {
 
     it('should revoke session and refresh token', async () => {
       const sessionData = JSON.stringify({
-        refreshToken: 'refresh-token-123',
-        accessToken: 'access-token',
+        refreshTokenHash: 'refresh-token-hash',
+        createdAt: new Date().toISOString(),
+        expiresAt: new Date(Date.now() + 60000).toISOString(),
         ip: '127.0.0.1',
         userAgent: 'chrome',
       });
+
       redis.get.mockResolvedValue(sessionData);
-      redis.del.mockResolvedValue(1);
+
+      const redisMulti = createRedisMulti();
+      redis.multi.mockReturnValue(redisMulti);
+
       refreshTokenRepository.update.mockResolvedValue({ affected: 1 });
 
       await service.revokeSession(userId, sessionId);
-      expect(redis.get).toHaveBeenCalled();
-      expect(redis.del).toHaveBeenCalled();
+      expect(redis.get).toHaveBeenCalledWith(`session:${userId}:${sessionId}`);
+      expect(redis.multi).toHaveBeenCalled();
       expect(refreshTokenRepository.update).toHaveBeenCalled();
     });
 
@@ -712,33 +1417,104 @@ describe('AuthService', () => {
 
   describe('softDeleteUser', () => {
     const userId = '70dd2947-2b10-4ddb-aa44-48f1d5f71e1d';
+    const currentUserId = 'different-admin-id';
 
     it('should soft delete user and invalidate sessions', async () => {
       const user = createMockUser({ role: UserRole.USER });
-      userRepository.findOne.mockResolvedValue(user);
-      userRepository.softDelete.mockResolvedValue({ affected: 1 });
-      refreshTokenRepository.update.mockResolvedValue({ affected: 1 });
-      redis.scan.mockResolvedValue(['0', [`session:${userId}:123`]]);
-      redis.del.mockResolvedValue(1);
 
-      await service.softDeleteUser(userId);
-      expect(userRepository.softDelete).toHaveBeenCalled();
-      expect(refreshTokenRepository.update).toHaveBeenCalled();
-      expect(redis.scan).toHaveBeenCalled();
-      expect(redis.del).toHaveBeenCalledWith(`session:${userId}:123`);
+      const transactionalUserRepository = {
+        createQueryBuilder: jest.fn(() => ({
+          setLock: jest.fn().mockReturnThis(),
+          where: jest.fn().mockReturnThis(),
+          withDeleted: jest.fn().mockReturnThis(),
+          getOne: jest.fn().mockResolvedValue(user),
+        })),
+        softDelete: jest.fn().mockResolvedValue({ affected: 1 }),
+      };
+
+      const transactionalTokenRepository = {
+        update: jest.fn().mockResolvedValue({ affected: 1 }),
+      };
+
+      const manager = {
+        getRepository: jest.fn((entity: any) => {
+          if (entity === User) {
+            return transactionalUserRepository;
+          }
+          if (entity === RefreshToken) {
+            return transactionalTokenRepository;
+          }
+          throw new Error(`Unexpected repository: ${String(entity)}`);
+        }),
+      };
+
+      dataSource.transaction.mockImplementation(async (callback: (manager: any) => Promise<any>) =>
+        callback(manager),
+      );
+
+      redis.zrange.mockResolvedValue(['session-1']);
+      const redisMulti = createRedisMulti();
+      redis.multi.mockReturnValue(redisMulti);
+      redisMulti.exec.mockResolvedValue([
+        [null, 1],
+        [null, 1],
+      ]);
+
+      await service.softDeleteUser(userId, currentUserId);
+      expect(transactionalUserRepository.softDelete).toHaveBeenCalled();
+      expect(transactionalTokenRepository.update).toHaveBeenCalled();
+      expect(redis.multi).toHaveBeenCalled();
+    });
+
+    it('should throw BadRequestException if trying to delete own account', async () => {
+      // No need to mock transaction because it should not be called
+      await expect(service.softDeleteUser(userId, userId)).rejects.toThrow(BadRequestException);
+      expect(dataSource.transaction).not.toHaveBeenCalled();
     });
 
     it('should throw BadRequestException if user is already deleted', async () => {
       const user = createMockUser({ deletedAt: new Date() });
-      userRepository.findOne.mockResolvedValue(user);
-      await expect(service.softDeleteUser(userId)).rejects.toThrow('User is already deleted');
+
+      const manager = {
+        getRepository: jest.fn().mockReturnValue({
+          createQueryBuilder: jest.fn(() => ({
+            setLock: jest.fn().mockReturnThis(),
+            where: jest.fn().mockReturnThis(),
+            withDeleted: jest.fn().mockReturnThis(),
+            getOne: jest.fn().mockResolvedValue(user),
+          })),
+        }),
+      };
+
+      dataSource.transaction.mockImplementation(async (callback: (manager: any) => Promise<any>) =>
+        callback(manager),
+      );
+
+      await expect(service.softDeleteUser(userId, currentUserId)).rejects.toThrow(
+        BadRequestException,
+      );
     });
 
     it('should throw BadRequestException if trying to delete SUPER_ADMIN', async () => {
       const user = createMockUser({ role: UserRole.SUPER_ADMIN });
-      userRepository.findOne.mockResolvedValue(user);
-      await expect(service.softDeleteUser(userId)).rejects.toThrow(
-        'Cannot delete Super Admin user',
+
+      const manager = {
+        getRepository: jest.fn().mockReturnValue({
+          createQueryBuilder: jest.fn(() => ({
+            setLock: jest.fn().mockReturnThis(),
+            where: jest.fn().mockReturnThis(),
+            withDeleted: jest.fn().mockReturnThis(),
+            getOne: jest.fn().mockResolvedValue(user),
+          })),
+        }),
+      };
+
+      dataSource.transaction.mockImplementation(async (callback: (manager: any) => Promise<any>) =>
+        callback(manager),
+      );
+
+      await expect(service.softDeleteUser(userId, currentUserId)).rejects.toThrow(
+        BadRequestException,
       );
     });
   });
@@ -748,63 +1524,187 @@ describe('AuthService', () => {
 
     it('should restore user and activate account', async () => {
       const user = createMockUser({ deletedAt: new Date(), isActive: false });
-      const restoredUser = createMockUser({
-        ...user,
-        deletedAt: null,
-        isActive: false,
-      });
-      userRepository.findOne.mockResolvedValueOnce(user).mockResolvedValueOnce(restoredUser);
-      userRepository.restore.mockResolvedValue({ affected: 1 });
-      userRepository.save.mockImplementation(async (value) => value);
+
+      const transactionalUserRepository = {
+        createQueryBuilder: jest.fn(() => ({
+          setLock: jest.fn().mockReturnThis(),
+          where: jest.fn().mockReturnThis(),
+          withDeleted: jest.fn().mockReturnThis(),
+          getOne: jest.fn().mockResolvedValue(user),
+        })),
+        restore: jest.fn().mockResolvedValue({ affected: 1 }),
+        save: jest.fn().mockImplementation(async (value: User) => value),
+      };
+
+      const manager = {
+        getRepository: jest.fn((entity: any) => {
+          if (entity === User) {
+            return transactionalUserRepository;
+          }
+          throw new Error(`Unexpected repository: ${String(entity)}`);
+        }),
+      };
+
+      dataSource.transaction.mockImplementation(async (callback: (manager: any) => Promise<any>) =>
+        callback(manager),
+      );
 
       const result = await service.restoreUser(userId);
 
-      expect(userRepository.restore).toHaveBeenCalledWith(userId);
-      expect(userRepository.save).toHaveBeenCalledWith(expect.objectContaining({ isActive: true }));
+      expect(transactionalUserRepository.restore).toHaveBeenCalledWith(userId);
+      expect(transactionalUserRepository.save).toHaveBeenCalled();
       expect(result.isActive).toBe(true);
     });
 
     it('should throw NotFoundException if user not found', async () => {
-      userRepository.findOne.mockResolvedValue(null);
+      const manager = {
+        getRepository: jest.fn().mockReturnValue({
+          createQueryBuilder: jest.fn(() => ({
+            setLock: jest.fn().mockReturnThis(),
+            where: jest.fn().mockReturnThis(),
+            withDeleted: jest.fn().mockReturnThis(),
+            getOne: jest.fn().mockResolvedValue(null),
+          })),
+        }),
+      };
+
+      dataSource.transaction.mockImplementation(async (callback: (manager: any) => Promise<any>) =>
+        callback(manager),
+      );
+
       await expect(service.restoreUser(userId)).rejects.toThrow(NotFoundException);
     });
 
     it('should throw BadRequestException if user is not deleted', async () => {
       const user = createMockUser({ deletedAt: null });
-      userRepository.findOne.mockResolvedValue(user);
-      await expect(service.restoreUser(userId)).rejects.toThrow('User is not deleted');
+
+      const manager = {
+        getRepository: jest.fn().mockReturnValue({
+          createQueryBuilder: jest.fn(() => ({
+            setLock: jest.fn().mockReturnThis(),
+            where: jest.fn().mockReturnThis(),
+            withDeleted: jest.fn().mockReturnThis(),
+            getOne: jest.fn().mockResolvedValue(user),
+          })),
+        }),
+      };
+
+      dataSource.transaction.mockImplementation(async (callback: (manager: any) => Promise<any>) =>
+        callback(manager),
+      );
+
+      await expect(service.restoreUser(userId)).rejects.toThrow(BadRequestException);
     });
   });
 
   describe('permanentDeleteUser', () => {
     const userId = '70dd2947-2b10-4ddb-aa44-48f1d5f71e1d';
+    const currentUserId = 'different-admin-id';
 
     it('should permanently delete user and invalidate sessions', async () => {
-      const user = createMockUser({ role: UserRole.USER });
-      userRepository.findOne.mockResolvedValue(user);
-      userRepository.remove.mockResolvedValue({});
-      refreshTokenRepository.update.mockResolvedValue({ affected: 1 });
-      redis.scan.mockResolvedValue(['0', [`session:${userId}:123`]]);
-      redis.del.mockResolvedValue(1);
+      const user = createMockUser({ role: UserRole.USER, deletedAt: new Date() });
 
-      await service.permanentDeleteUser(userId);
-      expect(userRepository.remove).toHaveBeenCalled();
-      expect(refreshTokenRepository.update).toHaveBeenCalled();
-      expect(redis.scan).toHaveBeenCalled();
-      expect(redis.del).toHaveBeenCalledWith(`session:${userId}:123`);
+      const transactionalUserRepository = {
+        createQueryBuilder: jest.fn(() => ({
+          setLock: jest.fn().mockReturnThis(),
+          where: jest.fn().mockReturnThis(),
+          withDeleted: jest.fn().mockReturnThis(),
+          getOne: jest.fn().mockResolvedValue(user),
+        })),
+        remove: jest.fn().mockResolvedValue({}),
+      };
+
+      const transactionalTokenRepository = {
+        delete: jest.fn().mockResolvedValue({ affected: 1 }),
+      };
+
+      const manager = {
+        getRepository: jest.fn((entity: any) => {
+          if (entity === User) {
+            return transactionalUserRepository;
+          }
+          if (entity === RefreshToken) {
+            return transactionalTokenRepository;
+          }
+          throw new Error(`Unexpected repository: ${String(entity)}`);
+        }),
+      };
+
+      dataSource.transaction.mockImplementation(async (callback: (manager: any) => Promise<any>) =>
+        callback(manager),
+      );
+
+      redis.zrange.mockResolvedValue(['session-1']);
+      const redisMulti = createRedisMulti();
+      redis.multi.mockReturnValue(redisMulti);
+      redisMulti.exec.mockResolvedValue([
+        [null, 1],
+        [null, 1],
+      ]);
+
+      await service.permanentDeleteUser(userId, currentUserId);
+      expect(transactionalUserRepository.remove).toHaveBeenCalled();
+      expect(transactionalTokenRepository.delete).toHaveBeenCalled();
+      expect(redis.multi).toHaveBeenCalled();
+    });
+
+    it('should throw BadRequestException if trying to delete own account', async () => {
+      // No need to mock transaction because it should not be called
+      await expect(service.permanentDeleteUser(userId, userId)).rejects.toThrow(
+        BadRequestException,
+      );
+      expect(dataSource.transaction).not.toHaveBeenCalled();
+    });
+
+    it('should throw BadRequestException if user is not soft-deleted', async () => {
+      const user = createMockUser({ role: UserRole.USER, deletedAt: null });
+
+      const manager = {
+        getRepository: jest.fn().mockReturnValue({
+          createQueryBuilder: jest.fn(() => ({
+            setLock: jest.fn().mockReturnThis(),
+            where: jest.fn().mockReturnThis(),
+            withDeleted: jest.fn().mockReturnThis(),
+            getOne: jest.fn().mockResolvedValue(user),
+          })),
+        }),
+      };
+
+      dataSource.transaction.mockImplementation(async (callback: (manager: any) => Promise<any>) =>
+        callback(manager),
+      );
+
+      await expect(service.permanentDeleteUser(userId, currentUserId)).rejects.toThrow(
+        BadRequestException,
+      );
     });
 
     it('should throw BadRequestException if trying to delete SUPER_ADMIN', async () => {
-      const user = createMockUser({ role: UserRole.SUPER_ADMIN });
-      userRepository.findOne.mockResolvedValue(user);
-      await expect(service.permanentDeleteUser(userId)).rejects.toThrow(
-        'Cannot delete Super Admin user',
+      const user = createMockUser({ role: UserRole.SUPER_ADMIN, deletedAt: new Date() });
+
+      const manager = {
+        getRepository: jest.fn().mockReturnValue({
+          createQueryBuilder: jest.fn(() => ({
+            setLock: jest.fn().mockReturnThis(),
+            where: jest.fn().mockReturnThis(),
+            withDeleted: jest.fn().mockReturnThis(),
+            getOne: jest.fn().mockResolvedValue(user),
+          })),
+        }),
+      };
+
+      dataSource.transaction.mockImplementation(async (callback: (manager: any) => Promise<any>) =>
+        callback(manager),
+      );
+
+      await expect(service.permanentDeleteUser(userId, currentUserId)).rejects.toThrow(
+        BadRequestException,
       );
     });
   });
 
   describe('validateUser', () => {
-    it('should return user if found', async () => {
+    it('should return user if found and active', async () => {
       const user = createMockUser();
       userRepository.findOne.mockResolvedValue(user);
       const result = await service.validateUser(user.id);
@@ -814,6 +1714,18 @@ describe('AuthService', () => {
     it('should throw UnauthorizedException if user not found', async () => {
       userRepository.findOne.mockResolvedValue(null);
       await expect(service.validateUser('non-existent-id')).rejects.toThrow(UnauthorizedException);
+    });
+
+    it('should throw UnauthorizedException if user is inactive', async () => {
+      const user = createMockUser({ isActive: false });
+      userRepository.findOne.mockResolvedValue(user);
+      await expect(service.validateUser('user-id')).rejects.toThrow(UnauthorizedException);
+    });
+
+    it('should throw UnauthorizedException if user is deleted', async () => {
+      const user = createMockUser({ deletedAt: new Date() });
+      userRepository.findOne.mockResolvedValue(user);
+      await expect(service.validateUser('user-id')).rejects.toThrow(UnauthorizedException);
     });
   });
 });

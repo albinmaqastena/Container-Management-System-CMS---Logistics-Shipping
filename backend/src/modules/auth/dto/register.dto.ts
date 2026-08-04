@@ -15,16 +15,17 @@ import {
 
 import { UserRole } from '../entities/user.entity';
 
-const trimString = (value: unknown): unknown => (typeof value === 'string' ? value.trim() : value);
-
 const normalizeEmail = (value: unknown): unknown =>
+  typeof value === 'string' ? value.trim().toLowerCase() : value;
+
+const normalizeUsername = (value: unknown): unknown =>
   typeof value === 'string' ? value.trim().toLowerCase() : value;
 
 export class RegisterDto {
   @ApiProperty({
     example: 'johndoe',
   })
-  @Transform(({ value }: { value: unknown }): unknown => trimString(value))
+  @Transform(({ value }: { value: unknown }): unknown => normalizeUsername(value))
   @IsString({
     message: 'Username must be a string',
   })
@@ -37,8 +38,8 @@ export class RegisterDto {
   @MaxLength(50, {
     message: 'Username must not exceed 50 characters',
   })
-  @Matches(/^[a-zA-Z0-9_]+$/, {
-    message: 'Username can only contain letters, numbers and underscores',
+  @Matches(/^[a-z0-9_]+$/, {
+    message: 'Username can only contain lowercase letters, numbers and underscores',
   })
   username!: string;
 
@@ -46,6 +47,9 @@ export class RegisterDto {
     example: 'john@example.com',
   })
   @Transform(({ value }: { value: unknown }): unknown => normalizeEmail(value))
+  @IsString({
+    message: 'Email must be a string',
+  })
   @IsEmail(
     {},
     {
@@ -75,9 +79,9 @@ export class RegisterDto {
   @MaxLength(100, {
     message: 'Password must not exceed 100 characters',
   })
-  @Matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{12,100}$/, {
+  @Matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{12,100}$/, {
     message:
-      'Password must contain at least 1 uppercase letter, 1 lowercase letter, 1 number and 1 special character (@$!%*?&)',
+      'Password must contain at least 1 uppercase letter, 1 lowercase letter, 1 number and 1 special character',
   })
   password!: string;
 

@@ -1,8 +1,8 @@
 // src/components/common/Layout/Footer.tsx
-import React from 'react';
 import { Box, Container, Typography, Link, Divider } from '@mui/material';
+import { Link as RouterLink } from 'react-router-dom';
 
-export const Footer: React.FC = () => {
+export const Footer = () => {
   const currentYear = new Date().getFullYear();
 
   return (
@@ -12,10 +12,7 @@ export const Footer: React.FC = () => {
         py: 3,
         px: 2,
         mt: 'auto',
-        backgroundColor: (theme) =>
-          theme.palette.mode === 'light'
-            ? theme.palette.grey[200]
-            : theme.palette.grey[800],
+        backgroundColor: 'background.default',
       }}
     >
       <Container maxWidth="lg">
@@ -29,17 +26,45 @@ export const Footer: React.FC = () => {
             gap: 1,
           }}
         >
-          <Typography variant="body2" color="textSecondary">
+          <Typography variant="body2" color="text.secondary">
             &copy; {currentYear} Container Management System. All rights reserved.
           </Typography>
-          <Box sx={{ display: 'flex', gap: 3 }}>
-            <Link href="#" variant="body2" color="textSecondary" underline="hover">
+          <Box
+            component="nav"
+            aria-label="Footer navigation"
+            sx={{
+              display: 'flex',
+              flexWrap: 'wrap',
+              justifyContent: 'center',
+              alignItems: 'center',
+              gap: 3,
+            }}
+          >
+            <Link
+              component={RouterLink}
+              to="/privacy"
+              variant="body2"
+              color="text.secondary"
+              underline="hover"
+            >
               Privacy Policy
             </Link>
-            <Link href="#" variant="body2" color="textSecondary" underline="hover">
+            <Link
+              component={RouterLink}
+              to="/terms"
+              variant="body2"
+              color="text.secondary"
+              underline="hover"
+            >
               Terms of Service
             </Link>
-            <Link href="#" variant="body2" color="textSecondary" underline="hover">
+            <Link
+              component={RouterLink}
+              to="/support"
+              variant="body2"
+              color="text.secondary"
+              underline="hover"
+            >
               Support
             </Link>
           </Box>

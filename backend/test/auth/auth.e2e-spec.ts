@@ -9,13 +9,12 @@ describe('Auth E2E', () => {
   let userToken: string;
   let superAdminToken: string;
   let refreshToken: string;
-  let testUserId: string;
 
   beforeAll(async () => {
     app = getApp();
     superAdminToken = await getAuthToken('admin@example.com', 'Admin@123');
 
-    adminToken = superAdminToken;
+    adminToken = await getAuthToken('superadmin@example.com', 'Password@123');
 
     userToken = await getAuthToken('testuser@example.com', 'Password@123');
   });
@@ -43,10 +42,39 @@ describe('Auth E2E', () => {
       expect(response.body).not.toHaveProperty('password');
       expect(response.body).not.toHaveProperty('resetPasswordToken');
       expect(response.body).not.toHaveProperty('resetPasswordExpires');
-      testUserId = response.body.id;
     });
 
-    it('should register an admin as super admin', async () => {
+    it('should allow an admin to register a normal user', async () => {
+      const suffix = Date.now();
+      const response = await request(app.getHttpServer())
+        .post('/v1/auth/register')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          username: `admin_created_${suffix}`,
+          email: `admin_created_${suffix}@example.com`,
+          password: 'Password@123',
+          role: 'user',
+        })
+        .expect(201);
+
+      expect(response.body.role).toBe('user');
+    });
+
+    it('should reject an admin creating a super admin', async () => {
+      const suffix = Date.now();
+      await request(app.getHttpServer())
+        .post('/v1/auth/register')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          username: `forbidden_super_${suffix}`,
+          email: `forbidden_super_${suffix}@example.com`,
+          password: 'Password@123',
+          role: 'super_admin',
+        })
+        .expect(401);
+    });
+
+    it('should allow super admin to create admin', async () => {
       const uniqueEmail = `e2eadmin_${Date.now()}@example.com`;
       const response = await request(app.getHttpServer())
         .post('/v1/auth/register')
@@ -144,7 +172,7 @@ describe('Auth E2E', () => {
   // LOGIN
   // ================================================================
   describe('POST /v1/auth/login', () => {
-    it('should login with valid credentials (admin)', async () => {
+    it('should login with valid credentials (super admin)', async () => {
       const response = await request(app.getHttpServer())
         .post('/v1/auth/login')
         .send({ email: 'admin@example.com', password: 'Admin@123' })
@@ -189,15 +217,18 @@ describe('Auth E2E', () => {
         .send({ email: 'admin@example.com', password: 'wrongpassword' })
         .expect(401)
         .expect((res) => {
-          expect(res.body.message).toBe('Invalid credentials');
+          expect(res.body.message).toBe('Invalid credentials or account unavailable');
         });
     });
 
-    it('should fail with non-existent email', async () => {
+    it('should fail with non-existent email without revealing account existence', async () => {
       await request(app.getHttpServer())
         .post('/v1/auth/login')
-        .send({ email: 'nonexistent@example.com', password: 'password' })
-        .expect(401);
+        .send({ email: 'nonexistent@example.com', password: 'Password@123' })
+        .expect(401)
+        .expect((res) => {
+          expect(res.body.message).toBe('Invalid credentials or account unavailable');
+        });
     });
 
     it('should fail with missing email', async () => {
@@ -217,7 +248,7 @@ describe('Auth E2E', () => {
     const rateLimitIt = process.env.E2E_RATE_LIMIT === 'true' ? it : it.skip;
 
     rateLimitIt(
-      'should rate limit after 5 failed attempts',
+      'should lock account after 5 failed attempts',
       async () => {
         const email = `ratelimit_${Date.now()}@example.com`;
         const password = 'Password@123';
@@ -240,11 +271,16 @@ describe('Auth E2E', () => {
             .expect(401);
         }
 
+        // The 6th attempt should also be 401 (account locked)
         await request(app.getHttpServer())
           .post('/v1/auth/login')
-          .send({ email, password: 'wrong' })
+          .send({
+            email,
+            password: 'WrongPassword@123',
+          })
+          .expect(401)
           .expect((res) => {
-            expect([400, 429]).toContain(res.status);
+            expect(res.body.message).toBe('Invalid credentials or account unavailable');
           });
       },
       15000,
@@ -269,11 +305,41 @@ describe('Auth E2E', () => {
       refreshToken = response.body.refreshToken;
     });
 
+    it('should reject reuse of a rotated refresh token', async () => {
+      const loginResponse = await request(app.getHttpServer())
+        .post('/v1/auth/login')
+        .send({
+          email: 'admin@example.com',
+          password: 'Admin@123',
+        })
+        .expect(200);
+
+      const oldRefreshToken = loginResponse.body.refreshToken;
+
+      const firstRefresh = await request(app.getHttpServer())
+        .post('/v1/auth/refresh')
+        .send({
+          refreshToken: oldRefreshToken,
+        })
+        .expect(200);
+
+      // Verify that the new refresh token is different from the old one
+      expect(firstRefresh.body.refreshToken).not.toBe(oldRefreshToken);
+
+      // Second attempt with same token should fail
+      await request(app.getHttpServer())
+        .post('/v1/auth/refresh')
+        .send({
+          refreshToken: oldRefreshToken,
+        })
+        .expect(401);
+    });
+
     it('should fail with invalid refresh token', async () => {
       await request(app.getHttpServer())
         .post('/v1/auth/refresh')
         .send({ refreshToken: 'invalid-token' })
-        .expect(401);
+        .expect(400);
     });
 
     it('should fail with missing refresh token', async () => {
@@ -283,83 +349,6 @@ describe('Auth E2E', () => {
         .expect((res) => {
           expect(res.status).toBe(400);
         });
-    });
-  });
-
-  // ================================================================
-  // LOGOUT
-  // ================================================================
-  describe('POST /v1/auth/logout', () => {
-    it('should logout successfully with refresh token in body', async () => {
-      const loginResponse = await request(app.getHttpServer())
-        .post('/v1/auth/login')
-        .send({ email: 'admin@example.com', password: 'Admin@123' })
-        .expect(200);
-
-      const token = loginResponse.body.accessToken;
-      const rt = loginResponse.body.refreshToken;
-
-      await request(app.getHttpServer())
-        .post('/v1/auth/logout')
-        .set('Authorization', `Bearer ${token}`)
-        .send({ refreshToken: rt })
-        .expect(200)
-        .expect((res) => {
-          expect(res.body.message).toBe('Logged out successfully');
-        });
-    });
-
-    it('should fail without refresh token in body', async () => {
-      const token = await getAuthToken('admin@example.com', 'Admin@123');
-
-      await request(app.getHttpServer())
-        .post('/v1/auth/logout')
-        .set('Authorization', `Bearer ${token}`)
-        .send({})
-        .expect((res) => {
-          expect(res.status).toBe(400);
-        });
-    });
-
-    it('should fail without access token', async () => {
-      await request(app.getHttpServer())
-        .post('/v1/auth/logout')
-        .send({ refreshToken: 'some-token' })
-        .expect(401);
-    });
-
-    it('should fail with invalid access token', async () => {
-      await request(app.getHttpServer())
-        .post('/v1/auth/logout')
-        .set('Authorization', 'Bearer invalidtoken')
-        .send({ refreshToken: 'some-token' })
-        .expect(401);
-    });
-  });
-
-  // ================================================================
-  // LOGOUT ALL
-  // ================================================================
-  describe('POST /v1/auth/logout-all', () => {
-    it('should logout from all devices', async () => {
-      const loginResponse = await request(app.getHttpServer())
-        .post('/v1/auth/login')
-        .send({ email: 'admin@example.com', password: 'Admin@123' })
-        .expect(200);
-
-      const token = loginResponse.body.accessToken;
-
-      await request(app.getHttpServer())
-        .post('/v1/auth/logout-all')
-        .set('Authorization', `Bearer ${token}`)
-        .expect(200)
-        .expect((res) => {
-          expect(res.body.message).toBe('Logged out from all devices');
-        });
-    });
-
-    it('should fail without access token', async () => {
-      await request(app.getHttpServer()).post('/v1/auth/logout-all').expect(401);
     });
   });
 
@@ -376,19 +365,86 @@ describe('Auth E2E', () => {
 
       expect(response.body).toHaveProperty('sessions');
       expect(Array.isArray(response.body.sessions)).toBe(true);
+      expect(response.body.sessions.length).toBeGreaterThan(0);
 
-      if (response.body.sessions.length > 0) {
-        const session = response.body.sessions[0];
-        expect(session).toHaveProperty('id');
-        expect(session).toHaveProperty('userId');
-        expect(session).toHaveProperty('createdAt');
-        expect(session).toHaveProperty('expiresAt');
-        expect(session).toHaveProperty('isActive');
-      }
+      const currentSession = response.body.sessions.find(
+        (session: { isCurrent: boolean }) => session.isCurrent,
+      );
+
+      expect(currentSession).toBeDefined();
+      expect(currentSession).toEqual(
+        expect.objectContaining({
+          id: expect.any(String),
+          userId: expect.any(String),
+          createdAt: expect.any(String),
+          expiresAt: expect.any(String),
+          isActive: true,
+          isCurrent: true,
+        }),
+      );
     });
 
     it('should fail without token', async () => {
       await request(app.getHttpServer()).get('/v1/auth/sessions').expect(401);
+    });
+
+    it('should reject an invalid session UUID', async () => {
+      await request(app.getHttpServer())
+        .delete('/v1/auth/sessions/not-a-uuid')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(400);
+    });
+
+    it('should revoke a session and verify it is removed', async () => {
+      // Create two sessions by logging in twice
+      const token1 = await getAuthToken('admin@example.com', 'Admin@123');
+
+      const sessionsResponse = await request(app.getHttpServer())
+        .get('/v1/auth/sessions')
+        .set('Authorization', `Bearer ${token1}`)
+        .expect(200);
+
+      expect(sessionsResponse.body.sessions.length).toBeGreaterThan(0);
+
+      // Find a session that is NOT the current one (if exists)
+      let sessionToRevoke = sessionsResponse.body.sessions.find(
+        (s: { isCurrent: boolean }) => !s.isCurrent,
+      );
+
+      // If all sessions are current, we can't test without a second login.
+      // We'll log in again to create a second session.
+      if (!sessionToRevoke) {
+        const token2 = await getAuthToken('admin@example.com', 'Admin@123');
+
+        const sessionsAfterSecond = await request(app.getHttpServer())
+          .get('/v1/auth/sessions')
+          .set('Authorization', `Bearer ${token2}`)
+          .expect(200);
+
+        sessionToRevoke =
+          sessionsAfterSecond.body.sessions.find((s: { isCurrent: boolean }) => !s.isCurrent) ||
+          sessionsAfterSecond.body.sessions[0];
+      }
+
+      expect(sessionToRevoke).toBeDefined();
+      const sessionId = sessionToRevoke.id;
+
+      // Revoke the session
+      await request(app.getHttpServer())
+        .delete(`/v1/auth/sessions/${sessionId}`)
+        .set('Authorization', `Bearer ${token1}`)
+        .expect(200)
+        .expect((res) => {
+          expect(res.body.message).toBe('Session revoked successfully');
+        });
+
+      // Verify it's no longer in the list
+      const afterRevoke = await request(app.getHttpServer())
+        .get('/v1/auth/sessions')
+        .set('Authorization', `Bearer ${token1}`)
+        .expect(200);
+
+      expect(afterRevoke.body.sessions.some((s: { id: string }) => s.id === sessionId)).toBe(false);
     });
   });
 
@@ -399,7 +455,7 @@ describe('Auth E2E', () => {
     it('should get current user profile', async () => {
       const response = await request(app.getHttpServer())
         .get('/v1/auth/me')
-        .set('Authorization', `Bearer ${adminToken}`)
+        .set('Authorization', `Bearer ${superAdminToken}`)
         .expect(200);
 
       expect(response.body).toHaveProperty('id');
@@ -421,7 +477,7 @@ describe('Auth E2E', () => {
   describe('POST /v1/auth/change-password', () => {
     let testUserToken: string;
     let testUserEmail: string;
-    const testPassword = 'Password@123';
+    let currentPassword = 'Password@123';
 
     beforeAll(async () => {
       const uniqueEmail = `changepw_${Date.now()}@example.com`;
@@ -431,13 +487,27 @@ describe('Auth E2E', () => {
         .send({
           username: `changepw_${Date.now()}`,
           email: uniqueEmail,
-          password: testPassword,
+          password: currentPassword,
           role: 'user',
         })
         .expect(201);
 
       testUserEmail = uniqueEmail;
-      testUserToken = await getAuthToken(testUserEmail, testPassword);
+      testUserToken = await getAuthToken(testUserEmail, currentPassword);
+    });
+
+    it('should reject using the current password as the new password', async () => {
+      await request(app.getHttpServer())
+        .post('/v1/auth/change-password')
+        .set('Authorization', `Bearer ${testUserToken}`)
+        .send({
+          currentPassword,
+          newPassword: currentPassword,
+        })
+        .expect(400)
+        .expect((res) => {
+          expect(res.body.message).toBe('New password must be different from the current password');
+        });
     });
 
     it('should change password successfully', async () => {
@@ -446,18 +516,59 @@ describe('Auth E2E', () => {
         .post('/v1/auth/change-password')
         .set('Authorization', `Bearer ${testUserToken}`)
         .send({
-          currentPassword: testPassword,
-          newPassword: newPassword,
+          currentPassword,
+          newPassword,
         })
         .expect(200)
         .expect((res) => {
           expect(res.body.message).toBe('Password changed successfully');
         });
 
+      // Update state
+      currentPassword = newPassword;
+      testUserToken = await getAuthToken(testUserEmail, currentPassword);
+    });
+
+    it('should revoke previous refresh tokens after password change', async () => {
+      const suffix = Date.now();
+      const email = `password_revoke_${suffix}@example.com`;
+      const oldPassword = 'Password@123';
+      const newPassword = 'NewPassword456!';
+
       await request(app.getHttpServer())
+        .post('/v1/auth/register')
+        .set('Authorization', `Bearer ${superAdminToken}`)
+        .send({
+          username: `password_revoke_${suffix}`,
+          email,
+          password: oldPassword,
+          role: 'user',
+        })
+        .expect(201);
+
+      const loginResponse = await request(app.getHttpServer())
         .post('/v1/auth/login')
-        .send({ email: testUserEmail, password: newPassword })
+        .send({
+          email,
+          password: oldPassword,
+        })
         .expect(200);
+
+      await request(app.getHttpServer())
+        .post('/v1/auth/change-password')
+        .set('Authorization', `Bearer ${loginResponse.body.accessToken}`)
+        .send({
+          currentPassword: oldPassword,
+          newPassword,
+        })
+        .expect(200);
+
+      await request(app.getHttpServer())
+        .post('/v1/auth/refresh')
+        .send({
+          refreshToken: loginResponse.body.refreshToken,
+        })
+        .expect(401);
     });
 
     it('should fail with incorrect current password', async () => {
@@ -476,7 +587,7 @@ describe('Auth E2E', () => {
         .post('/v1/auth/change-password')
         .set('Authorization', `Bearer ${testUserToken}`)
         .send({
-          currentPassword: testPassword,
+          currentPassword,
           newPassword: '123',
         })
         .expect(400);
@@ -486,7 +597,7 @@ describe('Auth E2E', () => {
       await request(app.getHttpServer())
         .post('/v1/auth/change-password')
         .send({
-          currentPassword: testPassword,
+          currentPassword,
           newPassword: 'NewPassword456!',
         })
         .expect(401);
@@ -548,6 +659,106 @@ describe('Auth E2E', () => {
   });
 
   // ================================================================
+  // GET /v1/auth/users/:id
+  // ================================================================
+  describe('GET /v1/auth/users/:id', () => {
+    let createdUserId: string;
+    const uniqueEmail = `getuser_${Date.now()}@example.com`;
+
+    beforeAll(async () => {
+      const response = await request(app.getHttpServer())
+        .post('/v1/auth/register')
+        .set('Authorization', `Bearer ${superAdminToken}`)
+        .send({
+          username: `getuser_${Date.now()}`,
+          email: uniqueEmail,
+          password: 'Password@123',
+          role: 'user',
+        })
+        .expect(201);
+      createdUserId = response.body.id;
+    });
+
+    it('should get an existing user', async () => {
+      const response = await request(app.getHttpServer())
+        .get(`/v1/auth/users/${createdUserId}`)
+        .set('Authorization', `Bearer ${superAdminToken}`)
+        .expect(200);
+
+      expect(response.body.id).toBe(createdUserId);
+      expect(response.body.email).toBe(uniqueEmail);
+      expect(response.body).not.toHaveProperty('password');
+      expect(response.body).not.toHaveProperty('resetPasswordToken');
+    });
+
+    it('should return 404 for non-existent user', async () => {
+      await request(app.getHttpServer())
+        .get('/v1/auth/users/00000000-0000-4000-8000-000000000000')
+        .set('Authorization', `Bearer ${superAdminToken}`)
+        .expect(404);
+    });
+
+    it('should return 400 for invalid UUID', async () => {
+      await request(app.getHttpServer())
+        .get('/v1/auth/users/not-a-uuid')
+        .set('Authorization', `Bearer ${superAdminToken}`)
+        .expect(400);
+    });
+
+    it('should fail for non-super-admin', async () => {
+      await request(app.getHttpServer())
+        .get(`/v1/auth/users/${createdUserId}`)
+        .set('Authorization', `Bearer ${userToken}`)
+        .expect(403);
+    });
+  });
+
+  // ================================================================
+  // DELETED USER LOOKUP
+  // ================================================================
+  describe('GET /v1/auth/users/:id with deleted users', () => {
+    let deletedUserId: string;
+    const uniqueEmail = `deleted_lookup_${Date.now()}@example.com`;
+
+    beforeAll(async () => {
+      const response = await request(app.getHttpServer())
+        .post('/v1/auth/register')
+        .set('Authorization', `Bearer ${superAdminToken}`)
+        .send({
+          username: `deleted_lookup_${Date.now()}`,
+          email: uniqueEmail,
+          password: 'Password@123',
+          role: 'user',
+        })
+        .expect(201);
+      deletedUserId = response.body.id;
+
+      // Soft delete the user
+      await request(app.getHttpServer())
+        .delete(`/v1/auth/users/${deletedUserId}`)
+        .set('Authorization', `Bearer ${superAdminToken}`)
+        .expect(204);
+    });
+
+    it('should include deleted user when includeDeleted=true', async () => {
+      const response = await request(app.getHttpServer())
+        .get(`/v1/auth/users/${deletedUserId}?includeDeleted=true`)
+        .set('Authorization', `Bearer ${superAdminToken}`)
+        .expect(200);
+
+      expect(response.body.id).toBe(deletedUserId);
+      expect(response.body.deletedAt).not.toBeNull();
+    });
+
+    it('should return 404 for deleted user when includeDeleted=false (default)', async () => {
+      await request(app.getHttpServer())
+        .get(`/v1/auth/users/${deletedUserId}`)
+        .set('Authorization', `Bearer ${superAdminToken}`)
+        .expect(404);
+    });
+  });
+
+  // ================================================================
   // REVOKE SESSION
   // ================================================================
   describe('DELETE /v1/auth/sessions/:sessionId', () => {
@@ -562,7 +773,13 @@ describe('Auth E2E', () => {
       expect(Array.isArray(sessionsResponse.body.sessions)).toBe(true);
       expect(sessionsResponse.body.sessions.length).toBeGreaterThan(0);
 
-      const sessionId = sessionsResponse.body.sessions[0].id;
+      // Find the current session for this token
+      const currentSession = sessionsResponse.body.sessions.find(
+        (session: { isCurrent: boolean }) => session.isCurrent,
+      );
+      expect(currentSession).toBeDefined();
+
+      const sessionId = currentSession.id;
 
       await request(app.getHttpServer())
         .delete(`/v1/auth/sessions/${sessionId}`)
@@ -689,6 +906,13 @@ describe('Auth E2E', () => {
           .set('Authorization', `Bearer ${superAdminToken}`)
           .expect(400);
       });
+
+      it('should reject an invalid user UUID', async () => {
+        await request(app.getHttpServer())
+          .delete('/v1/auth/users/not-a-uuid')
+          .set('Authorization', `Bearer ${superAdminToken}`)
+          .expect(400);
+      });
     });
 
     describe('PUT /v1/auth/users/:id/restore', () => {
@@ -710,10 +934,14 @@ describe('Auth E2E', () => {
           .set('Authorization', `Bearer ${superAdminToken}`)
           .expect(204);
 
-        await request(app.getHttpServer())
+        const restoreResponse = await request(app.getHttpServer())
           .put(`/v1/auth/users/${response.body.id}/restore`)
           .set('Authorization', `Bearer ${superAdminToken}`)
           .expect(200);
+
+        expect(restoreResponse.body.id).toBe(response.body.id);
+        expect(restoreResponse.body.deletedAt).toBeNull();
+        expect(restoreResponse.body.isActive).toBe(true);
       });
 
       it('should fail to restore non-deleted user', async () => {
@@ -744,6 +972,25 @@ describe('Auth E2E', () => {
     });
 
     describe('DELETE /v1/auth/users/:id/permanent', () => {
+      it('should reject permanent deletion of an active user', async () => {
+        const suffix = Date.now();
+        const created = await request(app.getHttpServer())
+          .post('/v1/auth/register')
+          .set('Authorization', `Bearer ${superAdminToken}`)
+          .send({
+            username: `active_permanent_${suffix}`,
+            email: `active_permanent_${suffix}@example.com`,
+            password: 'Password@123',
+            role: 'user',
+          })
+          .expect(201);
+
+        await request(app.getHttpServer())
+          .delete(`/v1/auth/users/${created.body.id}/permanent`)
+          .set('Authorization', `Bearer ${superAdminToken}`)
+          .expect(400);
+      });
+
       it('should permanently delete a user', async () => {
         const uniqueEmail = `permanent_${Date.now()}@example.com`;
         const response = await request(app.getHttpServer())
@@ -766,6 +1013,12 @@ describe('Auth E2E', () => {
           .delete(`/v1/auth/users/${response.body.id}/permanent`)
           .set('Authorization', `Bearer ${superAdminToken}`)
           .expect(204);
+
+        // Verify the user is completely gone (404)
+        await request(app.getHttpServer())
+          .get(`/v1/auth/users/${response.body.id}?includeDeleted=true`)
+          .set('Authorization', `Bearer ${superAdminToken}`)
+          .expect(404);
       });
 
       it('should fail for non-super-admin', async () => {
@@ -774,6 +1027,111 @@ describe('Auth E2E', () => {
           .set('Authorization', `Bearer ${userToken}`)
           .expect(403);
       });
+    });
+
+    // Self-delete test: super admin trying to delete own account
+    it('should prevent super admin from deleting their own account', async () => {
+      const me = await request(app.getHttpServer())
+        .get('/v1/auth/me')
+        .set('Authorization', `Bearer ${superAdminToken}`)
+        .expect(200);
+
+      await request(app.getHttpServer())
+        .delete(`/v1/auth/users/${me.body.id}`)
+        .set('Authorization', `Bearer ${superAdminToken}`)
+        .expect(400);
+    });
+  });
+
+  // ================================================================
+  // LOGOUT
+  // ================================================================
+  describe('POST /v1/auth/logout', () => {
+    it('should logout the current session', async () => {
+      const loginResponse = await request(app.getHttpServer())
+        .post('/v1/auth/login')
+        .send({
+          email: 'admin@example.com',
+          password: 'Admin@123',
+        })
+        .expect(200);
+
+      const token = loginResponse.body.accessToken;
+
+      await request(app.getHttpServer())
+        .post('/v1/auth/logout')
+        .set('Authorization', `Bearer ${token}`)
+        .expect(200)
+        .expect((res) => {
+          expect(res.body.message).toBe('Logged out successfully');
+        });
+    });
+
+    it('should reject logout when the current session is already inactive', async () => {
+      const loginResponse = await request(app.getHttpServer())
+        .post('/v1/auth/login')
+        .send({
+          email: 'admin@example.com',
+          password: 'Admin@123',
+        })
+        .expect(200);
+
+      const token = loginResponse.body.accessToken;
+
+      await request(app.getHttpServer())
+        .post('/v1/auth/logout')
+        .set('Authorization', `Bearer ${token}`)
+        .expect(200);
+
+      await request(app.getHttpServer())
+        .post('/v1/auth/logout')
+        .set('Authorization', `Bearer ${token}`)
+        .expect(401);
+    });
+
+    it('should fail without access token', async () => {
+      await request(app.getHttpServer()).post('/v1/auth/logout').send({}).expect(401);
+    });
+
+    it('should fail with invalid access token', async () => {
+      await request(app.getHttpServer())
+        .post('/v1/auth/logout')
+        .set('Authorization', 'Bearer invalidtoken')
+        .send({})
+        .expect(401);
+    });
+  });
+
+  // ================================================================
+  // LOGOUT ALL
+  // ================================================================
+  describe('POST /v1/auth/logout-all', () => {
+    it('should logout from all devices and invalidate refresh tokens', async () => {
+      const loginResponse = await request(app.getHttpServer())
+        .post('/v1/auth/login')
+        .send({ email: 'admin@example.com', password: 'Admin@123' })
+        .expect(200);
+
+      const token = loginResponse.body.accessToken;
+      const rt = loginResponse.body.refreshToken;
+
+      await request(app.getHttpServer())
+        .post('/v1/auth/logout-all')
+        .set('Authorization', `Bearer ${token}`)
+        .expect(200)
+        .expect((res) => {
+          expect(res.body.message).toBe('Logged out from all devices');
+        });
+
+      // Verify that the old refresh token is no longer valid
+      await request(app.getHttpServer())
+        .post('/v1/auth/refresh')
+        .send({ refreshToken: rt })
+        .expect(401);
+    });
+
+    it('should fail without access token', async () => {
+      await request(app.getHttpServer()).post('/v1/auth/logout-all').expect(401);
     });
   });
 });

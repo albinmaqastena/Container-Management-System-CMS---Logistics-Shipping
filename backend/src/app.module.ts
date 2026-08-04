@@ -34,6 +34,9 @@ import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
 import { LoggerMiddleware } from './common/middleware/logger.middleware';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { HealthController } from './health/health.controller';
+import { ReportsModule } from './modules/reports/reports.module';
+import { CleanupModule } from './modules/cleanup/cleanup.module';
+import { ScheduleModule } from '@nestjs/schedule';
 
 import authConfig from './config/auth.config';
 import fileConfig from './config/file.config';
@@ -103,20 +106,21 @@ import fileConfig from './config/file.config';
       },
     }),
 
-    ThrottlerModule.forRootAsync({
-      imports: [ConfigModule],
-      inject: [ConfigService],
-      useFactory: (configService: ConfigService) => {
-        const isTest = configService.get<string>('NODE_ENV') === 'test';
-
-        return [
-          {
-            ttl: isTest ? 1000 : configService.get<number>('THROTTLE_TTL', 60),
-            limit: isTest ? 100000 : configService.get<number>('THROTTLE_LIMIT', 100),
-          },
-        ];
-      },
-    }),
+    ...(process.env.NODE_ENV === 'test'
+      ? []
+      : [
+          ThrottlerModule.forRootAsync({
+            imports: [ConfigModule],
+            inject: [ConfigService],
+            useFactory: (configService: ConfigService) => [
+              {
+                name: 'default',
+                ttl: configService.get<number>('THROTTLE_TTL', 60_000),
+                limit: configService.get<number>('THROTTLE_LIMIT', 100),
+              },
+            ],
+          }),
+        ]),
 
     TypeOrmModule.forRootAsync({
       imports: [ConfigModule],
@@ -195,12 +199,16 @@ import fileConfig from './config/file.config';
       },
     }),
 
+    ScheduleModule.forRoot(),
+
     RedisModule,
     AuthModule,
     ContainersModule,
     ItemsModule,
     FilesModule,
     AuditModule,
+    ReportsModule,
+    CleanupModule,
   ],
 
   controllers: [HealthController],
@@ -210,10 +218,17 @@ import fileConfig from './config/file.config';
       provide: APP_FILTER,
       useClass: HttpExceptionFilter,
     },
-    {
-      provide: APP_GUARD,
-      useClass: ThrottlerGuard,
-    },
+
+    ...(process.env.NODE_ENV === 'test'
+      ? []
+      : [
+          ThrottlerGuard,
+          {
+            provide: APP_GUARD,
+            useExisting: ThrottlerGuard,
+          },
+        ]),
+
     {
       provide: APP_GUARD,
       useClass: JwtAuthGuard,

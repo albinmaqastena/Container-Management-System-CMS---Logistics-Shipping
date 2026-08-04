@@ -1,7 +1,7 @@
 // src/services/item.service.ts
 import { apiClient } from '../api/axios.config';
 import { API_ENDPOINTS } from '../api/endpoints';
-import {
+import type {
   Item,
   CreateItemData,
   UpdateItemData,
@@ -9,83 +9,137 @@ import {
   PaginationParams,
 } from '../types';
 
+// ================================================================
+// TIPAT
+// ================================================================
+
+export interface ItemQueryParams extends PaginationParams {
+  containerId?: string;
+  includeDeleted?: boolean;
+}
+
+export interface ItemSearchParams extends PaginationParams {
+  containerId?: string;
+}
+
+// ================================================================
+// SERVICE
+// ================================================================
+
 export const itemService = {
-  // Get all items
+  /**
+   * Get all items with optional filters
+   */
   getAll: async (
-    containerId?: string,
-    params?: PaginationParams
+    params?: ItemQueryParams,
   ): Promise<PaginatedResponse<Item>> => {
     const response = await apiClient.get<PaginatedResponse<Item>>(
       API_ENDPOINTS.ITEMS.BASE,
-      {
-        params: {
-          ...params,
-          containerId,
-        },
-      }
+      { params },
     );
     return response.data;
   },
 
-  // Get deleted items
-  getDeleted: async (params?: PaginationParams): Promise<PaginatedResponse<Item>> => {
+  /**
+   * Get deleted items
+   */
+  getDeleted: async (
+    params?: PaginationParams,
+  ): Promise<PaginatedResponse<Item>> => {
     const response = await apiClient.get<PaginatedResponse<Item>>(
       API_ENDPOINTS.ITEMS.DELETED,
-      { params }
+      { params },
     );
     return response.data;
   },
 
-  // Get item by ID
-  getById: async (id: string): Promise<Item> => {
+  /**
+   * Get item by ID with optional includeDeleted
+   */
+  getById: async (
+    id: string,
+    includeDeleted = false,
+  ): Promise<Item> => {
     const response = await apiClient.get<Item>(
-      `${API_ENDPOINTS.ITEMS.BASE}/${id}`
+      API_ENDPOINTS.ITEMS.BY_ID(id),
+      {
+        params: { includeDeleted },
+      },
     );
     return response.data;
   },
 
-  // Create item
+  /**
+   * Create a new item
+   */
   create: async (data: CreateItemData): Promise<Item> => {
     const response = await apiClient.post<Item>(
       API_ENDPOINTS.ITEMS.BASE,
-      data
+      data,
     );
     return response.data;
   },
 
-  // Update item
-  update: async (id: string, data: UpdateItemData): Promise<Item> => {
+  /**
+   * Update an existing item
+   */
+  update: async (
+    id: string,
+    data: UpdateItemData,
+  ): Promise<Item> => {
     const response = await apiClient.put<Item>(
-      `${API_ENDPOINTS.ITEMS.BASE}/${id}`,
-      data
+      API_ENDPOINTS.ITEMS.BY_ID(id),
+      data,
     );
     return response.data;
   },
 
-  // Soft delete item
+  /**
+   * Soft delete an item
+   */
   softDelete: async (id: string): Promise<void> => {
-    await apiClient.delete(`${API_ENDPOINTS.ITEMS.BASE}/${id}`);
+    await apiClient.delete(API_ENDPOINTS.ITEMS.BY_ID(id));
   },
 
-  // Restore item
+  /**
+   * Restore a soft-deleted item
+   */
   restore: async (id: string): Promise<Item> => {
     const response = await apiClient.put<Item>(
-      `${API_ENDPOINTS.ITEMS.BASE}/${id}/restore`
+      API_ENDPOINTS.ITEMS.RESTORE(id),
     );
     return response.data;
   },
 
-  // Permanent delete
+  /**
+   * Permanently delete an item
+   */
   permanentDelete: async (id: string): Promise<void> => {
-    await apiClient.delete(`${API_ENDPOINTS.ITEMS.BASE}/${id}/permanent`);
+    await apiClient.delete(API_ENDPOINTS.ITEMS.PERMANENT_DELETE(id));
   },
 
-  // Search items
-  search: async (query: string, params?: PaginationParams & { containerId?: string }): Promise<PaginatedResponse<Item>> => {
-  const response = await apiClient.get<PaginatedResponse<Item>>(
-    API_ENDPOINTS.ITEMS.SEARCH,
-    { params: { query, ...params } }
-  );
-  return response.data;
- },
+  /**
+   * Search items by query
+   */
+  search: async (
+    query: string,
+    params?: ItemSearchParams,
+  ): Promise<PaginatedResponse<Item>> => {
+    const normalizedQuery = query.trim();
+
+    if (!normalizedQuery) {
+      throw new Error('Search query cannot be empty');
+    }
+
+    const response = await apiClient.get<PaginatedResponse<Item>>(
+      API_ENDPOINTS.ITEMS.SEARCH,
+      {
+        params: {
+          ...params,
+          query: normalizedQuery,
+        },
+      },
+    );
+    return response.data;
+  },
 };

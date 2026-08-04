@@ -1,12 +1,14 @@
 // src/modules/audits/decorators/audit.decorator.ts
 
-import { SetMetadata } from '@nestjs/common';
+import { applyDecorators, SetMetadata } from '@nestjs/common';
+
 import { AuditAction } from '../entities/audit-log.entity';
 
-export const SKIP_AUDIT_KEY = 'skipAudit';
-export const AUDIT_ACTION_KEY = 'auditAction';
+export const SKIP_AUDIT_KEY = Symbol('SKIP_AUDIT');
+export const AUDIT_ACTION_KEY = Symbol('AUDIT_ACTION');
 
-export const SkipAudit = (): MethodDecorator & ClassDecorator => SetMetadata(SKIP_AUDIT_KEY, true);
+export const SkipAudit = (): MethodDecorator & ClassDecorator =>
+  applyDecorators(SetMetadata(SKIP_AUDIT_KEY, true));
 
 export const Audit = (action: AuditAction): MethodDecorator & ClassDecorator =>
-  SetMetadata(AUDIT_ACTION_KEY, action);
+  applyDecorators(SetMetadata(AUDIT_ACTION_KEY, action));

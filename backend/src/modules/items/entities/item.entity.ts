@@ -118,6 +118,16 @@ export class Item {
   @UpdateDateColumn()
   updatedAt!: Date;
 
+  @ApiProperty({
+    description: 'Whether the item was deleted together with its container',
+    default: false,
+  })
+  @Column({
+    type: 'boolean',
+    default: false,
+  })
+  deletedByContainer!: boolean;
+
   @ApiPropertyOptional({
     nullable: true,
   })

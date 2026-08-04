@@ -3,7 +3,7 @@
 import * as argon2 from 'argon2';
 
 export async function generateHash(): Promise<void> {
-  const password = process.argv[2] || 'Admin@123';
+  const password = process.argv[2] || 'Password@123';
 
   const hash = await argon2.hash(password, {
     type: argon2.argon2id,

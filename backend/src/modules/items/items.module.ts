@@ -7,9 +7,10 @@ import { ItemsController } from './items.controller';
 import { ItemsService } from './items.service';
 import { Item } from './entities/item.entity';
 import { ContainersModule } from '../containers/containers.module';
+import { FilesModule } from '../files/files.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Item]), ContainersModule],
+  imports: [TypeOrmModule.forFeature([Item]), ContainersModule, FilesModule],
   controllers: [ItemsController],
   providers: [ItemsService],
   exports: [ItemsService],

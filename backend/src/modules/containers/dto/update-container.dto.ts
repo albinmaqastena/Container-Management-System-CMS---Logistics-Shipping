@@ -1,9 +1,8 @@
 // src/modules/containers/dto/update-container.dto.ts
 
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { Transform } from 'class-transformer';
-import { IsEnum, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
-import { ContainerStatus } from '../entities/container.entity';
+import { Transform, Type } from 'class-transformer';
+import { IsNumber, IsOptional, IsPositive, IsString, MaxLength, MinLength } from 'class-validator';
 
 export class UpdateContainerDto {
   @ApiPropertyOptional({
@@ -14,7 +13,9 @@ export class UpdateContainerDto {
     typeof value === 'string' ? value.trim() : value,
   )
   @IsOptional()
-  @IsString({ message: 'Name must be a string' })
+  @IsString({
+    message: 'Name must be a string',
+  })
   @MinLength(3, {
     message: 'Container name must be at least 3 characters',
   })
@@ -25,24 +26,41 @@ export class UpdateContainerDto {
 
   @ApiPropertyOptional({
     example: 'Updated container description',
+    description: 'Updated container description',
   })
   @Transform(({ value }: { value: unknown }): unknown =>
     typeof value === 'string' ? value.trim() : value,
   )
   @IsOptional()
-  @IsString({ message: 'Description must be a string' })
+  @IsString({
+    message: 'Description must be a string',
+  })
   @MaxLength(500, {
     message: 'Description must not exceed 500 characters',
   })
   description?: string;
 
   @ApiPropertyOptional({
-    enum: ContainerStatus,
-    example: ContainerStatus.ACTIVE,
+    example: 250.5,
+    description:
+      'Updated total container volume. Must not be lower than the currently used volume.',
+    minimum: 0.01,
+    type: Number,
   })
   @IsOptional()
-  @IsEnum(ContainerStatus, {
-    message: `Invalid status. Must be one of: ${Object.values(ContainerStatus).join(', ')}`,
+  @Type(() => Number)
+  @IsNumber(
+    {
+      allowInfinity: false,
+      allowNaN: false,
+      maxDecimalPlaces: 2,
+    },
+    {
+      message: 'Total volume must be a valid number with at most 2 decimal places',
+    },
+  )
+  @IsPositive({
+    message: 'Total volume must be greater than 0',
   })
-  status?: ContainerStatus;
+  totalVolume?: number;
 }

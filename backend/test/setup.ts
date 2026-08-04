@@ -1,12 +1,23 @@
 // test/setup.ts
-import { Test, TestingModule } from '@nestjs/testing';
-import { INestApplication, ValidationPipe, VersioningType } from '@nestjs/common';
+import { Test } from '@nestjs/testing';
+import { INestApplication, VersioningType } from '@nestjs/common';
+import { ThrottlerGuard } from '@nestjs/throttler';
 import { AppModule } from '../src/app.module';
 import { DataSource } from 'typeorm';
 import request from 'supertest';
+import { MailService } from '../src/modules/mail/mail.service';
 
 // ✅ MOCK I REDIS
 const redisStore = new Map<string, string>();
+
+const redisGlobToRegExp = (pattern: string): RegExp => {
+  const regexPattern = pattern
+    .replace(/[.+^${}()|[\]\\]/g, '\\$&')
+    .replace(/\*/g, '.*')
+    .replace(/\?/g, '.');
+
+  return new RegExp(`^${regexPattern}$`);
+};
 
 const mockRedis = {
   async set(key: string, value: string, ...args: unknown[]) {
@@ -28,19 +39,29 @@ const mockRedis = {
     return redisStore.has(key) ? 1 : 0;
   },
 
-  async scan(cursor: string, ...args: any[]) {
-    const pattern = args[1];
-    const prefix = pattern.replace('*', '');
+  async scan(cursor: string, ...args: unknown[]): Promise<[string, string[]]> {
+    void cursor;
 
-    const keys = [...redisStore.keys()].filter((k) => k.startsWith(prefix));
+    const matchIndex = args.findIndex(
+      (argument) => typeof argument === 'string' && argument.toUpperCase() === 'MATCH',
+    );
+
+    const pattern =
+      matchIndex >= 0 && typeof args[matchIndex + 1] === 'string'
+        ? (args[matchIndex + 1] as string)
+        : '*';
+
+    const regex = redisGlobToRegExp(pattern);
+
+    const keys = [...redisStore.keys()].filter((key) => regex.test(key));
 
     return ['0', keys];
   },
 
-  async keys(pattern: string) {
-    const prefix = pattern.replace('*', '');
+  async keys(pattern: string): Promise<string[]> {
+    const regex = redisGlobToRegExp(pattern);
 
-    return [...redisStore.keys()].filter((k) => k.startsWith(prefix));
+    return [...redisStore.keys()].filter((key) => regex.test(key));
   },
 };
 
@@ -61,7 +82,7 @@ beforeAll(async () => {
   console.log('🧪 Setting up E2E Test Environment');
   console.log(`🔧 NODE_ENV: ${process.env.NODE_ENV}`);
   console.log(`📊 Database: ${process.env.DB_DATABASE}`);
-  console.log('ℹ️  READ-ONLY MODE: No database modifications');
+  console.log('ℹ️  NON-DESTRUCTIVE MODE: Existing database data is not cleared');
 
   if (process.env.NODE_ENV !== 'test') {
     throw new Error('❌ NODE_ENV must be "test" to run E2E tests!');
@@ -74,26 +95,26 @@ beforeAll(async () => {
   console.log('✅ Environment check passed');
   console.log('========================================');
 
-  console.log('TYPEORM PATH:', require.resolve('typeorm'));
-  console.log('PG PATH:', require.resolve('pg'));
-
   // ✅ KRIJO APP-IN DHE MBISHKRUAJ REDIS-IN ME MOCK
-  const moduleFixture: TestingModule = await Test.createTestingModule({
+  const moduleBuilder = Test.createTestingModule({
     imports: [AppModule],
   })
     .overrideProvider('REDIS_CLIENT')
     .useValue(mockRedis)
-    .compile();
+    .overrideProvider(MailService)
+    .useValue({
+      onModuleInit: jest.fn().mockResolvedValue(undefined),
+      sendPasswordResetEmail: jest.fn().mockResolvedValue(undefined),
+    });
+
+  // ✅ ThrottlerGuard - kalon gjithmonë në teste
+  moduleBuilder.overrideGuard(ThrottlerGuard).useValue({
+    canActivate: jest.fn().mockResolvedValue(true),
+  });
+
+  const moduleFixture = await moduleBuilder.compile();
 
   app = moduleFixture.createNestApplication();
-
-  app.useGlobalPipes(
-    new ValidationPipe({
-      whitelist: true,
-      transform: true,
-      forbidNonWhitelisted: true,
-    }),
-  );
 
   app.enableVersioning({
     type: VersioningType.URI,
@@ -104,21 +125,49 @@ beforeAll(async () => {
 
   dataSource = app.get(DataSource);
 
-  if (!dataSource || !dataSource.isInitialized) {
-    await dataSource.initialize();
+  if (!dataSource.isInitialized) {
+    throw new Error('❌ DataSource was not initialized by the Nest application');
+  }
+
+  // Kontrollo emrin e databazës nga connection
+  const databaseName = dataSource.options.database;
+  if (typeof databaseName !== 'string' || !databaseName.includes('test')) {
+    throw new Error(
+      `❌ Connected database must be a test database. Current: ${String(databaseName)}`,
+    );
   }
 
   // Kontrollo admin-in
-  const admin = await dataSource.query('SELECT id, username, email FROM users WHERE email = $1', [
-    'admin@example.com',
-  ]);
+  const admin = await dataSource.query(
+    `
+      SELECT
+        "id",
+        "username",
+        "email",
+        "role",
+        "isActive"
+      FROM "users"
+      WHERE "email" = $1
+      LIMIT 1
+    `,
+    ['admin@example.com'],
+  );
 
   if (admin.length === 0) {
-    console.warn('⚠️  Admin user not found!');
-    console.warn('⚠️  Please run migrations first: npm run migration:run:test');
-  } else {
-    console.log(`✅ Admin found: ${admin[0].username} (${admin[0].id})`);
+    throw new Error('❌ Test admin user was not found. Run test migrations/seeds first.');
   }
+
+  if (admin[0].role !== 'super_admin') {
+    throw new Error(
+      `❌ admin@example.com must have role super_admin. Current role: ${admin[0].role}`,
+    );
+  }
+
+  if (admin[0].isActive !== true) {
+    throw new Error('❌ admin@example.com must be active');
+  }
+
+  console.log(`✅ Admin found: ${admin[0].username} (${admin[0].id})`);
 
   const stats = await getDatabaseStats();
   console.log(
@@ -135,14 +184,6 @@ beforeAll(async () => {
 afterAll(async () => {
   console.log('🧹 Cleaning up test environment...');
 
-  if (dataSource) {
-    try {
-      await dataSource.destroy();
-    } catch (error) {
-      console.error('Error closing database connection:', error);
-    }
-  }
-
   if (app) {
     try {
       await app.close();
@@ -150,6 +191,8 @@ afterAll(async () => {
       console.error('Error closing app:', error);
     }
   }
+
+  redisStore.clear();
 
   console.log('✅ Test environment cleaned up');
 }, 30000);
@@ -160,9 +203,9 @@ async function getDatabaseStats() {
   const itemCount = await dataSource.query('SELECT COUNT(*) FROM items');
 
   return {
-    users: parseInt(userCount[0].count),
-    containers: parseInt(containerCount[0].count),
-    items: parseInt(itemCount[0].count),
+    users: Number.parseInt(userCount[0].count, 10),
+    containers: Number.parseInt(containerCount[0].count, 10),
+    items: Number.parseInt(itemCount[0].count, 10),
   };
 }
 
@@ -180,11 +223,17 @@ export const getAuthToken = async (email: string, password: string): Promise<str
 
   if (response.status !== 200) {
     console.error('❌ Login failed:', response.body);
-    throw new Error('Failed to get auth token');
+    throw new Error(`Failed to get auth token for ${email}`);
+  }
+
+  const accessToken = response.body.accessToken;
+
+  if (typeof accessToken !== 'string' || accessToken.length === 0) {
+    throw new Error('Login response did not contain a valid access token');
   }
 
   console.log('✅ Login successful');
-  return response.body.accessToken;
+  return accessToken;
 };
 
 export const getApp = () => {

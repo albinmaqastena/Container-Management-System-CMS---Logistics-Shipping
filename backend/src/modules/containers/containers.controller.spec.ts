@@ -1,6 +1,5 @@
 // src/modules/containers/containers.controller.spec.ts
 
-import { BadRequestException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 
 import { ContainersController } from './containers.controller';
@@ -12,6 +11,8 @@ import { SearchContainerQueryDto } from './dto/search-container-query.dto';
 import { Container, ContainerStatus } from './entities/container.entity';
 import { User, UserRole } from '../auth/entities/user.entity';
 import { PaginatedResponseDto, PaginationDto } from '../../common/dto/pagination.dto';
+
+type CreateRequest = Parameters<ContainersController['create']>[1];
 
 describe('ContainersController', () => {
   let controller: ContainersController;
@@ -29,7 +30,7 @@ describe('ContainersController', () => {
 
   const mockRequest = {
     user: mockUser,
-  };
+  } as unknown as CreateRequest;
 
   const mockContainer = {
     id: '550e8400-e29b-41d4-a716-446655440000',
@@ -53,15 +54,7 @@ describe('ContainersController', () => {
     total = data.length,
     limit = 10,
     offset = 0,
-  ): PaginatedResponseDto<Container> =>
-    ({
-      data,
-      total,
-      limit,
-      offset,
-      totalPages: total === 0 ? 0 : Math.ceil(total / limit),
-      currentPage: Math.floor(offset / limit) + 1,
-    }) as PaginatedResponseDto<Container>;
+  ): PaginatedResponseDto<Container> => new PaginatedResponseDto(data, total, limit, offset);
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
@@ -115,69 +108,38 @@ describe('ContainersController', () => {
 
       const result = await controller.create(dto, mockRequest);
 
-      expect(result).toEqual(mockContainer);
+      expect(result).toBe(mockContainer);
       expect(service.create).toHaveBeenCalledWith(dto, mockUser);
     });
   });
 
   describe('findAll', () => {
-    it('should return containers with pagination defaults', async () => {
+    it('should pass the query and default includeDeleted to false', async () => {
       const query = {} as ContainerQueryDto;
       const expected = createPaginatedResponse([mockContainer], 1);
       service.findAll.mockResolvedValue(expected);
 
       const result = await controller.findAll(query);
 
-      expect(result).toEqual(expected);
-      expect(service.findAll).toHaveBeenCalledWith(
-        expect.objectContaining({
-          limit: 10,
-          offset: 0,
-          sort: undefined,
-        }),
-        undefined,
-        false,
-      );
+      expect(result).toBe(expected);
+      expect(service.findAll).toHaveBeenCalledWith(query, undefined, false);
     });
 
-    it('should pass status and includeDeleted to the service', async () => {
+    it('should pass status and includeDeleted to the service without modifying the query', async () => {
       const query = {
         limit: 20,
         offset: 40,
         sort: 'createdAt:DESC',
         status: ContainerStatus.ACTIVE,
-        includeDeleted: 'true',
+        includeDeleted: true,
       } as ContainerQueryDto;
+
+      const original = { ...query };
 
       await controller.findAll(query);
 
-      expect(service.findAll).toHaveBeenCalledWith(
-        expect.objectContaining({
-          limit: 20,
-          offset: 40,
-          sort: 'createdAt:DESC',
-        }),
-        ContainerStatus.ACTIVE,
-        true,
-      );
-    });
-
-    it('should normalize invalid pagination values to defaults', async () => {
-      const query = {
-        limit: 0,
-        offset: -1,
-      } as ContainerQueryDto;
-
-      await controller.findAll(query);
-
-      expect(service.findAll).toHaveBeenCalledWith(
-        expect.objectContaining({
-          limit: 10,
-          offset: 0,
-        }),
-        undefined,
-        false,
-      );
+      expect(service.findAll).toHaveBeenCalledWith(query, ContainerStatus.ACTIVE, true);
+      expect(query).toEqual(original);
     });
   });
 
@@ -199,14 +161,8 @@ describe('ContainersController', () => {
 
       const result = await controller.findDeleted(query);
 
-      expect(result).toEqual(expected);
-      expect(service.findDeleted).toHaveBeenCalledWith(
-        expect.objectContaining({
-          limit: 10,
-          offset: 0,
-          sort: 'deletedAt:DESC',
-        }),
-      );
+      expect(result).toBe(expected);
+      expect(service.findDeleted).toHaveBeenCalledWith(query);
     });
   });
 
@@ -217,14 +173,13 @@ describe('ContainersController', () => {
         offset: 0,
       } as PaginationDto;
 
-      await controller.getActiveContainers(query);
+      const expected = createPaginatedResponse([mockContainer], 1);
+      service.findActiveContainers.mockResolvedValue(expected);
 
-      expect(service.findActiveContainers).toHaveBeenCalledWith(
-        expect.objectContaining({
-          limit: 10,
-          offset: 0,
-        }),
-      );
+      const result = await controller.getActiveContainers(query);
+
+      expect(result).toBe(expected);
+      expect(service.findActiveContainers).toHaveBeenCalledWith(query);
     });
   });
 
@@ -235,19 +190,18 @@ describe('ContainersController', () => {
         offset: 0,
       } as PaginationDto;
 
-      await controller.getArchivedContainers(query);
+      const expected = createPaginatedResponse([mockContainer], 1);
+      service.findArchivedContainers.mockResolvedValue(expected);
 
-      expect(service.findArchivedContainers).toHaveBeenCalledWith(
-        expect.objectContaining({
-          limit: 10,
-          offset: 0,
-        }),
-      );
+      const result = await controller.getArchivedContainers(query);
+
+      expect(result).toBe(expected);
+      expect(service.findArchivedContainers).toHaveBeenCalledWith(query);
     });
   });
 
   describe('searchContainers', () => {
-    it('should search containers using the new search DTO', async () => {
+    it('should search containers using the search DTO', async () => {
       const query = {
         query: 'Test Container',
         limit: 10,
@@ -260,32 +214,18 @@ describe('ContainersController', () => {
 
       const result = await controller.searchContainers(query);
 
-      expect(result).toEqual(expected);
-      expect(service.searchContainers).toHaveBeenCalledWith(
-        'Test Container',
-        expect.objectContaining({
-          limit: 10,
-          offset: 0,
-          sort: 'createdAt:DESC',
-        }),
-      );
+      expect(result).toBe(expected);
+      expect(service.searchContainers).toHaveBeenCalledWith('Test Container', query);
     });
 
-    it('should use pagination defaults for a search', async () => {
+    it('should pass a query without explicit pagination defaults', async () => {
       const query = {
         query: 'test',
       } as SearchContainerQueryDto;
 
       await controller.searchContainers(query);
 
-      expect(service.searchContainers).toHaveBeenCalledWith(
-        'test',
-        expect.objectContaining({
-          limit: 10,
-          offset: 0,
-          sort: undefined,
-        }),
-      );
+      expect(service.searchContainers).toHaveBeenCalledWith('test', query);
     });
   });
 
@@ -295,7 +235,7 @@ describe('ContainersController', () => {
 
       const result = await controller.findOne(mockContainer.id);
 
-      expect(result).toEqual(mockContainer);
+      expect(result).toBe(mockContainer);
       expect(service.findOne).toHaveBeenCalledWith(mockContainer.id, false);
     });
 
@@ -325,7 +265,7 @@ describe('ContainersController', () => {
 
       const result = await controller.update(mockContainer.id, dto);
 
-      expect(result).toEqual(expected);
+      expect(result).toBe(expected);
       expect(service.update).toHaveBeenCalledWith(mockContainer.id, dto);
     });
   });
@@ -341,24 +281,8 @@ describe('ContainersController', () => {
 
       const result = await controller.updateStatus(mockContainer.id, ContainerStatus.ARCHIVED);
 
-      expect(result).toEqual(expected);
+      expect(result).toBe(expected);
       expect(service.updateStatus).toHaveBeenCalledWith(mockContainer.id, ContainerStatus.ARCHIVED);
-    });
-
-    it('should throw for an invalid status', async () => {
-      await expect(
-        controller.updateStatus(mockContainer.id, 'invalid' as ContainerStatus),
-      ).rejects.toThrow(BadRequestException);
-
-      expect(service.updateStatus).not.toHaveBeenCalled();
-    });
-
-    it('should throw when status is missing', async () => {
-      await expect(
-        controller.updateStatus(mockContainer.id, undefined as unknown as ContainerStatus),
-      ).rejects.toThrow(BadRequestException);
-
-      expect(service.updateStatus).not.toHaveBeenCalled();
     });
   });
 
@@ -367,6 +291,7 @@ describe('ContainersController', () => {
       await controller.remove(mockContainer.id);
 
       expect(service.softDelete).toHaveBeenCalledWith(mockContainer.id);
+      expect(service.softDelete).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -376,7 +301,7 @@ describe('ContainersController', () => {
 
       const result = await controller.restore(mockContainer.id);
 
-      expect(result).toEqual(mockContainer);
+      expect(result).toBe(mockContainer);
       expect(service.restore).toHaveBeenCalledWith(mockContainer.id);
     });
   });
@@ -386,6 +311,7 @@ describe('ContainersController', () => {
       await controller.permanentDelete(mockContainer.id);
 
       expect(service.permanentDelete).toHaveBeenCalledWith(mockContainer.id);
+      expect(service.permanentDelete).toHaveBeenCalledTimes(1);
     });
   });
 });

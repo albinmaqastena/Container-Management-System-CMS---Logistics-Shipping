@@ -1,11 +1,14 @@
 // src/components/auths/RegisterForm.tsx
-import React, { useState } from 'react';
+import { useState } from 'react';
+import type { ChangeEvent, FormEvent } from 'react';
+import axios from 'axios';
 import { useAuth } from '../../hooks/useAuth';
+import { ROLES } from '../../utilis/constants';
+import type { UserRole } from '../../types';
 import {
   Box,
   Button,
   TextField,
-  Typography,
   Alert,
   InputAdornment,
   IconButton,
@@ -17,28 +20,58 @@ interface RegisterFormProps {
   onSuccess?: () => void;
 }
 
-export const RegisterForm: React.FC<RegisterFormProps> = ({ onSuccess }) => {
+interface RegisterFormData {
+  username: string;
+  email: string;
+  password: string;
+  confirmPassword: string;
+  role: UserRole;
+}
+
+export const RegisterForm = ({ onSuccess }: RegisterFormProps) => {
   const { register, user } = useAuth();
-  const [formData, setFormData] = useState({
+
+  const [formData, setFormData] = useState<RegisterFormData>({
     username: '',
     email: '',
     password: '',
     confirmPassword: '',
-    role: 'user',
+    role: ROLES.USER,
   });
   const [showPassword, setShowPassword] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  const isAdmin = user?.role === 'admin' || user?.role === 'super_admin';
+  const isAdmin =
+    user?.role === ROLES.ADMIN || user?.role === ROLES.SUPER_ADMIN;
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
+  const handleChange = (
+    event: ChangeEvent<HTMLInputElement>,
+  ): void => {
+    const { name, value } = event.target;
+
+    setFormData((current) => ({
+      ...current,
+      [name]:
+        name === 'role'
+          ? (value as UserRole)
+          : value,
+    }));
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError('');
+  const handleSubmit = async (
+    event: FormEvent<HTMLFormElement>,
+  ): Promise<void> => {
+    event.preventDefault();
+    setError(null);
+
+    const username = formData.username.trim();
+    const email = formData.email.trim().toLowerCase();
+
+    if (!username || !email) {
+      setError('Username and email are required');
+      return;
+    }
 
     if (formData.password !== formData.confirmPassword) {
       setError('Passwords do not match');
@@ -51,16 +84,29 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({ onSuccess }) => {
     }
 
     setLoading(true);
+
     try {
       await register({
-        username: formData.username,
-        email: formData.email,
+        username,
+        email,
         password: formData.password,
-        role: formData.role as any,
+        role: formData.role,
       });
-      if (onSuccess) onSuccess();
-    } catch (err: any) {
-      setError(err.response?.data?.message || 'Registration failed');
+
+      onSuccess?.();
+    } catch (error: unknown) {
+      if (axios.isAxiosError(error)) {
+        const message = error.response?.data?.message;
+        setError(
+          Array.isArray(message)
+            ? message.join(', ')
+            : typeof message === 'string'
+              ? message
+              : 'Registration failed',
+        );
+      } else {
+        setError('Registration failed');
+      }
     } finally {
       setLoading(false);
     }
@@ -68,37 +114,47 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({ onSuccess }) => {
 
   if (!isAdmin) {
     return (
-      <Alert severity="error">
+      <Alert severity="error" role="alert">
         You don't have permission to register new users.
       </Alert>
     );
   }
 
   return (
-    <Box component="form" onSubmit={handleSubmit} sx={{ width: '100%' }}>
+    <Box
+      component="form"
+      onSubmit={handleSubmit}
+      aria-busy={loading}
+      sx={{ width: '100%' }}
+    >
       {error && (
-        <Alert severity="error" sx={{ mb: 2 }}>
+        <Alert severity="error" role="alert" sx={{ mb: 2 }}>
           {error}
         </Alert>
       )}
+
       <TextField
         margin="normal"
         required
         fullWidth
+        autoFocus
         name="username"
         label="Username"
+        autoComplete="username"
         value={formData.username}
         onChange={handleChange}
+        disabled={loading}
         slotProps={{
           input: {
             startAdornment: (
               <InputAdornment position="start">
-                <Person />
+                <Person color="action" />
               </InputAdornment>
             ),
           },
         }}
       />
+
       <TextField
         margin="normal"
         required
@@ -106,18 +162,21 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({ onSuccess }) => {
         name="email"
         label="Email Address"
         type="email"
+        autoComplete="email"
         value={formData.email}
         onChange={handleChange}
+        disabled={loading}
         slotProps={{
           input: {
             startAdornment: (
               <InputAdornment position="start">
-                <Email />
+                <Email color="action" />
               </InputAdornment>
             ),
           },
         }}
       />
+
       <TextField
         margin="normal"
         required
@@ -125,19 +184,24 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({ onSuccess }) => {
         name="password"
         label="Password"
         type={showPassword ? 'text' : 'password'}
+        autoComplete="new-password"
         value={formData.password}
         onChange={handleChange}
+        disabled={loading}
         slotProps={{
           input: {
             startAdornment: (
               <InputAdornment position="start">
-                <Lock />
+                <Lock color="action" />
               </InputAdornment>
             ),
             endAdornment: (
               <InputAdornment position="end">
                 <IconButton
-                  onClick={() => setShowPassword(!showPassword)}
+                  type="button"
+                  aria-label={showPassword ? 'Hide password' : 'Show password'}
+                  onClick={() => setShowPassword((prev) => !prev)}
+                  onMouseDown={(event) => event.preventDefault()}
                   edge="end"
                 >
                   {showPassword ? <VisibilityOff /> : <Visibility />}
@@ -147,6 +211,7 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({ onSuccess }) => {
           },
         }}
       />
+
       <TextField
         margin="normal"
         required
@@ -154,9 +219,21 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({ onSuccess }) => {
         name="confirmPassword"
         label="Confirm Password"
         type={showPassword ? 'text' : 'password'}
+        autoComplete="new-password"
         value={formData.confirmPassword}
         onChange={handleChange}
+        disabled={loading}
+        slotProps={{
+          input: {
+            startAdornment: (
+              <InputAdornment position="start">
+                <Lock color="action" />
+              </InputAdornment>
+            ),
+          },
+        }}
       />
+
       <TextField
         margin="normal"
         select
@@ -165,15 +242,17 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({ onSuccess }) => {
         label="Role"
         value={formData.role}
         onChange={handleChange}
+        disabled={loading}
       >
-        <MenuItem value="user">User</MenuItem>
-        {user?.role === 'super_admin' && (
-          <MenuItem value="admin">Admin</MenuItem>
+        <MenuItem value={ROLES.USER}>User</MenuItem>
+        {user?.role === ROLES.SUPER_ADMIN && (
+          <MenuItem value={ROLES.ADMIN}>Admin</MenuItem>
         )}
-        {user?.role === 'super_admin' && (
-          <MenuItem value="super_admin">Super Admin</MenuItem>
+        {user?.role === ROLES.SUPER_ADMIN && (
+          <MenuItem value={ROLES.SUPER_ADMIN}>Super Admin</MenuItem>
         )}
       </TextField>
+
       <Button
         type="submit"
         fullWidth

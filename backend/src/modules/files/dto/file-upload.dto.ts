@@ -20,7 +20,8 @@ const normalizeFolder = (value: unknown): unknown => {
 export class FileUploadDto {
   @ApiPropertyOptional({
     example: 'items/photos',
-    description: 'Optional relative folder inside the configured upload directory',
+    description: 'Relative upload folder inside the configured upload directory',
+    maxLength: 150,
   })
   @Transform(({ value }: { value: unknown }): unknown => normalizeFolder(value))
   @IsOptional()

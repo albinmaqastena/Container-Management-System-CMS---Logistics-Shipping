@@ -1,7 +1,5 @@
-// ============================================
-// ITEM TYPES
-// ============================================
-import { Container } from './container.types';
+import type { PaginationParams } from './api.types';
+import type { Container } from './container.types';
 
 export interface Item {
   id: string;
@@ -38,4 +36,13 @@ export interface UpdateItemData {
   productsPerPackage?: number;
   packagePrice?: number;
   volume?: number;
+}
+
+export interface ItemQueryParams extends PaginationParams {
+  containerId?: string;
+  includeDeleted?: boolean;
+}
+
+export interface ItemSearchParams extends PaginationParams {
+  containerId?: string;
 }

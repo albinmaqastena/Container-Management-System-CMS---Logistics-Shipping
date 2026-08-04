@@ -1,11 +1,12 @@
 // src/components/auths/ForgotPasswordForm.tsx
-import React, { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import type { FormEvent } from 'react';
+import axios from 'axios';
 import { useAuth } from '../../hooks/useAuth';
 import {
   Box,
   Button,
   TextField,
-  Typography,
   Alert,
   InputAdornment,
 } from '@mui/material';
@@ -15,70 +16,125 @@ interface ForgotPasswordFormProps {
   onSuccess?: () => void;
 }
 
-export const ForgotPasswordForm: React.FC<ForgotPasswordFormProps> = ({
-  onSuccess,
-}) => {
+export const ForgotPasswordForm = ({ onSuccess }: ForgotPasswordFormProps) => {
   const { forgotPassword } = useAuth();
   const [email, setEmail] = useState('');
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError('');
-    setSuccess('');
-    setLoading(true);
-    try {
-      await forgotPassword(email);
-      setSuccess('Password reset link sent to your email');
-      if (onSuccess) {
-        setTimeout(onSuccess, 3000);
+  const successTimerRef = useRef<number | null>(null);
+
+  // Pastro timer-in kur komponenti çmontohet
+  useEffect(() => {
+    return () => {
+      if (successTimerRef.current !== null) {
+        window.clearTimeout(successTimerRef.current);
+        successTimerRef.current = null;
       }
-    } catch (err: any) {
-      setError(err.response?.data?.message || 'Failed to send reset link');
+    };
+  }, []);
+
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>): Promise<void> => {
+    event.preventDefault();
+    setError(null);
+    setSuccess(null);
+
+    // Pastro timer-in e vjetër nëse ekziston
+    if (successTimerRef.current !== null) {
+      window.clearTimeout(successTimerRef.current);
+      successTimerRef.current = null;
+    }
+
+    const normalizedEmail = email.trim().toLowerCase();
+
+    if (!normalizedEmail) {
+      setError('Email is required');
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      await forgotPassword({ email: normalizedEmail });
+      setSuccess('If an account exists for this email, a password reset link has been sent.');
+
+      if (onSuccess) {
+        successTimerRef.current = window.setTimeout(() => {
+          onSuccess();
+          successTimerRef.current = null;
+        }, 1500);
+      }
+    } catch (error: unknown) {
+      if (axios.isAxiosError(error)) {
+        const message = error.response?.data?.message;
+        setError(
+          Array.isArray(message)
+            ? message.join(', ')
+            : typeof message === 'string'
+              ? message
+              : 'Failed to send reset link',
+        );
+      } else {
+        setError('Failed to send reset link');
+      }
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <Box component="form" onSubmit={handleSubmit} sx={{ width: '100%' }}>
+    <Box
+      component="form"
+      onSubmit={handleSubmit}
+      aria-busy={loading}
+      sx={{ width: '100%' }}
+    >
       {error && (
-        <Alert severity="error" sx={{ mb: 2 }}>
+        <Alert severity="error" role="alert" sx={{ mb: 2 }}>
           {error}
         </Alert>
       )}
+
       {success && (
-        <Alert severity="success" sx={{ mb: 2 }}>
+        <Alert severity="success" role="status" sx={{ mb: 2 }}>
           {success}
         </Alert>
       )}
+
       <TextField
         fullWidth
+        autoFocus
         label="Email Address"
         type="email"
+        autoComplete="email"
         value={email}
         onChange={(e) => setEmail(e.target.value)}
         required
+        disabled={loading || Boolean(success)}
         slotProps={{
           input: {
             startAdornment: (
               <InputAdornment position="start">
-                <Email />
+                <Email color="action" />
               </InputAdornment>
             ),
           },
         }}
         sx={{ mb: 2 }}
       />
+
       <Button
         type="submit"
         fullWidth
         variant="contained"
-        disabled={loading}
+        disabled={loading || Boolean(success)}
       >
-        {loading ? 'Sending...' : 'Send Reset Link'}
+        {loading
+  ? 'Sending...'
+  : success
+    ? 'Reset Link Sent'
+    : 'Send Reset Link'}
       </Button>
     </Box>
   );

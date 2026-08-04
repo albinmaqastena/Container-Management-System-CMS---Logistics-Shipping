@@ -1,18 +1,25 @@
 // src/modules/auth/strategies/jwt.strategy.ts
 
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import {
+  Inject,
+  Injectable,
+  ServiceUnavailableException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy, StrategyOptionsWithoutRequest } from 'passport-jwt';
+import Redis from 'ioredis';
 import { Repository } from 'typeorm';
 
-import { User, UserRole } from '../entities/user.entity';
+import { User } from '../entities/user.entity';
+import { AuthenticatedUser } from '../interfaces/authenticated-request.interface';
+import { REDIS_CLIENT } from '../../../common/redis/redis.module';
 
 interface JwtPayload {
   sub: string;
-  email: string;
-  role: UserRole;
+  sid: string;
   iat?: number;
   exp?: number;
   iss?: string;
@@ -25,6 +32,8 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     @InjectRepository(User)
     private readonly userRepository: Repository<User>,
     configService: ConfigService,
+    @Inject(REDIS_CLIENT)
+    private readonly redis: Redis,
   ) {
     const options: StrategyOptionsWithoutRequest = {
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
@@ -38,9 +47,23 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     super(options);
   }
 
-  async validate(payload: JwtPayload): Promise<User> {
-    if (!payload?.sub || !payload.email || !payload.role) {
+  async validate(payload: JwtPayload): Promise<AuthenticatedUser> {
+    if (!payload?.sub || !payload.sid) {
       throw new UnauthorizedException('Invalid token payload');
+    }
+
+    const sessionKey = `session:${payload.sub}:${payload.sid}`;
+
+    let sessionExists: number;
+
+    try {
+      sessionExists = await this.redis.exists(sessionKey);
+    } catch {
+      throw new ServiceUnavailableException('Authentication session service is unavailable');
+    }
+
+    if (!sessionExists) {
+      throw new UnauthorizedException('Session has expired or was revoked');
     }
 
     const user = await this.userRepository
@@ -51,18 +74,17 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       .andWhere('user.deletedAt IS NULL')
       .getOne();
 
-    if (!user) {
-      throw new UnauthorizedException('User not found');
+    if (!user || !user.isActive || user.isLocked()) {
+      throw new UnauthorizedException('User account is unavailable');
     }
 
-    if (!user.isActive) {
-      throw new UnauthorizedException('User is inactive');
-    }
-
-    if (user.isLocked()) {
-      throw new UnauthorizedException('User account is temporarily locked');
-    }
-
-    return user;
+    return {
+      id: user.id,
+      email: user.email,
+      username: user.username,
+      role: user.role,
+      isActive: user.isActive,
+      sid: payload.sid,
+    };
   }
 }

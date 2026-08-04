@@ -1,8 +1,8 @@
 // src/common/dto/pagination.dto.ts
 
-import { ApiPropertyOptional } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform, Type } from 'class-transformer';
-import { IsInt, IsOptional, IsString, Matches, Max, Min } from 'class-validator';
+import { IsInt, IsOptional, IsString, Matches, Max, MaxLength, Min } from 'class-validator';
 
 const trimStringValue = (value: unknown): unknown =>
   typeof value === 'string' ? value.trim() : value;
@@ -53,6 +53,9 @@ export class PaginationDto {
   @IsString({
     message: 'Sort must be a string',
   })
+  @MaxLength(500, {
+    message: 'Sort must not exceed 500 characters',
+  })
   @Matches(/^[a-zA-Z0-9_]+:(ASC|DESC)(,[a-zA-Z0-9_]+:(ASC|DESC))*$/, {
     message: 'Sort must use the format field:ASC or field:DESC',
   })
@@ -60,12 +63,46 @@ export class PaginationDto {
 }
 
 export class PaginatedResponseDto<T> {
+  @ApiProperty({
+    type: [Object],
+    description: 'Array of items for the current page',
+  })
   data!: T[];
+
+  @ApiProperty({
+    example: 42,
+    description: 'Total number of items matching the query',
+  })
   total!: number;
+
+  @ApiProperty({
+    example: 10,
+    description: 'Number of items per page',
+  })
   limit!: number;
+
+  @ApiProperty({
+    example: 0,
+    description: 'Number of items skipped',
+  })
   offset!: number;
+
+  @ApiProperty({
+    example: 5,
+    description: 'Total number of pages',
+  })
   totalPages!: number;
+
+  @ApiProperty({
+    example: 1,
+    description: 'Current page number (1-indexed; returns 1 when there are no results)',
+  })
   currentPage!: number;
+
+  @ApiProperty({
+    example: true,
+    description: 'Whether there are more items after the current page',
+  })
   hasMore!: boolean;
 
   constructor(data: T[], total: number, limit: number, offset: number) {
@@ -73,12 +110,15 @@ export class PaginatedResponseDto<T> {
 
     const normalizedOffset = Number.isFinite(offset) && offset >= 0 ? offset : 0;
 
-    this.data = data;
-    this.total = Math.max(total, 0);
+    const normalizedTotal = Number.isFinite(total) && total >= 0 ? total : 0;
+
+    this.data = Array.isArray(data) ? data : [];
+    this.total = normalizedTotal;
     this.limit = normalizedLimit;
     this.offset = normalizedOffset;
-    this.totalPages = this.total === 0 ? 0 : Math.ceil(this.total / normalizedLimit);
-    this.currentPage = Math.floor(normalizedOffset / normalizedLimit) + 1;
-    this.hasMore = normalizedOffset + data.length < this.total;
+    this.totalPages = normalizedTotal === 0 ? 0 : Math.ceil(normalizedTotal / normalizedLimit);
+    this.currentPage =
+      normalizedTotal === 0 ? 1 : Math.floor(normalizedOffset / normalizedLimit) + 1;
+    this.hasMore = normalizedOffset + this.data.length < normalizedTotal;
   }
 }

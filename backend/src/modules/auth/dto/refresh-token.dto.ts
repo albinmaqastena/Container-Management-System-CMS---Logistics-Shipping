@@ -1,11 +1,11 @@
 // src/modules/auth/dto/refresh-token.dto.ts
 
 import { ApiProperty } from '@nestjs/swagger';
-import { IsNotEmpty, IsString, MaxLength } from 'class-validator';
+import { IsNotEmpty, IsString, MaxLength, MinLength } from 'class-validator';
 
 export class RefreshTokenDto {
   @ApiProperty({
-    example: 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx',
+    example: '<refresh-token>',
     description: 'Refresh token',
   })
   @IsString({
@@ -14,8 +14,11 @@ export class RefreshTokenDto {
   @IsNotEmpty({
     message: 'Refresh token is required',
   })
-  @MaxLength(500, {
-    message: 'Refresh token must not exceed 500 characters',
+  @MinLength(64, {
+    message: 'Invalid refresh token',
+  })
+  @MaxLength(128, {
+    message: 'Invalid refresh token',
   })
   refreshToken!: string;
 }

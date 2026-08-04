@@ -1,11 +1,17 @@
 // src/modules/files/files.service.ts
 
-import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  InternalServerErrorException,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
-import sharp from 'sharp';
+import sharp, { type Metadata } from 'sharp';
 
 import type { MulterFile } from '../../common/types/multer-file.type';
 
@@ -28,12 +34,34 @@ interface FileConfiguration {
   };
 }
 
+/**
+ * Critical error thrown when a file replacement fails and the original file cannot be restored.
+ */
+class FileReplacementError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'FileReplacementError';
+  }
+}
+
 @Injectable()
 export class FilesService {
   private readonly logger = new Logger(FilesService.name);
 
   private readonly uploadDir: string;
   private readonly urlPrefix: string;
+  private readonly allowedImageFormats = new Set(['jpeg', 'png', 'webp']);
+  private readonly formatToExtension: Record<string, string> = {
+    jpeg: '.jpg',
+    png: '.png',
+    webp: '.webp',
+  };
+  private readonly imageOptimization: {
+    enabled: boolean;
+    maxWidth: number;
+    maxHeight: number;
+    quality: number;
+  };
 
   constructor(private readonly configService: ConfigService) {
     const fileConfig = this.configService.get<FileConfiguration>('file');
@@ -42,9 +70,54 @@ export class FilesService {
 
     this.urlPrefix = (fileConfig?.upload?.urlPrefix ?? '/uploads').replace(/\/+$/, '');
 
-    fs.mkdirSync(this.uploadDir, {
-      recursive: true,
-    });
+    // Initialize upload directory with proper error handling
+    try {
+      fs.mkdirSync(this.uploadDir, {
+        recursive: true,
+      });
+    } catch (error) {
+      this.logger.error(
+        `Unable to initialize upload directory ${this.uploadDir}`,
+        error instanceof Error ? error.stack : String(error),
+      );
+      throw error;
+    }
+
+    // Read and validate image optimization configuration once
+    const opt = fileConfig?.imageOptimization;
+
+    const configuredMaxWidth = opt?.maxWidth;
+    const configuredMaxHeight = opt?.maxHeight;
+    const configuredQuality = opt?.quality;
+
+    const maxWidth =
+      typeof configuredMaxWidth === 'number' &&
+      Number.isInteger(configuredMaxWidth) &&
+      configuredMaxWidth > 0
+        ? configuredMaxWidth
+        : 1920;
+
+    const maxHeight =
+      typeof configuredMaxHeight === 'number' &&
+      Number.isInteger(configuredMaxHeight) &&
+      configuredMaxHeight > 0
+        ? configuredMaxHeight
+        : 1080;
+
+    const quality =
+      typeof configuredQuality === 'number' &&
+      Number.isFinite(configuredQuality) &&
+      configuredQuality >= 1 &&
+      configuredQuality <= 100
+        ? configuredQuality
+        : 80;
+
+    this.imageOptimization = {
+      enabled: opt?.enabled ?? false,
+      maxWidth,
+      maxHeight,
+      quality,
+    };
   }
 
   async saveFile(file: MulterFile, subFolder = ''): Promise<SavedFileResult> {
@@ -58,33 +131,77 @@ export class FilesService {
 
     const normalizedFolder = this.normalizeRelativePath(subFolder);
 
-    const safeFilename = this.generateSafeFilename(file.originalname);
+    // Generate initial safe filename (with extension from original)
+    const initialSafeFilename = this.generateSafeFilename(file.originalname);
 
-    const relativePath = normalizedFolder
-      ? path.posix.join(normalizedFolder, safeFilename)
-      : safeFilename;
+    const initialRelativePath = normalizedFolder
+      ? path.posix.join(normalizedFolder, initialSafeFilename)
+      : initialSafeFilename;
 
-    const fullPath = this.resolveInsideUploadDirectory(relativePath);
+    const initialFullPath = this.resolveInsideUploadDirectory(initialRelativePath);
 
-    await fs.promises.mkdir(path.dirname(fullPath), {
+    // Ensure directory exists
+    await fs.promises.mkdir(path.dirname(initialFullPath), {
       recursive: true,
     });
 
+    let fullPath = initialFullPath;
+    let relativePath = initialRelativePath;
+    let safeFilename = initialSafeFilename;
+
     try {
+      // Write the file with the initial name
       await fs.promises.writeFile(fullPath, file.buffer, {
         flag: 'wx',
       });
 
-      if (file.mimetype?.startsWith('image/')) {
-        await this.optimizeImage(fullPath, file.mimetype);
+      // Always validate as an image - this endpoint expects only images
+      const metadata = await this.getValidatedImageMetadata(fullPath);
+
+      // If the actual format differs from the extension, rename the file
+      if (metadata.format && this.formatToExtension[metadata.format]) {
+        const correctExtension = this.formatToExtension[metadata.format];
+        const currentExtension = path.extname(safeFilename);
+        if (currentExtension !== correctExtension) {
+          // Generate new name with correct extension
+          const baseName = safeFilename.replace(/\.[^.]+$/, '');
+          const newSafeFilename = baseName + correctExtension;
+          const newRelativePath = normalizedFolder
+            ? path.posix.join(normalizedFolder, newSafeFilename)
+            : newSafeFilename;
+          const newFullPath = this.resolveInsideUploadDirectory(newRelativePath);
+
+          // Rename the file (destination should not exist because name is unique)
+          await fs.promises.rename(fullPath, newFullPath);
+
+          // Update variables
+          fullPath = newFullPath;
+          relativePath = newRelativePath;
+          safeFilename = newSafeFilename;
+        }
       }
+
+      // Optimize image if enabled (using the validated metadata)
+      await this.optimizeImage(fullPath, metadata);
     } catch (error) {
+      // Clean up the file if it was written
       await fs.promises.unlink(fullPath).catch(() => undefined);
 
+      // Handle critical file replacement error separately
+      if (error instanceof FileReplacementError) {
+        this.logger.error(`Critical file replacement failure for ${relativePath}`, error.stack);
+        throw new InternalServerErrorException('Unable to safely process uploaded image');
+      }
+
+      // Log other errors
       this.logger.error(
         `Failed to save file ${relativePath}`,
         error instanceof Error ? error.stack : String(error),
       );
+
+      if (error instanceof BadRequestException) {
+        throw error;
+      }
 
       throw new BadRequestException('Unable to save file');
     }
@@ -217,29 +334,99 @@ export class FilesService {
     return fullPath;
   }
 
-  private async optimizeImage(filePath: string, mimetype: string): Promise<void> {
-    const fileConfig = this.configService.get<FileConfiguration>('file');
+  /**
+   * Validates that the file at the given path is a supported image format.
+   * Throws BadRequestException if validation fails.
+   */
+  private async getValidatedImageMetadata(filePath: string): Promise<Metadata> {
+    try {
+      const metadata = await sharp(filePath, {
+        failOn: 'error',
+      }).metadata();
 
-    const options = fileConfig?.imageOptimization;
+      if (!metadata.format || !this.allowedImageFormats.has(metadata.format)) {
+        throw new BadRequestException('Unsupported image format');
+      }
 
-    if (!options?.enabled) {
+      return metadata;
+    } catch (error) {
+      if (error instanceof BadRequestException) {
+        throw error;
+      }
+      throw new BadRequestException('Invalid image file');
+    }
+  }
+
+  /**
+   * Safely replaces the original file with the temporary file.
+   * On failure, restores the original file.
+   * If the original cannot be restored, throws a FileReplacementError.
+   */
+  private async replaceFileSafely(originalPath: string, temporaryPath: string): Promise<void> {
+    // Use unique backup name to avoid collisions
+    const randomSuffix = crypto.randomBytes(6).toString('hex');
+    const backupPath = `${originalPath}.${randomSuffix}.bak`;
+
+    // Backup the original file
+    await fs.promises.rename(originalPath, backupPath);
+
+    try {
+      // Move the temporary file to the original location
+      await fs.promises.rename(temporaryPath, originalPath);
+
+      // Remove the backup
+      await fs.promises.unlink(backupPath).catch((error: unknown) => {
+        this.logger.warn(
+          `Unable to remove image backup ${backupPath}: ${
+            error instanceof Error ? error.message : 'Unknown error'
+          }`,
+        );
+      });
+    } catch (error: unknown) {
+      // Try to restore the backup
+      try {
+        await fs.promises.rename(backupPath, originalPath);
+      } catch (restoreError: unknown) {
+        this.logger.error(
+          'Failed to restore original image after optimization failure',
+          restoreError instanceof Error ? restoreError.stack : String(restoreError),
+        );
+
+        // Check if the original file exists after the restore failure
+        const originalExists = await fs.promises
+          .access(originalPath)
+          .then(() => true)
+          .catch(() => false);
+
+        if (!originalExists) {
+          // Original file is lost - this is critical
+          throw new FileReplacementError(
+            'Failed to restore original image after optimization failure. Original file may be lost.',
+          );
+        }
+
+        // Original file still exists, so propagate the original error
+        throw error;
+      }
+
+      // Restore succeeded, but optimization failed
+      throw error;
+    }
+  }
+
+  private async optimizeImage(filePath: string, metadata: Metadata): Promise<void> {
+    if (!this.imageOptimization.enabled) {
       return;
     }
 
-    const maxWidth = options.maxWidth ?? 1920;
-
-    const maxHeight = options.maxHeight ?? 1080;
-
-    const quality = Math.min(100, Math.max(1, options.quality ?? 80));
+    const { maxWidth, maxHeight, quality } = this.imageOptimization;
 
     const temporaryPath = `${filePath}.tmp`;
 
     try {
       const image = sharp(filePath, {
-        failOn: 'none',
+        failOn: 'error',
       });
-
-      const metadata = await image.metadata();
 
       const shouldResize =
         Boolean(metadata.width) &&
@@ -255,8 +442,10 @@ export class FilesService {
           })
         : image;
 
-      switch (mimetype) {
-        case 'image/jpeg':
+      const format = metadata.format;
+
+      switch (format) {
+        case 'jpeg':
           await pipeline
             .jpeg({
               quality,
@@ -264,7 +453,7 @@ export class FilesService {
             .toFile(temporaryPath);
           break;
 
-        case 'image/png':
+        case 'png':
           await pipeline
             .png({
               quality,
@@ -273,7 +462,7 @@ export class FilesService {
             .toFile(temporaryPath);
           break;
 
-        case 'image/webp':
+        case 'webp':
           await pipeline
             .webp({
               quality,
@@ -282,23 +471,30 @@ export class FilesService {
           break;
 
         default:
+          // Should not happen due to earlier validation
           return;
       }
 
-      /*
-       * Remove the old image first. This avoids Windows rename
-       * failures when the destination already exists.
-       */
-      await fs.promises.unlink(filePath);
-
-      await fs.promises.rename(temporaryPath, filePath);
+      // Replace the original file with the optimized version safely
+      // If replaceFileSafely throws (e.g., due to file loss), the error propagates
+      await this.replaceFileSafely(filePath, temporaryPath);
 
       this.logger.debug(`Image optimized: ${filePath}`);
     } catch (error) {
+      // Clean up temporary file if it exists
       await fs.promises.unlink(temporaryPath).catch(() => undefined);
 
+      // Check if this is a critical error (file loss) that should propagate
+      if (error instanceof FileReplacementError) {
+        // Critical error - propagate to saveFile
+        throw error;
+      }
+
+      // Non-critical error (optimization failed but original is intact)
       this.logger.warn(
-        `Image optimization failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        `Image optimization failed for ${filePath}: ${
+          error instanceof Error ? error.message : 'Unknown error'
+        }`,
       );
     }
   }

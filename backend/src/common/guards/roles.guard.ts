@@ -10,23 +10,20 @@ import {
 import { Reflector } from '@nestjs/core';
 
 import { ROLES_KEY } from '../decorators/roles.decorator';
-import { User, UserRole } from '../../modules/auth/entities/user.entity';
-
-interface AuthenticatedRequest {
-  user?: Pick<User, 'id' | 'role' | 'isActive'>;
-}
+import { UserRole } from '../../modules/auth/entities/user.entity';
+import { AuthenticatedRequest } from '../../modules/auth/interfaces/authenticated-request.interface';
 
 @Injectable()
 export class RolesGuard implements CanActivate {
   constructor(private readonly reflector: Reflector) {}
 
   canActivate(context: ExecutionContext): boolean {
-    const requiredRoles = this.reflector.getAllAndOverride<UserRole[]>(ROLES_KEY, [
+    const requiredRoles = this.reflector.getAllAndOverride<readonly UserRole[]>(ROLES_KEY, [
       context.getHandler(),
       context.getClass(),
     ]);
 
-    if (!requiredRoles || requiredRoles.length === 0) {
+    if (!requiredRoles?.length) {
       return true;
     }
 
@@ -38,7 +35,7 @@ export class RolesGuard implements CanActivate {
       throw new UnauthorizedException('User not authenticated');
     }
 
-    if (user.isActive === false) {
+    if (!user.isActive) {
       throw new ForbiddenException('User account is inactive');
     }
 

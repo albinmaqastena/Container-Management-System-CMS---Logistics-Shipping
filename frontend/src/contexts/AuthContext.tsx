@@ -1,48 +1,49 @@
 // src/contexts/AuthContext.tsx
-import React, {
+import {
   createContext,
-  useContext,
-  useState,
-  useEffect,
-  ReactNode,
   useCallback,
+  useEffect,
+  useMemo,
+  useState,
 } from 'react';
-import { authService } from '../services/auth.service';
-import { apiClient } from '../api/axios.config';
-import { User, LoginCredentials, RegisterData, Session } from '../types';
+import type { ReactNode } from 'react';
 import { toast } from 'react-toastify';
+
+import { tokenStorage } from '../api/tokenStorage';
+import { authService } from '../services/auth.service';
+import type {
+  User,
+  LoginCredentials,
+  RegisterData,
+  Session,
+  ChangePasswordData,
+  ForgotPasswordData,
+  ResetPasswordData,
+} from '../types';
 
 // ------------------------------------------------------------------
 // Types
 // ------------------------------------------------------------------
-interface AuthContextType {
+export interface AuthContextType {
   user: User | null;
   isLoading: boolean;
   isAuthenticated: boolean;
   login: (credentials: LoginCredentials) => Promise<void>;
   register: (data: RegisterData) => Promise<void>;
   logout: () => Promise<void>;
-  changePassword: (data: { currentPassword: string; newPassword: string }) => Promise<void>;
-  forgotPassword: (email: string) => Promise<void>;
-  resetPassword: (token: string, newPassword: string) => Promise<void>;
+  logoutAll: () => Promise<void>;
+  changePassword: (data: ChangePasswordData) => Promise<void>;
+  forgotPassword: (data: ForgotPasswordData) => Promise<void>;
+  resetPassword: (data: ResetPasswordData) => Promise<void>;
   getSessions: () => Promise<Session[]>;
   revokeSession: (sessionId: string) => Promise<void>;
   refreshUser: () => Promise<void>;
-  refreshAccessToken: () => Promise<string | null>;
 }
 
 // ------------------------------------------------------------------
 // Context
 // ------------------------------------------------------------------
 export const AuthContext = createContext<AuthContextType | undefined>(undefined);
-
-export const useAuth = () => {
-  const context = useContext(AuthContext);
-  if (!context) {
-    throw new Error('useAuth must be used within an AuthProvider');
-  }
-  return context;
-};
 
 // ------------------------------------------------------------------
 // Provider
@@ -51,171 +52,147 @@ interface AuthProviderProps {
   children: ReactNode;
 }
 
-export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
+export const AuthProvider = ({ children }: AuthProviderProps) => {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Helper to set tokens in localStorage and axios headers
-  const setAuthTokens = (accessToken: string, refreshToken?: string) => {
-    localStorage.setItem('accessToken', accessToken);
-    if (refreshToken) {
-      localStorage.setItem('refreshToken', refreshToken);
-    }
-    apiClient.defaults.headers.Authorization = `Bearer ${accessToken}`;
-  };
-
-  const clearAuthTokens = () => {
-    localStorage.removeItem('accessToken');
-    localStorage.removeItem('refreshToken');
-    delete apiClient.defaults.headers.Authorization;
-  };
-
-  // Refresh token logic (used by axios interceptor)
-  const refreshAccessToken = useCallback(async (): Promise<string | null> => {
-    const refreshToken = localStorage.getItem('refreshToken');
-    if (!refreshToken) return null;
-
-    try {
-      const response = await authService.refreshToken(refreshToken);
-      const { accessToken, refreshToken: newRefreshToken } = response;
-      setAuthTokens(accessToken, newRefreshToken);
-      return accessToken;
-    } catch (error) {
-      // Refresh failed – force logout
-      clearAuthTokens();
-      setUser(null);
-      return null;
-    }
-  }, []);
-
-  // Initialize auth state
+  // Inicializimi i auth-it - interceptor-i i axios.config.ts kujdeset për refresh-in
   useEffect(() => {
-    const initializeAuth = async () => {
+    let active = true;
+
+    const initializeAuth = async (): Promise<void> => {
+      const accessToken = tokenStorage.getAccessToken();
+      const refreshToken = tokenStorage.getRefreshToken();
+
+      if (!accessToken && !refreshToken) {
+        if (active) {
+          setIsLoading(false);
+        }
+        return;
+      }
+
       try {
-        const token = localStorage.getItem('accessToken');
-        if (token) {
-          apiClient.defaults.headers.Authorization = `Bearer ${token}`;
-          const userData = await authService.getMe();
+        const userData = await authService.getMe();
+        if (active) {
           setUser(userData);
         }
-      } catch (error) {
-        // Token invalid – try to refresh
-        const newToken = await refreshAccessToken();
-        if (newToken) {
-          try {
-            const userData = await authService.getMe();
-            setUser(userData);
-          } catch {
-            clearAuthTokens();
-            setUser(null);
-          }
-        } else {
-          clearAuthTokens();
+      } catch {
+        // Interceptori kujdeset për pastrimin e token-ave në rast 401.
+        // Këtu thjesht e lëmë përdoruesin pa u identifikuar.
+        if (active) {
           setUser(null);
         }
       } finally {
-        setIsLoading(false);
+        if (active) {
+          setIsLoading(false);
+        }
       }
     };
 
-    initializeAuth();
-  }, [refreshAccessToken]);
-
-  // Set up axios interceptor for automatic token refresh
-  useEffect(() => {
-    const interceptor = apiClient.interceptors.response.use(
-      (response) => response,
-      async (error) => {
-        const originalRequest = error.config;
-        if (error.response?.status === 401 && !originalRequest._retry) {
-          originalRequest._retry = true;
-          const newToken = await refreshAccessToken();
-          if (newToken) {
-            originalRequest.headers.Authorization = `Bearer ${newToken}`;
-            return apiClient(originalRequest);
-          }
-        }
-        return Promise.reject(error);
-      }
-    );
+    void initializeAuth();
 
     return () => {
-      apiClient.interceptors.response.eject(interceptor);
+      active = false;
     };
-  }, [refreshAccessToken]);
+  }, []);
 
   // -------------------- Auth methods --------------------
-  const login = async (credentials: LoginCredentials) => {
+  const login = useCallback(async (credentials: LoginCredentials) => {
     const response = await authService.login(credentials);
-    setAuthTokens(response.accessToken, response.refreshToken);
+    tokenStorage.setTokens(response.accessToken, response.refreshToken);
     setUser(response.user);
     toast.success('Login successful!');
-  };
+  }, []);
 
-  const register = async (data: RegisterData) => {
+  const register = useCallback(async (data: RegisterData) => {
     await authService.register(data);
     toast.success('User registered successfully!');
-  };
+  }, []);
 
-  const logout = async () => {
+  const logout = useCallback(async () => {
     try {
       await authService.logout();
-    } catch (error) {
-      // Ignore server errors during logout
-    } finally {
-      clearAuthTokens();
-      setUser(null);
       toast.info('Logged out');
+    } catch {
+      toast.warning('Logged out locally, but server may still have session');
+    } finally {
+      tokenStorage.clear();
+      setUser(null);
     }
-  };
+  }, []);
 
-  const changePassword = async (data: { currentPassword: string; newPassword: string }) => {
+  const logoutAll = useCallback(async (): Promise<void> => {
+    try {
+      await authService.logoutAll();
+      toast.info('Logged out from all devices');
+    } catch {
+      toast.warning('Logged out locally, but other sessions may still be active');
+    } finally {
+      tokenStorage.clear();
+      setUser(null);
+    }
+  }, []);
+
+  const changePassword = useCallback(async (data: ChangePasswordData) => {
     await authService.changePassword(data);
-    toast.success('Password changed successfully!');
-  };
+  }, []);
 
-  const forgotPassword = async (email: string) => {
-    await authService.forgotPassword({ email });
-    toast.success('Password reset email sent!');
-  };
+  const forgotPassword = useCallback(async (data: ForgotPasswordData) => {
+    await authService.forgotPassword(data);
+  }, []);
 
-  const resetPassword = async (token: string, newPassword: string) => {
-    await authService.resetPassword({ token, newPassword });
-    toast.success('Password reset successfully!');
-  };
+  const resetPassword = useCallback(async (data: ResetPasswordData) => {
+    await authService.resetPassword(data);
+  }, []);
 
-  const getSessions = async (): Promise<Session[]> => {
+  const getSessions = useCallback((): Promise<Session[]> => {
     return authService.getSessions();
-  };
+  }, []);
 
-  const revokeSession = async (sessionId: string) => {
+  const revokeSession = useCallback(async (sessionId: string) => {
     await authService.revokeSession(sessionId);
     toast.success('Session revoked');
-  };
+  }, []);
 
-  const refreshUser = async () => {
+  const refreshUser = useCallback(async () => {
     const userData = await authService.getMe();
     setUser(userData);
-  };
+  }, []);
 
   // ------------------------------------------------------------------
-  // Expose context value
+  // Ekspozimi i context-it
   // ------------------------------------------------------------------
-  const value: AuthContextType = {
-    user,
-    isLoading,
-    isAuthenticated: !!user,
-    login,
-    register,
-    logout,
-    changePassword,
-    forgotPassword,
-    resetPassword,
-    getSessions,
-    revokeSession,
-    refreshUser,
-    refreshAccessToken,
-  };
+  const value = useMemo<AuthContextType>(
+    () => ({
+      user,
+      isLoading,
+      isAuthenticated: user !== null,
+      login,
+      register,
+      logout,
+      logoutAll,
+      changePassword,
+      forgotPassword,
+      resetPassword,
+      getSessions,
+      revokeSession,
+      refreshUser,
+    }),
+    [
+      user,
+      isLoading,
+      login,
+      register,
+      logout,
+      logoutAll,
+      changePassword,
+      forgotPassword,
+      resetPassword,
+      getSessions,
+      revokeSession,
+      refreshUser,
+    ],
+  );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };

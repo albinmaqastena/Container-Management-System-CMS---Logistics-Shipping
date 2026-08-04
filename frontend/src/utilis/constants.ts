@@ -1,5 +1,8 @@
 // src/utils/constants.ts
-export const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3000';
+export const API_URL = (
+  process.env.REACT_APP_API_URL ||
+  'http://localhost:3000/v1'
+).replace(/\/$/, '');
 
 export const ROLES = {
   SUPER_ADMIN: 'super_admin',
@@ -20,8 +23,9 @@ export const PAGINATION = {
 } as const;
 
 export const FILE = {
-  MAX_SIZE: 5 * 1024 * 1024, // 5MB
-  ALLOWED_TYPES: ['image/jpeg', 'image/png', 'image/gif', 'image/webp'],
+  MAX_SIZE: 10 * 1024 * 1024, // 10MB
+  MAX_FILES_PER_UPLOAD: 10,
+  ALLOWED_TYPES: ['image/jpeg', 'image/png', 'image/webp'],
 } as const;
 
 export const ITEM = {

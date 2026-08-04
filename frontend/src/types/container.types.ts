@@ -1,10 +1,12 @@
-// ============================================
-// CONTAINER TYPES
-// ============================================
-import { User } from './auth.types';
-import { Item } from './item.types';
+import type { User } from './auth.types';
+import type { Item } from './item.types';
+import type { PaginationParams } from './api.types';
 
-export type ContainerStatus = 'active' | 'shipped' | 'archived';
+export enum ContainerStatus {
+  ACTIVE = 'active',
+  SHIPPED = 'shipped',
+  ARCHIVED = 'archived',
+}
 
 export interface Container {
   id: string;
@@ -14,12 +16,16 @@ export interface Container {
   usedVolume: number;
   availableVolume: number;
   status: ContainerStatus;
-  description?: string;
+  description: string;
   createdBy: User;
+  createdAt: string;
+  updatedAt: string;
+  deletedAt: string | null;
+}
+
+export interface ContainerWithItems
+  extends Container {
   items: Item[];
-  createdAt: Date;
-  updatedAt: Date;
-  deletedAt?: Date;
 }
 
 export interface CreateContainerData {
@@ -30,6 +36,12 @@ export interface CreateContainerData {
 
 export interface UpdateContainerData {
   name?: string;
+  totalVolume?: number;
   description?: string;
+}
+
+export interface ContainerQueryParams
+  extends PaginationParams {
   status?: ContainerStatus;
+  includeDeleted?: boolean;
 }

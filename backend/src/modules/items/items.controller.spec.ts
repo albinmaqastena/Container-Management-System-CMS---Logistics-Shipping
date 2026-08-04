@@ -10,7 +10,7 @@ import { SearchItemQueryDto } from './dto/search-item-query.dto';
 import { Item } from './entities/item.entity';
 import { Container, ContainerStatus } from '../containers/entities/container.entity';
 import { User } from '../auth/entities/user.entity';
-import { PaginatedResponseDto } from '../../common/dto/pagination.dto';
+import { PaginatedResponseDto, PaginationDto } from '../../common/dto/pagination.dto';
 
 describe('ItemsController', () => {
   let controller: ItemsController;
@@ -60,18 +60,12 @@ describe('ItemsController', () => {
     createdAt: new Date(),
     updatedAt: new Date(),
     deletedAt: null,
+    deletedByContainer: false,
     calculateTotalVolume: jest.fn(),
   };
 
   const paginatedItems = (data: Item[] = [mockItem]): PaginatedResponseDto<Item> =>
-    ({
-      data,
-      total: data.length,
-      limit: 10,
-      offset: 0,
-      totalPages: data.length > 0 ? 1 : 0,
-      currentPage: 1,
-    }) as PaginatedResponseDto<Item>;
+    new PaginatedResponseDto(data, data.length, 10, 0);
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
@@ -95,7 +89,7 @@ describe('ItemsController', () => {
     }).compile();
 
     controller = module.get<ItemsController>(ItemsController);
-    service = module.get(ItemsService);
+    service = module.get<ItemsService>(ItemsService) as jest.Mocked<ItemsService>;
   });
 
   afterEach(() => {
@@ -142,11 +136,7 @@ describe('ItemsController', () => {
       const result = await controller.findAll(query);
 
       expect(result).toEqual(expected);
-      expect(service.findAll).toHaveBeenCalledWith(
-        expect.objectContaining({ limit: 10, offset: 0 }),
-        undefined,
-        false,
-      );
+      expect(service.findAll).toHaveBeenCalledWith(query, undefined, false);
     });
 
     it('should use default pagination values when input is invalid', async () => {
@@ -159,11 +149,7 @@ describe('ItemsController', () => {
 
       await controller.findAll(query);
 
-      expect(service.findAll).toHaveBeenCalledWith(
-        expect.objectContaining({ limit: 10, offset: 0 }),
-        undefined,
-        false,
-      );
+      expect(service.findAll).toHaveBeenCalledWith(query, undefined, false);
     });
 
     it('should filter by containerId', async () => {
@@ -177,11 +163,7 @@ describe('ItemsController', () => {
 
       await controller.findAll(query);
 
-      expect(service.findAll).toHaveBeenCalledWith(
-        expect.objectContaining({ limit: 10, offset: 0 }),
-        'container-1',
-        false,
-      );
+      expect(service.findAll).toHaveBeenCalledWith(query, 'container-1', false);
     });
 
     it('should include deleted when includeDeleted is true', async () => {
@@ -195,11 +177,7 @@ describe('ItemsController', () => {
 
       await controller.findAll(query);
 
-      expect(service.findAll).toHaveBeenCalledWith(
-        expect.objectContaining({ limit: 10, offset: 0 }),
-        undefined,
-        true,
-      );
+      expect(service.findAll).toHaveBeenCalledWith(query, undefined, true);
     });
 
     it('should pass sort to the service', async () => {
@@ -213,24 +191,16 @@ describe('ItemsController', () => {
 
       await controller.findAll(query);
 
-      expect(service.findAll).toHaveBeenCalledWith(
-        expect.objectContaining({
-          limit: 10,
-          offset: 0,
-          sort: 'createdAt:DESC',
-        }),
-        undefined,
-        false,
-      );
+      expect(service.findAll).toHaveBeenCalledWith(query, undefined, false);
     });
   });
 
   describe('findDeleted', () => {
     it('should return deleted items', async () => {
       const query = {
-        limit: '10',
-        offset: '0',
-      } as any;
+        limit: 10,
+        offset: 0,
+      } as PaginationDto;
       const expected = paginatedItems([]);
 
       service.findDeleted.mockResolvedValue(expected);
@@ -238,9 +208,7 @@ describe('ItemsController', () => {
       const result = await controller.findDeleted(query);
 
       expect(result).toEqual(expected);
-      expect(service.findDeleted).toHaveBeenCalledWith(
-        expect.objectContaining({ limit: 10, offset: 0 }),
-      );
+      expect(service.findDeleted).toHaveBeenCalledWith(query);
     });
   });
 
@@ -258,11 +226,7 @@ describe('ItemsController', () => {
       const result = await controller.searchItems(queryParams);
 
       expect(result).toEqual(expected);
-      expect(service.searchItems).toHaveBeenCalledWith(
-        'test',
-        expect.objectContaining({ limit: 10, offset: 0 }),
-        undefined,
-      );
+      expect(service.searchItems).toHaveBeenCalledWith(queryParams.query, queryParams, undefined);
     });
 
     it('should search with containerId', async () => {
@@ -278,8 +242,8 @@ describe('ItemsController', () => {
       await controller.searchItems(queryParams);
 
       expect(service.searchItems).toHaveBeenCalledWith(
-        'test',
-        expect.objectContaining({ limit: 10, offset: 0 }),
+        queryParams.query,
+        queryParams,
         'container-1',
       );
     });
@@ -296,15 +260,7 @@ describe('ItemsController', () => {
 
       await controller.searchItems(queryParams);
 
-      expect(service.searchItems).toHaveBeenCalledWith(
-        'test',
-        expect.objectContaining({
-          limit: 10,
-          offset: 0,
-          sort: 'name:ASC',
-        }),
-        undefined,
-      );
+      expect(service.searchItems).toHaveBeenCalledWith(queryParams.query, queryParams, undefined);
     });
   });
 

@@ -1,21 +1,48 @@
 // test/items/items.e2e-spec.ts
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
+import { randomUUID } from 'crypto';
 import { getApp, getAuthToken } from '../setup';
+
+interface ItemResponse {
+  id: string;
+  uniqueNumber: string;
+  name: string;
+  containerId: string;
+  deletedAt: string | null;
+  deletedByContainer: boolean;
+  createdAt: string;
+  photo?: string | null;
+  packageQuantity: number;
+  productsPerPackage: number;
+  packagePrice: string | number;
+  volume: string | number;
+  totalVolume: string | number;
+}
+
+const createSuffix = (): string => randomUUID().replace(/-/g, '').slice(0, 12);
+
+const createUniqueNumber = (prefix: string): string => {
+  const normalizedPrefix = prefix
+    .toUpperCase()
+    .replace(/[^A-Z0-9-]/g, '')
+    .slice(0, 25);
+  return `${normalizedPrefix}-${createSuffix()}`;
+};
 
 describe('Items E2E', () => {
   let app: INestApplication;
   let adminToken: string;
+  let userToken: string;
   let containerId: string;
   let testItemId: string;
-  let deletedItemId: string;
 
   beforeAll(async () => {
     app = getApp();
     adminToken = await getAuthToken('admin@example.com', 'Admin@123');
+    userToken = await getAuthToken('testuser@example.com', 'Password@123');
 
-    // ✅ Use unique name to avoid conflicts
-    const uniqueContainerName = `Item Test Container ${Date.now()}`;
+    const uniqueContainerName = `Item Test Container ${createSuffix()}`;
     const container = await request(app.getHttpServer())
       .post('/v1/containers')
       .set('Authorization', `Bearer ${adminToken}`)
@@ -30,11 +57,33 @@ describe('Items E2E', () => {
   });
 
   afterAll(async () => {
-    if (containerId) {
-      await request(app.getHttpServer())
-        .delete(`/v1/containers/${containerId}`)
-        .set('Authorization', `Bearer ${adminToken}`)
-        .expect(204);
+    if (!containerId) {
+      return;
+    }
+
+    const softDeleteResponse = await request(app.getHttpServer())
+      .delete(`/v1/containers/${containerId}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+
+    if (softDeleteResponse.status !== 204 && softDeleteResponse.status !== 404) {
+      console.warn(
+        `Container cleanup failed: ${softDeleteResponse.status}`,
+        softDeleteResponse.body,
+      );
+      return;
+    }
+
+    if (softDeleteResponse.status === 204) {
+      const permanentResponse = await request(app.getHttpServer())
+        .delete(`/v1/containers/${containerId}/permanent`)
+        .set('Authorization', `Bearer ${adminToken}`);
+
+      if (permanentResponse.status !== 204 && permanentResponse.status !== 404) {
+        console.warn(
+          `Permanent cleanup failed: ${permanentResponse.status}`,
+          permanentResponse.body,
+        );
+      }
     }
   });
 
@@ -43,26 +92,27 @@ describe('Items E2E', () => {
   // ================================================================
   describe('POST /v1/items', () => {
     it('should create an item with all fields', async () => {
-      const uniqueNumber = `ITEM-E2E-${Date.now()}`;
+      const uniqueNumber = createUniqueNumber('ITEM-E2E');
+
       const response = await request(app.getHttpServer())
         .post('/v1/items')
         .set('Authorization', `Bearer ${adminToken}`)
         .send({
           uniqueNumber,
           name: 'Test Item Full',
-          photo: 'https://example.com/photo.jpg',
+          photo: 'http://localhost:3000/uploads/items/photos/test-photo.jpg',
           packageQuantity: 5,
           productsPerPackage: 10,
           packagePrice: 100.5,
           volume: 2.5,
-          containerId: containerId,
+          containerId,
         })
         .expect(201);
 
       expect(response.body).toHaveProperty('id');
       expect(response.body.uniqueNumber).toBe(uniqueNumber);
       expect(response.body.name).toBe('Test Item Full');
-      expect(response.body.photo).toBe('https://example.com/photo.jpg');
+      expect(response.body.photo).toBe('http://localhost:3000/uploads/items/photos/test-photo.jpg');
       expect(response.body.packageQuantity).toBe(5);
       expect(response.body.productsPerPackage).toBe(10);
       expect(Number(response.body.packagePrice)).toBe(100.5);
@@ -70,17 +120,18 @@ describe('Items E2E', () => {
       expect(Number(response.body.totalVolume)).toBe(12.5);
       expect(response.body.containerId).toBe(containerId);
       testItemId = response.body.id;
+      expect(typeof testItemId).toBe('string');
     });
 
     it('should trim item text fields', async () => {
-      const uniqueNumber = `ITEM-TRIM-${Date.now()}`;
+      const uniqueNumber = createUniqueNumber('ITEM-TRIM');
       const response = await request(app.getHttpServer())
         .post('/v1/items')
         .set('Authorization', `Bearer ${adminToken}`)
         .send({
           uniqueNumber: `  ${uniqueNumber}  `,
           name: '  Trimmed Item Name  ',
-          photo: '  https://example.com/photo.jpg  ',
+          photo: '  http://localhost:3000/uploads/items/photos/trimmed.jpg  ',
           packageQuantity: 1,
           productsPerPackage: 1,
           packagePrice: 10,
@@ -91,11 +142,11 @@ describe('Items E2E', () => {
 
       expect(response.body.uniqueNumber).toBe(uniqueNumber);
       expect(response.body.name).toBe('Trimmed Item Name');
-      expect(response.body.photo).toBe('https://example.com/photo.jpg');
+      expect(response.body.photo).toBe('http://localhost:3000/uploads/items/photos/trimmed.jpg');
     });
 
     it('should create an item without photo', async () => {
-      const uniqueNumber = `ITEM-NO-PHOTO-${Date.now()}`;
+      const uniqueNumber = createUniqueNumber('ITEM-NO-PHOTO');
       const response = await request(app.getHttpServer())
         .post('/v1/items')
         .set('Authorization', `Bearer ${adminToken}`)
@@ -106,32 +157,90 @@ describe('Items E2E', () => {
           productsPerPackage: 5,
           packagePrice: 50.0,
           volume: 1.0,
-          containerId: containerId,
+          containerId,
         })
         .expect(201);
 
-      // ✅ photo should be null or undefined
       expect(response.body.photo == null).toBe(true);
       expect(Number(response.body.totalVolume)).toBe(3);
     });
 
+    it('should fail to create with user role', async () => {
+      const uniqueNumber = createUniqueNumber('ITEM-USER');
+      await request(app.getHttpServer())
+        .post('/v1/items')
+        .set('Authorization', `Bearer ${userToken}`)
+        .send({
+          uniqueNumber,
+          name: 'Forbidden Item',
+          packageQuantity: 1,
+          productsPerPackage: 1,
+          packagePrice: 10,
+          volume: 1,
+          containerId,
+        })
+        .expect(403);
+    });
+
+    it('should reject creation in an archived container', async () => {
+      const container = await request(app.getHttpServer())
+        .post('/v1/containers')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          customName: `Archived Item Container ${createSuffix()}`,
+          totalVolume: 100,
+        })
+        .expect(201);
+      const tempContainerId = container.body.id;
+
+      await request(app.getHttpServer())
+        .patch(`/v1/containers/${tempContainerId}/status?status=archived`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(200);
+
+      await request(app.getHttpServer())
+        .post('/v1/items')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          uniqueNumber: createUniqueNumber('ITEM-ARCHIVED'),
+          name: 'Archived Container Item',
+          packageQuantity: 1,
+          productsPerPackage: 1,
+          packagePrice: 10,
+          volume: 1,
+          containerId: tempContainerId,
+        })
+        .expect(400);
+
+      await request(app.getHttpServer())
+        .delete(`/v1/containers/${tempContainerId}`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(204);
+
+      await request(app.getHttpServer())
+        .delete(`/v1/containers/${tempContainerId}/permanent`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(204);
+    });
+
     it('should fail without token', async () => {
+      const uniqueNumber = createUniqueNumber('ITEM-NO-TOKEN');
       await request(app.getHttpServer())
         .post('/v1/items')
         .send({
-          uniqueNumber: 'ITEM-NO-TOKEN',
+          uniqueNumber,
           name: 'No Token Item',
           packageQuantity: 1,
           productsPerPackage: 1,
           packagePrice: 10,
           volume: 1,
-          containerId: containerId,
+          containerId,
         })
         .expect(401);
     });
 
     it('should fail with duplicate uniqueNumber', async () => {
-      const uniqueNumber = `ITEM-DUP-${Date.now()}`;
+      const uniqueNumber = createUniqueNumber('ITEM-DUP');
       await request(app.getHttpServer())
         .post('/v1/items')
         .set('Authorization', `Bearer ${adminToken}`)
@@ -142,7 +251,7 @@ describe('Items E2E', () => {
           productsPerPackage: 1,
           packagePrice: 10,
           volume: 1,
-          containerId: containerId,
+          containerId,
         })
         .expect(201);
 
@@ -156,7 +265,7 @@ describe('Items E2E', () => {
           productsPerPackage: 1,
           packagePrice: 10,
           volume: 1,
-          containerId: containerId,
+          containerId,
         })
         .expect(409);
     });
@@ -166,37 +275,43 @@ describe('Items E2E', () => {
         .post('/v1/containers')
         .set('Authorization', `Bearer ${adminToken}`)
         .send({
-          customName: `Small Container ${Date.now()}`,
+          customName: `Small Container ${createSuffix()}`,
           totalVolume: 1,
         })
         .expect(201);
+      const tempContainerId = smallContainer.body.id;
 
       await request(app.getHttpServer())
         .post('/v1/items')
         .set('Authorization', `Bearer ${adminToken}`)
         .send({
-          uniqueNumber: `ITEM-TOO-LARGE-${Date.now()}`,
+          uniqueNumber: createUniqueNumber('ITEM-TOO-LARGE'),
           name: 'Too Large Item',
           packageQuantity: 10,
           productsPerPackage: 10,
           packagePrice: 100,
           volume: 10,
-          containerId: smallContainer.body.id,
+          containerId: tempContainerId,
         })
         .expect(400);
 
       await request(app.getHttpServer())
-        .delete(`/v1/containers/${smallContainer.body.id}`)
+        .delete(`/v1/containers/${tempContainerId}`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(204);
+
+      await request(app.getHttpServer())
+        .delete(`/v1/containers/${tempContainerId}/permanent`)
         .set('Authorization', `Bearer ${adminToken}`)
         .expect(204);
     });
 
-    it('should fail with invalid containerId', async () => {
+    it('should fail with non-existent containerId', async () => {
       await request(app.getHttpServer())
         .post('/v1/items')
         .set('Authorization', `Bearer ${adminToken}`)
         .send({
-          uniqueNumber: `ITEM-INVALID-CONTAINER-${Date.now()}`,
+          uniqueNumber: createUniqueNumber('ITEM-NO-CONT'),
           name: 'Invalid Container',
           packageQuantity: 1,
           productsPerPackage: 1,
@@ -213,7 +328,7 @@ describe('Items E2E', () => {
         .set('Authorization', `Bearer ${adminToken}`)
         .send({
           name: 'Missing Fields',
-          containerId: containerId,
+          containerId,
         })
         .expect(400);
     });
@@ -223,13 +338,13 @@ describe('Items E2E', () => {
         .post('/v1/items')
         .set('Authorization', `Bearer ${adminToken}`)
         .send({
-          uniqueNumber: `ITEM-NEGATIVE-${Date.now()}`,
+          uniqueNumber: createUniqueNumber('ITEM-NEGATIVE'),
           name: 'Negative Quantity',
           packageQuantity: -5,
           productsPerPackage: 1,
           packagePrice: 10,
           volume: 1,
-          containerId: containerId,
+          containerId,
         })
         .expect(400);
     });
@@ -239,7 +354,7 @@ describe('Items E2E', () => {
         .post('/v1/items')
         .set('Authorization', `Bearer ${adminToken}`)
         .send({
-          uniqueNumber: `ITEM-DECIMAL-QTY-${Date.now()}`,
+          uniqueNumber: createUniqueNumber('ITEM-DECIMAL-QTY'),
           name: 'Decimal Quantity',
           packageQuantity: 1.5,
           productsPerPackage: 1,
@@ -255,7 +370,7 @@ describe('Items E2E', () => {
         .post('/v1/items')
         .set('Authorization', `Bearer ${adminToken}`)
         .send({
-          uniqueNumber: `ITEM-PRICE-PRECISION-${Date.now()}`,
+          uniqueNumber: createUniqueNumber('ITEM-PRICE-PRECISION'),
           name: 'Price Precision',
           packageQuantity: 1,
           productsPerPackage: 1,
@@ -271,7 +386,7 @@ describe('Items E2E', () => {
         .post('/v1/items')
         .set('Authorization', `Bearer ${adminToken}`)
         .send({
-          uniqueNumber: `ITEM-VOLUME-PRECISION-${Date.now()}`,
+          uniqueNumber: createUniqueNumber('ITEM-VOLUME-PRECISION'),
           name: 'Volume Precision',
           packageQuantity: 1,
           productsPerPackage: 1,
@@ -287,7 +402,7 @@ describe('Items E2E', () => {
         .post('/v1/items')
         .set('Authorization', `Bearer ${adminToken}`)
         .send({
-          uniqueNumber: `ITEM-ZERO-VOL-${Date.now()}`,
+          uniqueNumber: createUniqueNumber('ITEM-ZERO-VOL'),
           name: 'Zero Volume',
           packageQuantity: 1,
           productsPerPackage: 1,
@@ -303,13 +418,13 @@ describe('Items E2E', () => {
         .post('/v1/items')
         .set('Authorization', `Bearer ${adminToken}`)
         .send({
-          uniqueNumber: `ITEM-NEGATIVE-VOL-${Date.now()}`,
+          uniqueNumber: createUniqueNumber('ITEM-NEGATIVE-VOL'),
           name: 'Negative Volume',
           packageQuantity: 1,
           productsPerPackage: 1,
           packagePrice: 10,
           volume: -1,
-          containerId: containerId,
+          containerId,
         })
         .expect(400);
     });
@@ -335,13 +450,22 @@ describe('Items E2E', () => {
       expect(response.body).toHaveProperty('hasMore');
     });
 
+    it('should reject unknown query parameters', async () => {
+      await request(app.getHttpServer())
+        .get('/v1/items?unknown=value')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(400);
+    });
+
     it('should filter items by containerId', async () => {
       const response = await request(app.getHttpServer())
         .get(`/v1/items?containerId=${containerId}`)
         .set('Authorization', `Bearer ${adminToken}`)
         .expect(200);
 
-      expect(response.body.data.every((item: any) => item.containerId === containerId)).toBe(true);
+      expect(
+        response.body.data.every((item: ItemResponse) => item.containerId === containerId),
+      ).toBe(true);
     });
 
     it('should paginate results', async () => {
@@ -364,11 +488,9 @@ describe('Items E2E', () => {
         .set('Authorization', `Bearer ${adminToken}`)
         .expect(200);
 
-      if (response.body.data.length > 1) {
-        const first = response.body.data[0].name;
-        const second = response.body.data[1].name;
-        expect(first.localeCompare(second)).toBeLessThanOrEqual(0);
-      }
+      const names = (response.body.data as ItemResponse[]).map((item) => item.name);
+      const sortedNames = [...names].sort((a, b) => a.localeCompare(b));
+      expect(names).toEqual(sortedNames);
     });
 
     it('should sort by createdAt DESC', async () => {
@@ -377,15 +499,15 @@ describe('Items E2E', () => {
         .set('Authorization', `Bearer ${adminToken}`)
         .expect(200);
 
-      if (response.body.data.length > 1) {
-        const first = new Date(response.body.data[0].createdAt).getTime();
-        const second = new Date(response.body.data[1].createdAt).getTime();
-        expect(first).toBeGreaterThanOrEqual(second);
-      }
+      const timestamps = (response.body.data as ItemResponse[]).map((item) =>
+        new Date(item.createdAt).getTime(),
+      );
+      const sortedTimestamps = [...timestamps].sort((a, b) => b - a);
+      expect(timestamps).toEqual(sortedTimestamps);
     });
 
     it('should include deleted items when includeDeleted=true', async () => {
-      const uniqueNumber = `ITEM-DELETE-LIST-${Date.now()}`;
+      const uniqueNumber = createUniqueNumber('ITEM-DEL-LIST');
       const itemToDelete = await request(app.getHttpServer())
         .post('/v1/items')
         .set('Authorization', `Bearer ${adminToken}`)
@@ -396,7 +518,7 @@ describe('Items E2E', () => {
           productsPerPackage: 1,
           packagePrice: 10,
           volume: 1,
-          containerId: containerId,
+          containerId,
         })
         .expect(201);
 
@@ -414,8 +536,8 @@ describe('Items E2E', () => {
 
       expect(response.body).toHaveProperty('hasMore');
       expect(
-        response.body.data.some(
-          (item: any) => item.id === itemToDelete.body.id && item.deletedAt !== null,
+        (response.body.data as ItemResponse[]).some(
+          (item) => item.id === itemToDelete.body.id && item.deletedAt !== null,
         ),
       ).toBe(true);
     });
@@ -432,7 +554,7 @@ describe('Items E2E', () => {
     let itemForDeletedId: string;
 
     beforeAll(async () => {
-      const uniqueNumber = `ITEM-DELETED-API-${Date.now()}`;
+      const uniqueNumber = createUniqueNumber('ITEM-DEL-API');
       const item = await request(app.getHttpServer())
         .post('/v1/items')
         .set('Authorization', `Bearer ${adminToken}`)
@@ -443,7 +565,7 @@ describe('Items E2E', () => {
           productsPerPackage: 1,
           packagePrice: 10,
           volume: 1,
-          containerId: containerId,
+          containerId,
         })
         .expect(201);
       itemForDeletedId = item.body.id;
@@ -462,7 +584,16 @@ describe('Items E2E', () => {
 
       expect(Array.isArray(response.body.data)).toBe(true);
       expect(response.body).toHaveProperty('hasMore');
-      expect(response.body.data.some((item: any) => item.id === itemForDeletedId)).toBe(true);
+      expect(
+        (response.body.data as ItemResponse[]).some((item) => item.id === itemForDeletedId),
+      ).toBe(true);
+    });
+
+    it('should fail with user role', async () => {
+      await request(app.getHttpServer())
+        .get('/v1/items/deleted')
+        .set('Authorization', `Bearer ${userToken}`)
+        .expect(403);
     });
 
     it('should fail without token', async () => {
@@ -485,8 +616,15 @@ describe('Items E2E', () => {
       expect(response.body.container.id).toBe(containerId);
     });
 
+    it('should reject invalid includeDeleted value', async () => {
+      await request(app.getHttpServer())
+        .get(`/v1/items/${testItemId}?includeDeleted=invalid`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(400);
+    });
+
     it('should get deleted item with includeDeleted=true', async () => {
-      const uniqueNumber = `ITEM-GET-DELETED-${Date.now()}`;
+      const uniqueNumber = createUniqueNumber('ITEM-GET-DELETED');
       const item = await request(app.getHttpServer())
         .post('/v1/items')
         .set('Authorization', `Bearer ${adminToken}`)
@@ -497,7 +635,7 @@ describe('Items E2E', () => {
           productsPerPackage: 1,
           packagePrice: 10,
           volume: 1,
-          containerId: containerId,
+          containerId,
         })
         .expect(201);
 
@@ -540,16 +678,33 @@ describe('Items E2E', () => {
   // ================================================================
   describe('GET /v1/items/search', () => {
     it('should search items by name', async () => {
+      const searchTerm = `SearchName-${createSuffix()}`;
+      const created = await request(app.getHttpServer())
+        .post('/v1/items')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          uniqueNumber: createUniqueNumber('ITEM-SEARCH-NAME'),
+          name: searchTerm,
+          packageQuantity: 1,
+          productsPerPackage: 1,
+          packagePrice: 10,
+          volume: 1,
+          containerId,
+        })
+        .expect(201);
+
       const response = await request(app.getHttpServer())
-        .get('/v1/items/search?query=Test')
+        .get(`/v1/items/search?query=${encodeURIComponent(searchTerm)}`)
         .set('Authorization', `Bearer ${adminToken}`)
         .expect(200);
 
-      expect(response.body.data.some((item: any) => item.name.includes('Test'))).toBe(true);
+      expect(
+        (response.body.data as ItemResponse[]).some((item) => item.id === created.body.id),
+      ).toBe(true);
     });
 
     it('should search items by uniqueNumber', async () => {
-      const uniqueNumber = `ITEM-SEARCH-${Date.now()}`;
+      const uniqueNumber = createUniqueNumber('ITEM-SEARCH');
       await request(app.getHttpServer())
         .post('/v1/items')
         .set('Authorization', `Bearer ${adminToken}`)
@@ -560,7 +715,7 @@ describe('Items E2E', () => {
           productsPerPackage: 1,
           packagePrice: 10,
           volume: 1,
-          containerId: containerId,
+          containerId,
         })
         .expect(201);
 
@@ -570,29 +725,63 @@ describe('Items E2E', () => {
         .expect(200);
 
       expect(response.body.data.length).toBeGreaterThan(0);
-      expect(response.body.data[0].uniqueNumber).toBe(uniqueNumber);
+      expect(
+        (response.body.data as ItemResponse[]).some((item) => item.uniqueNumber === uniqueNumber),
+      ).toBe(true);
     });
 
     it('should search items in specific container', async () => {
+      const searchTerm = `ContainerSearch-${createSuffix()}`;
+      const created = await request(app.getHttpServer())
+        .post('/v1/items')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          uniqueNumber: createUniqueNumber('ITEM-CSEARCH'),
+          name: searchTerm,
+          packageQuantity: 1,
+          productsPerPackage: 1,
+          packagePrice: 10,
+          volume: 1,
+          containerId,
+        })
+        .expect(201);
+
       const response = await request(app.getHttpServer())
-        .get(`/v1/items/search?query=Test&containerId=${containerId}`)
+        .get(`/v1/items/search?query=${encodeURIComponent(searchTerm)}&containerId=${containerId}`)
         .set('Authorization', `Bearer ${adminToken}`)
         .expect(200);
 
       expect(
-        response.body.data.every(
-          (item: any) => item.containerId === containerId || item.container?.id === containerId,
-        ),
+        (response.body.data as ItemResponse[]).some((item) => item.id === created.body.id),
+      ).toBe(true);
+      expect(
+        (response.body.data as ItemResponse[]).every((item) => item.containerId === containerId),
       ).toBe(true);
     });
 
     it('should return empty array for non-existent search', async () => {
+      const missingQuery = `Missing-${createSuffix()}`;
       const response = await request(app.getHttpServer())
-        .get('/v1/items/search?query=NonExistentItemXYZ')
+        .get(`/v1/items/search?query=${encodeURIComponent(missingQuery)}`)
         .set('Authorization', `Bearer ${adminToken}`)
         .expect(200);
 
       expect(response.body.data.length).toBe(0);
+    });
+
+    it('should reject a search query longer than 200 characters', async () => {
+      const query = 'a'.repeat(201);
+      await request(app.getHttpServer())
+        .get(`/v1/items/search?query=${query}`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(400);
+    });
+
+    it('should reject unknown query parameters in search', async () => {
+      await request(app.getHttpServer())
+        .get('/v1/items/search?query=test&unknown=value')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(400);
     });
 
     it('should fail with empty query', async () => {
@@ -610,13 +799,32 @@ describe('Items E2E', () => {
     });
 
     it('should paginate search results', async () => {
+      const searchTerm = `Pagination-${createSuffix()}`;
+
+      for (let index = 0; index < 2; index += 1) {
+        await request(app.getHttpServer())
+          .post('/v1/items')
+          .set('Authorization', `Bearer ${adminToken}`)
+          .send({
+            uniqueNumber: createUniqueNumber('ITEM-PAGE'),
+            name: `${searchTerm}-${index}`,
+            packageQuantity: 1,
+            productsPerPackage: 1,
+            packagePrice: 10,
+            volume: 1,
+            containerId,
+          })
+          .expect(201);
+      }
+
       const response = await request(app.getHttpServer())
-        .get('/v1/items/search?query=Test&limit=1&offset=0')
+        .get(`/v1/items/search?query=${encodeURIComponent(searchTerm)}&limit=1&offset=0`)
         .set('Authorization', `Bearer ${adminToken}`)
         .expect(200);
 
-      expect(response.body.data.length).toBeLessThanOrEqual(1);
-      expect(response.body).toHaveProperty('hasMore');
+      expect(response.body.data).toHaveLength(1);
+      expect(response.body.total).toBe(2);
+      expect(response.body.hasMore).toBe(true);
     });
 
     it('should fail without token', async () => {
@@ -631,7 +839,7 @@ describe('Items E2E', () => {
     let updateItemId: string;
 
     beforeAll(async () => {
-      const uniqueNumber = `ITEM-UPDATE-${Date.now()}`;
+      const uniqueNumber = createUniqueNumber('ITEM-UPDATE');
       const item = await request(app.getHttpServer())
         .post('/v1/items')
         .set('Authorization', `Bearer ${adminToken}`)
@@ -642,7 +850,7 @@ describe('Items E2E', () => {
           productsPerPackage: 1,
           packagePrice: 10,
           volume: 1,
-          containerId: containerId,
+          containerId,
         })
         .expect(201);
       updateItemId = item.body.id;
@@ -704,27 +912,118 @@ describe('Items E2E', () => {
       expect(Number(response.body.totalVolume)).toBe(4.5);
     });
 
-    it('should fail to update item with insufficient volume', async () => {
-      const smallContainer = await request(app.getHttpServer())
+    it('should reject updating to a duplicate unique number', async () => {
+      const firstNumber = createUniqueNumber('ITEM-FIRST');
+      const secondNumber = createUniqueNumber('ITEM-SECOND');
+
+      await request(app.getHttpServer())
+        .post('/v1/items')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          uniqueNumber: firstNumber,
+          name: 'First Item',
+          packageQuantity: 1,
+          productsPerPackage: 1,
+          packagePrice: 10,
+          volume: 1,
+          containerId,
+        })
+        .expect(201);
+
+      const second = await request(app.getHttpServer())
+        .post('/v1/items')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          uniqueNumber: secondNumber,
+          name: 'Second Item',
+          packageQuantity: 1,
+          productsPerPackage: 1,
+          packagePrice: 10,
+          volume: 1,
+          containerId,
+        })
+        .expect(201);
+
+      await request(app.getHttpServer())
+        .put(`/v1/items/${second.body.id}`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          uniqueNumber: firstNumber,
+        })
+        .expect(409);
+    });
+
+    it('should reject updating an item in an inactive container', async () => {
+      const container = await request(app.getHttpServer())
         .post('/v1/containers')
         .set('Authorization', `Bearer ${adminToken}`)
         .send({
-          customName: `Small Container for Update ${Date.now()}`,
-          totalVolume: 2,
+          customName: `Inactive Update Container ${createSuffix()}`,
+          totalVolume: 100,
         })
         .expect(201);
+      const tempContainerId = container.body.id;
 
       const item = await request(app.getHttpServer())
         .post('/v1/items')
         .set('Authorization', `Bearer ${adminToken}`)
         .send({
-          uniqueNumber: `ITEM-SMALL-UPDATE-${Date.now()}`,
+          uniqueNumber: createUniqueNumber('ITEM-INACTIVE'),
+          name: 'Inactive Container Item',
+          packageQuantity: 1,
+          productsPerPackage: 1,
+          packagePrice: 10,
+          volume: 1,
+          containerId: tempContainerId,
+        })
+        .expect(201);
+
+      await request(app.getHttpServer())
+        .patch(`/v1/containers/${tempContainerId}/status?status=archived`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(200);
+
+      await request(app.getHttpServer())
+        .put(`/v1/items/${item.body.id}`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          name: 'Update in Inactive Container',
+        })
+        .expect(400);
+
+      await request(app.getHttpServer())
+        .delete(`/v1/containers/${tempContainerId}`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(204);
+
+      await request(app.getHttpServer())
+        .delete(`/v1/containers/${tempContainerId}/permanent`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(204);
+    });
+
+    it('should fail to update item with insufficient volume', async () => {
+      const smallContainer = await request(app.getHttpServer())
+        .post('/v1/containers')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          customName: `Small Container for Update ${createSuffix()}`,
+          totalVolume: 2,
+        })
+        .expect(201);
+      const tempContainerId = smallContainer.body.id;
+
+      const item = await request(app.getHttpServer())
+        .post('/v1/items')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          uniqueNumber: createUniqueNumber('ITEM-SMALL-UPDATE'),
           name: 'Small Container Item',
           packageQuantity: 1,
           productsPerPackage: 1,
           packagePrice: 10,
           volume: 1,
-          containerId: smallContainer.body.id,
+          containerId: tempContainerId,
         })
         .expect(201);
 
@@ -738,9 +1037,24 @@ describe('Items E2E', () => {
         .expect(400);
 
       await request(app.getHttpServer())
-        .delete(`/v1/containers/${smallContainer.body.id}`)
+        .delete(`/v1/containers/${tempContainerId}`)
         .set('Authorization', `Bearer ${adminToken}`)
         .expect(204);
+
+      await request(app.getHttpServer())
+        .delete(`/v1/containers/${tempContainerId}/permanent`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(204);
+    });
+
+    it('should fail with user role', async () => {
+      await request(app.getHttpServer())
+        .put(`/v1/items/${updateItemId}`)
+        .set('Authorization', `Bearer ${userToken}`)
+        .send({
+          name: 'Hacked Name',
+        })
+        .expect(403);
     });
 
     it('should fail without token', async () => {
@@ -761,57 +1075,82 @@ describe('Items E2E', () => {
         })
         .expect(404);
     });
+
+    it('should reject invalid UUID for update', async () => {
+      await request(app.getHttpServer())
+        .put('/v1/items/not-a-uuid')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          name: 'Invalid UUID',
+        })
+        .expect(400);
+    });
   });
 
   // ================================================================
   // SOFT DELETE ITEM
   // ================================================================
   describe('DELETE /v1/items/:id (soft delete)', () => {
-    let itemToSoftDeleteId: string;
-
-    beforeAll(async () => {
-      const uniqueNumber = `ITEM-SOFT-DELETE-${Date.now()}`;
+    it('should soft delete an item and expose it only with includeDeleted', async () => {
       const item = await request(app.getHttpServer())
         .post('/v1/items')
         .set('Authorization', `Bearer ${adminToken}`)
         .send({
-          uniqueNumber,
+          uniqueNumber: createUniqueNumber('ITEM-SOFT-DELETE'),
           name: 'Item to Soft Delete',
           packageQuantity: 1,
           productsPerPackage: 1,
           packagePrice: 10,
           volume: 1,
-          containerId: containerId,
+          containerId,
         })
         .expect(201);
-      itemToSoftDeleteId = item.body.id;
-    });
 
-    it('should soft delete an item', async () => {
+      const itemId = item.body.id;
+
       await request(app.getHttpServer())
-        .delete(`/v1/items/${itemToSoftDeleteId}`)
+        .delete(`/v1/items/${itemId}`)
         .set('Authorization', `Bearer ${adminToken}`)
         .expect(204);
-    });
 
-    it('should not find deleted item in normal GET', async () => {
       await request(app.getHttpServer())
-        .get(`/v1/items/${itemToSoftDeleteId}`)
+        .get(`/v1/items/${itemId}`)
         .set('Authorization', `Bearer ${adminToken}`)
         .expect(404);
-    });
 
-    it('should find deleted item with includeDeleted=true', async () => {
-      const response = await request(app.getHttpServer())
-        .get(`/v1/items/${itemToSoftDeleteId}?includeDeleted=true`)
+      const deletedItem = await request(app.getHttpServer())
+        .get(`/v1/items/${itemId}?includeDeleted=true`)
         .set('Authorization', `Bearer ${adminToken}`)
         .expect(200);
 
-      expect(response.body.deletedAt).not.toBeNull();
+      expect(deletedItem.body.deletedAt).not.toBeNull();
+      expect(deletedItem.body.deletedByContainer).toBe(false);
+    });
+
+    it('should fail with user role', async () => {
+      const uniqueNumber = createUniqueNumber('ITEM-DELETE-USER');
+      const item = await request(app.getHttpServer())
+        .post('/v1/items')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          uniqueNumber,
+          name: 'User Delete Attempt',
+          packageQuantity: 1,
+          productsPerPackage: 1,
+          packagePrice: 10,
+          volume: 1,
+          containerId,
+        })
+        .expect(201);
+
+      await request(app.getHttpServer())
+        .delete(`/v1/items/${item.body.id}`)
+        .set('Authorization', `Bearer ${userToken}`)
+        .expect(403);
     });
 
     it('should fail to soft delete without token', async () => {
-      const uniqueNumber = `ITEM-DELETE-NO-TOKEN-${Date.now()}`;
+      const uniqueNumber = createUniqueNumber('ITEM-DELETE-NO-TOKEN');
       const item = await request(app.getHttpServer())
         .post('/v1/items')
         .set('Authorization', `Bearer ${adminToken}`)
@@ -822,7 +1161,7 @@ describe('Items E2E', () => {
           productsPerPackage: 1,
           packagePrice: 10,
           volume: 1,
-          containerId: containerId,
+          containerId,
         })
         .expect(201);
 
@@ -835,61 +1174,112 @@ describe('Items E2E', () => {
         .set('Authorization', `Bearer ${adminToken}`)
         .expect(404);
     });
+
+    it('should reject invalid UUID for soft delete', async () => {
+      await request(app.getHttpServer())
+        .delete('/v1/items/not-a-uuid')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(400);
+    });
   });
 
   // ================================================================
   // RESTORE ITEM
   // ================================================================
   describe('PUT /v1/items/:id/restore', () => {
-    let itemToRestoreId: string;
-
-    beforeAll(async () => {
-      const uniqueNumber = `ITEM-RESTORE-${Date.now()}`;
+    it('should restore a soft-deleted item and find it normally', async () => {
       const item = await request(app.getHttpServer())
         .post('/v1/items')
         .set('Authorization', `Bearer ${adminToken}`)
         .send({
-          uniqueNumber,
+          uniqueNumber: createUniqueNumber('ITEM-RESTORE'),
           name: 'Item to Restore',
           packageQuantity: 1,
           productsPerPackage: 1,
           packagePrice: 10,
           volume: 1,
-          containerId: containerId,
+          containerId,
         })
         .expect(201);
-      itemToRestoreId = item.body.id;
 
       await request(app.getHttpServer())
-        .delete(`/v1/items/${itemToRestoreId}`)
+        .delete(`/v1/items/${item.body.id}`)
         .set('Authorization', `Bearer ${adminToken}`)
         .expect(204);
-    });
 
-    it('should restore a soft-deleted item', async () => {
-      const response = await request(app.getHttpServer())
-        .put(`/v1/items/${itemToRestoreId}/restore`)
+      const restored = await request(app.getHttpServer())
+        .put(`/v1/items/${item.body.id}/restore`)
         .set('Authorization', `Bearer ${adminToken}`)
         .expect(200);
 
-      expect(response.body.id).toBe(itemToRestoreId);
-      expect(response.body.deletedAt).toBeNull();
-    });
+      expect(restored.body.deletedAt).toBeNull();
 
-    it('should find restored item in normal GET', async () => {
-      const response = await request(app.getHttpServer())
-        .get(`/v1/items/${itemToRestoreId}`)
-        .set('Authorization', `Bearer ${adminToken}`)
-        .expect(200);
-
-      expect(response.body.deletedAt).toBeNull();
-    });
-
-    it('should fail to restore non-deleted item', async () => {
       await request(app.getHttpServer())
-        .put(`/v1/items/${itemToRestoreId}/restore`)
+        .get(`/v1/items/${item.body.id}`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(200);
+    });
+
+    it('should fail to restore an item that was not soft-deleted', async () => {
+      const item = await request(app.getHttpServer())
+        .post('/v1/items')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          uniqueNumber: createUniqueNumber('ITEM-ACTIVE-RESTORE'),
+          name: 'Active Restore',
+          packageQuantity: 1,
+          productsPerPackage: 1,
+          packagePrice: 10,
+          volume: 1,
+          containerId,
+        })
+        .expect(201);
+
+      await request(app.getHttpServer())
+        .put(`/v1/items/${item.body.id}/restore`)
         .set('Authorization', `Bearer ${adminToken}`)
         .expect(400);
+    });
+
+    it('should reject restoring an item deleted with its container', async () => {
+      const container = await request(app.getHttpServer())
+        .post('/v1/containers')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          customName: `Cascade Restore ${createSuffix()}`,
+          totalVolume: 100,
+        })
+        .expect(201);
+      const tempContainerId = container.body.id;
+
+      const item = await request(app.getHttpServer())
+        .post('/v1/items')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          uniqueNumber: createUniqueNumber('ITEM-CASCADE'),
+          name: 'Cascade Item',
+          packageQuantity: 1,
+          productsPerPackage: 1,
+          packagePrice: 10,
+          volume: 1,
+          containerId: tempContainerId,
+        })
+        .expect(201);
+
+      await request(app.getHttpServer())
+        .delete(`/v1/containers/${tempContainerId}`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(204);
+
+      await request(app.getHttpServer())
+        .put(`/v1/items/${item.body.id}/restore`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(400);
+
+      await request(app.getHttpServer())
+        .delete(`/v1/containers/${tempContainerId}/permanent`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(204);
     });
 
     it('should fail to restore an item when its container is deleted', async () => {
@@ -897,22 +1287,23 @@ describe('Items E2E', () => {
         .post('/v1/containers')
         .set('Authorization', `Bearer ${adminToken}`)
         .send({
-          customName: `Deleted Container Restore ${Date.now()}`,
+          customName: `Deleted Container Restore ${createSuffix()}`,
           totalVolume: 20,
         })
         .expect(201);
+      const tempContainerId = temporaryContainer.body.id;
 
       const item = await request(app.getHttpServer())
         .post('/v1/items')
         .set('Authorization', `Bearer ${adminToken}`)
         .send({
-          uniqueNumber: `ITEM-DELETED-CONTAINER-${Date.now()}`,
+          uniqueNumber: createUniqueNumber('ITEM-DELETED-CONTAINER'),
           name: 'Deleted Container Item',
           packageQuantity: 1,
           productsPerPackage: 1,
           packagePrice: 10,
           volume: 1,
-          containerId: temporaryContainer.body.id,
+          containerId: tempContainerId,
         })
         .expect(201);
 
@@ -922,7 +1313,7 @@ describe('Items E2E', () => {
         .expect(204);
 
       await request(app.getHttpServer())
-        .delete(`/v1/containers/${temporaryContainer.body.id}`)
+        .delete(`/v1/containers/${tempContainerId}`)
         .set('Authorization', `Bearer ${adminToken}`)
         .expect(204);
 
@@ -930,10 +1321,102 @@ describe('Items E2E', () => {
         .put(`/v1/items/${item.body.id}/restore`)
         .set('Authorization', `Bearer ${adminToken}`)
         .expect(400);
+
+      await request(app.getHttpServer())
+        .delete(`/v1/containers/${tempContainerId}/permanent`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(204);
+    });
+
+    it('should reject restore when container has insufficient volume', async () => {
+      const container = await request(app.getHttpServer())
+        .post('/v1/containers')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          customName: `Restore Capacity ${createSuffix()}`,
+          totalVolume: 2,
+        })
+        .expect(201);
+      const tempContainerId = container.body.id;
+
+      const firstItem = await request(app.getHttpServer())
+        .post('/v1/items')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          uniqueNumber: createUniqueNumber('ITEM-RCAP-A'),
+          name: 'Restore Capacity A',
+          packageQuantity: 1,
+          productsPerPackage: 1,
+          packagePrice: 10,
+          volume: 1,
+          containerId: tempContainerId,
+        })
+        .expect(201);
+
+      await request(app.getHttpServer())
+        .delete(`/v1/items/${firstItem.body.id}`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(204);
+
+      await request(app.getHttpServer())
+        .post('/v1/items')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          uniqueNumber: createUniqueNumber('ITEM-RCAP-B'),
+          name: 'Restore Capacity B',
+          packageQuantity: 1,
+          productsPerPackage: 1,
+          packagePrice: 10,
+          volume: 2,
+          containerId: tempContainerId,
+        })
+        .expect(201);
+
+      await request(app.getHttpServer())
+        .put(`/v1/items/${firstItem.body.id}/restore`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(400);
+
+      await request(app.getHttpServer())
+        .delete(`/v1/containers/${tempContainerId}`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(204);
+
+      await request(app.getHttpServer())
+        .delete(`/v1/containers/${tempContainerId}/permanent`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(204);
+    });
+
+    it('should fail with user role', async () => {
+      const uniqueNumber = createUniqueNumber('ITEM-RESTORE-USER');
+      const item = await request(app.getHttpServer())
+        .post('/v1/items')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          uniqueNumber,
+          name: 'User Restore Attempt',
+          packageQuantity: 1,
+          productsPerPackage: 1,
+          packagePrice: 10,
+          volume: 1,
+          containerId,
+        })
+        .expect(201);
+
+      await request(app.getHttpServer())
+        .delete(`/v1/items/${item.body.id}`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(204);
+
+      await request(app.getHttpServer())
+        .put(`/v1/items/${item.body.id}/restore`)
+        .set('Authorization', `Bearer ${userToken}`)
+        .expect(403);
     });
 
     it('should fail to restore without token', async () => {
-      const uniqueNumber = `ITEM-RESTORE-NO-TOKEN-${Date.now()}`;
+      const uniqueNumber = createUniqueNumber('ITEM-RESTORE-NO-TOKEN');
       const item = await request(app.getHttpServer())
         .post('/v1/items')
         .set('Authorization', `Bearer ${adminToken}`)
@@ -944,7 +1427,7 @@ describe('Items E2E', () => {
           productsPerPackage: 1,
           packagePrice: 10,
           volume: 1,
-          containerId: containerId,
+          containerId,
         })
         .expect(201);
 
@@ -955,16 +1438,90 @@ describe('Items E2E', () => {
 
       await request(app.getHttpServer()).put(`/v1/items/${item.body.id}/restore`).expect(401);
     });
+
+    it('should fail to restore non-existent item', async () => {
+      await request(app.getHttpServer())
+        .put('/v1/items/00000000-0000-4000-8000-000000000000/restore')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(404);
+    });
+
+    it('should reject invalid UUID for restore', async () => {
+      await request(app.getHttpServer())
+        .put('/v1/items/not-a-uuid/restore')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(400);
+    });
   });
 
   // ================================================================
   // PERMANENT DELETE ITEM
   // ================================================================
   describe('DELETE /v1/items/:id/permanent', () => {
-    let itemToPermanentDeleteId: string;
+    it('should reject permanent deletion of an active item', async () => {
+      const item = await request(app.getHttpServer())
+        .post('/v1/items')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          uniqueNumber: createUniqueNumber('ITEM-ACTIVE-PERM'),
+          name: 'Active Permanent Delete',
+          packageQuantity: 1,
+          productsPerPackage: 1,
+          packagePrice: 10,
+          volume: 1,
+          containerId,
+        })
+        .expect(201);
 
-    beforeAll(async () => {
-      const uniqueNumber = `ITEM-PERM-${Date.now()}`;
+      await request(app.getHttpServer())
+        .delete(`/v1/items/${item.body.id}/permanent`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(400);
+    });
+
+    it('should reject permanent deletion of an item deleted with its container', async () => {
+      const container = await request(app.getHttpServer())
+        .post('/v1/containers')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          customName: `Container For Cascade Perm ${createSuffix()}`,
+          totalVolume: 50,
+        })
+        .expect(201);
+      const tempContainerId = container.body.id;
+
+      const item = await request(app.getHttpServer())
+        .post('/v1/items')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          uniqueNumber: createUniqueNumber('ITEM-CASCADE-PERM'),
+          name: 'Cascade Perm Item',
+          packageQuantity: 1,
+          productsPerPackage: 1,
+          packagePrice: 10,
+          volume: 1,
+          containerId: tempContainerId,
+        })
+        .expect(201);
+
+      await request(app.getHttpServer())
+        .delete(`/v1/containers/${tempContainerId}`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(204);
+
+      await request(app.getHttpServer())
+        .delete(`/v1/items/${item.body.id}/permanent`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(400);
+
+      await request(app.getHttpServer())
+        .delete(`/v1/containers/${tempContainerId}/permanent`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(204);
+    });
+
+    it('should permanently delete an item and no longer find it', async () => {
+      const uniqueNumber = createUniqueNumber('ITEM-PERM');
       const item = await request(app.getHttpServer())
         .post('/v1/items')
         .set('Authorization', `Bearer ${adminToken}`)
@@ -975,33 +1532,56 @@ describe('Items E2E', () => {
           productsPerPackage: 1,
           packagePrice: 10,
           volume: 1,
-          containerId: containerId,
+          containerId,
         })
         .expect(201);
-      itemToPermanentDeleteId = item.body.id;
-    });
+      const itemId = item.body.id;
 
-    it('should permanently delete an item', async () => {
       await request(app.getHttpServer())
-        .delete(`/v1/items/${itemToPermanentDeleteId}`)
+        .delete(`/v1/items/${itemId}`)
         .set('Authorization', `Bearer ${adminToken}`)
         .expect(204);
 
       await request(app.getHttpServer())
-        .delete(`/v1/items/${itemToPermanentDeleteId}/permanent`)
+        .delete(`/v1/items/${itemId}/permanent`)
         .set('Authorization', `Bearer ${adminToken}`)
         .expect(204);
-    });
 
-    it('should return 404 after permanent delete', async () => {
       await request(app.getHttpServer())
-        .get(`/v1/items/${itemToPermanentDeleteId}?includeDeleted=true`)
+        .get(`/v1/items/${itemId}?includeDeleted=true`)
         .set('Authorization', `Bearer ${adminToken}`)
         .expect(404);
     });
 
+    it('should fail with user role', async () => {
+      const uniqueNumber = createUniqueNumber('ITEM-PERM-USER');
+      const item = await request(app.getHttpServer())
+        .post('/v1/items')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          uniqueNumber,
+          name: 'User Permanent Attempt',
+          packageQuantity: 1,
+          productsPerPackage: 1,
+          packagePrice: 10,
+          volume: 1,
+          containerId,
+        })
+        .expect(201);
+
+      await request(app.getHttpServer())
+        .delete(`/v1/items/${item.body.id}`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(204);
+
+      await request(app.getHttpServer())
+        .delete(`/v1/items/${item.body.id}/permanent`)
+        .set('Authorization', `Bearer ${userToken}`)
+        .expect(403);
+    });
+
     it('should fail to permanent delete without token', async () => {
-      const uniqueNumber = `ITEM-PERM-NO-TOKEN-${Date.now()}`;
+      const uniqueNumber = createUniqueNumber('ITEM-PERM-NO-TOKEN');
       const item = await request(app.getHttpServer())
         .post('/v1/items')
         .set('Authorization', `Bearer ${adminToken}`)
@@ -1012,7 +1592,7 @@ describe('Items E2E', () => {
           productsPerPackage: 1,
           packagePrice: 10,
           volume: 1,
-          containerId: containerId,
+          containerId,
         })
         .expect(201);
 
@@ -1029,6 +1609,13 @@ describe('Items E2E', () => {
         .delete('/v1/items/00000000-0000-4000-8000-000000000000/permanent')
         .set('Authorization', `Bearer ${adminToken}`)
         .expect(404);
+    });
+
+    it('should reject invalid UUID for permanent delete', async () => {
+      await request(app.getHttpServer())
+        .delete('/v1/items/not-a-uuid/permanent')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(400);
     });
   });
 });

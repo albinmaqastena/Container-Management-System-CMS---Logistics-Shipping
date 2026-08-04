@@ -24,36 +24,40 @@ interface MultipartRequest {
   files?: MulterFile[] | Record<string, MulterFile[]>;
 }
 
-const DEFAULT_ALLOWED_MIME_TYPES = [
-  'image/jpeg',
-  'image/png',
-  'image/webp',
-  'application/pdf',
-  'text/plain',
-  'text/csv',
-  'application/csv',
-  'application/json',
-  'application/zip',
-  'application/x-zip-compressed',
-  'application/octet-stream',
-  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-];
+const DEFAULT_MAX_FILE_SIZE = 10 * 1024 * 1024;
+
+const DEFAULT_ALLOWED_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 
 @Injectable()
 export class FileValidationInterceptor implements NestInterceptor {
   private readonly maxFileSize: number;
   private readonly allowedMimeTypes: Set<string>;
 
-  constructor(private readonly configService: ConfigService) {
-    const fileConfig = this.configService.get<FileValidationConfig>('file');
+  constructor(configService: ConfigService) {
+    const fileConfig = configService.get<FileValidationConfig>('file');
 
-    this.maxFileSize = fileConfig?.upload?.maxFileSize ?? 10 * 1024 * 1024;
+    const configuredMaxFileSize = fileConfig?.upload?.maxFileSize;
 
-    this.allowedMimeTypes = new Set([
-      ...DEFAULT_ALLOWED_MIME_TYPES,
-      ...(fileConfig?.upload?.allowedMimeTypes ?? []),
-    ]);
+    this.maxFileSize =
+      typeof configuredMaxFileSize === 'number' &&
+      Number.isInteger(configuredMaxFileSize) &&
+      configuredMaxFileSize > 0
+        ? configuredMaxFileSize
+        : DEFAULT_MAX_FILE_SIZE;
+
+    // Normalize MIME types: filter out invalid entries, trim, lowercase, remove empties
+    const configuredMimeTypes = fileConfig?.upload?.allowedMimeTypes;
+
+    const normalizedConfiguredMimeTypes = configuredMimeTypes
+      ?.filter((mimeType): mimeType is string => typeof mimeType === 'string')
+      .map((mimeType) => mimeType.trim().toLowerCase())
+      .filter(Boolean);
+
+    const mimeTypes = normalizedConfiguredMimeTypes?.length
+      ? normalizedConfiguredMimeTypes
+      : DEFAULT_ALLOWED_MIME_TYPES;
+
+    this.allowedMimeTypes = new Set(mimeTypes);
   }
 
   intercept(context: ExecutionContext, next: CallHandler): Observable<unknown> {
@@ -61,7 +65,10 @@ export class FileValidationInterceptor implements NestInterceptor {
 
     const files = this.extractFiles(request);
 
-    // Missing files are handled by the controller.
+    /*
+     * Missing files are handled by the controller,
+     * which provides endpoint-specific messages.
+     */
     if (files.length === 0) {
       return next.handle();
     }
@@ -90,24 +97,28 @@ export class FileValidationInterceptor implements NestInterceptor {
   }
 
   private validateFile(file: MulterFile): void {
-    if (!file.buffer || file.buffer.length === 0 || file.size === 0) {
-      throw new BadRequestException(`File "${file.originalname}" is empty`);
+    const originalName = file.originalname?.trim();
+
+    if (!originalName || originalName.length > 255) {
+      throw new BadRequestException('Invalid file name');
     }
 
-    if (file.size > this.maxFileSize) {
+    if (!Buffer.isBuffer(file.buffer) || file.buffer.length === 0) {
+      throw new BadRequestException(`File "${originalName}" is empty`);
+    }
+
+    const actualSize = file.buffer.length;
+
+    if (actualSize > this.maxFileSize) {
       throw new BadRequestException(
-        `File "${file.originalname}" exceeds the maximum allowed size of ${this.maxFileSize} bytes`,
+        `File "${originalName}" exceeds the maximum allowed size of ${this.maxFileSize} bytes`,
       );
     }
 
-    const normalizedMimeType = file.mimetype?.split(';')[0].trim().toLowerCase();
+    const normalizedMimeType = file.mimetype?.split(';')[0]?.trim().toLowerCase();
 
     if (!normalizedMimeType || !this.allowedMimeTypes.has(normalizedMimeType)) {
       throw new BadRequestException(`File type "${file.mimetype}" is not allowed`);
-    }
-
-    if (!file.originalname || file.originalname.length > 255) {
-      throw new BadRequestException('Invalid file name');
     }
   }
 }

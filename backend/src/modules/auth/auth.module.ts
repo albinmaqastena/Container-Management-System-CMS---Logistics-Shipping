@@ -13,6 +13,7 @@ import { RefreshToken } from './entities/refresh-token.entity';
 import { User } from './entities/user.entity';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { RedisModule } from '../../common/redis/redis.module';
+import { MailModule } from '../mail/mail.module';
 
 @Module({
   imports: [
@@ -23,6 +24,7 @@ import { RedisModule } from '../../common/redis/redis.module';
       session: false,
     }),
     RedisModule,
+    MailModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],
       inject: [ConfigService],

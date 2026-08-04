@@ -1,51 +1,109 @@
 // src/components/auths/LoginForm.tsx
-import React, { useState } from 'react';
+import { useState } from 'react';
+import type { FormEvent } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
+import type { Location } from 'react-router-dom';
+import axios from 'axios';
 import { useAuth } from '../../hooks/useAuth';
 import {
   Box,
   Button,
   TextField,
-  Typography,
   Alert,
   InputAdornment,
   IconButton,
 } from '@mui/material';
 import { Visibility, VisibilityOff, Email, Lock } from '@mui/icons-material';
 
-export const LoginForm: React.FC = () => {
+interface LoginLocationState {
+  from?: Location;
+}
+
+export const LoginForm = () => {
   const { login } = useAuth();
+  const navigate = useNavigate();
+  const location = useLocation();
+
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError('');
+  // Merr location-in e plotë nga state (pathname, search, hash)
+  const locationState = location.state as LoginLocationState | null;
+  const fromLocation = locationState?.from;
+
+  // Siguria: kontrollo vetëm pathname-in për të shmangur redirect në /login
+  const isSafeLocation =
+    fromLocation &&
+    fromLocation.pathname.startsWith('/') &&
+    !fromLocation.pathname.startsWith('//') &&
+    fromLocation.pathname !== '/login';
+
+  const safeFrom = isSafeLocation
+    ? `${fromLocation.pathname}${fromLocation.search}${fromLocation.hash}`
+    : '/dashboard';
+
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>): Promise<void> => {
+    event.preventDefault();
+    setError(null);
+
+    const normalizedEmail = email.trim();
+
+    if (!normalizedEmail || password.length === 0) {
+      setError('Email and password are required');
+      return;
+    }
+
     setLoading(true);
+
     try {
-      await login({ email, password });
-    } catch (err: any) {
-      setError(err.response?.data?.message || 'Login failed');
+      await login({
+        email: normalizedEmail.toLowerCase(),
+        password,
+      });
+      navigate(safeFrom, { replace: true });
+    } catch (error: unknown) {
+      if (axios.isAxiosError(error)) {
+        const message = error.response?.data?.message;
+        setError(
+          Array.isArray(message)
+            ? message.join(', ')
+            : typeof message === 'string'
+              ? message
+              : 'Login failed',
+        );
+      } else {
+        setError('Login failed');
+      }
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <Box component="form" onSubmit={handleSubmit} sx={{ width: '100%' }}>
+    <Box
+      component="form"
+      onSubmit={handleSubmit}
+      aria-busy={loading}
+      sx={{ width: '100%' }}
+    >
       {error && (
-        <Alert severity="error" sx={{ mb: 2 }}>
+        <Alert severity="error" role="alert" sx={{ mb: 2 }}>
           {error}
         </Alert>
       )}
+
       <TextField
         margin="normal"
         required
         fullWidth
+        autoFocus
         label="Email Address"
         type="email"
+        autoComplete="email"
+        disabled={loading}
         value={email}
         onChange={(e) => setEmail(e.target.value)}
         slotProps={{
@@ -58,12 +116,15 @@ export const LoginForm: React.FC = () => {
           },
         }}
       />
+
       <TextField
         margin="normal"
         required
         fullWidth
         label="Password"
         type={showPassword ? 'text' : 'password'}
+        autoComplete="current-password"
+        disabled={loading}
         value={password}
         onChange={(e) => setPassword(e.target.value)}
         slotProps={{
@@ -76,7 +137,10 @@ export const LoginForm: React.FC = () => {
             endAdornment: (
               <InputAdornment position="end">
                 <IconButton
-                  onClick={() => setShowPassword(!showPassword)}
+                  type="button"
+                  aria-label={showPassword ? 'Hide password' : 'Show password'}
+                  onClick={() => setShowPassword((prev) => !prev)}
+                  onMouseDown={(event) => event.preventDefault()}
                   edge="end"
                 >
                   {showPassword ? <VisibilityOff /> : <Visibility />}
@@ -86,6 +150,7 @@ export const LoginForm: React.FC = () => {
           },
         }}
       />
+
       <Button
         type="submit"
         fullWidth

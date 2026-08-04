@@ -8,7 +8,6 @@ describe('AppController (e2e) - Full Test Suite', () => {
   let adminToken: string;
   let userToken: string;
   let testContainerId: string;
-  let testItemId: string;
 
   // ============================================
   // SETUP - PËRDOR APP-IN E KRIJUAR NGA SETUP

@@ -1,7 +1,20 @@
 // test/containers/containers.e2e-spec.ts
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
+import { randomUUID } from 'crypto';
 import { getApp, getAuthToken } from '../setup';
+
+interface ContainerResponse {
+  id: string;
+  name: string;
+  containerCode: string;
+  status: string;
+  totalVolume: string | number;
+  usedVolume: string | number;
+  deletedAt: string | null;
+  createdAt: string;
+  description?: string;
+}
 
 describe('Containers E2E', () => {
   let app: INestApplication;
@@ -10,10 +23,41 @@ describe('Containers E2E', () => {
   let testContainerId: string;
   let deletedContainerId: string;
 
+  const createDeletedContainer = async (): Promise<string> => {
+    const created = await request(app.getHttpServer())
+      .post('/v1/containers')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        customName: `Deleted Fixture ${randomUUID()}`,
+        totalVolume: 18,
+      })
+      .expect(201);
+
+    await request(app.getHttpServer())
+      .delete(`/v1/containers/${created.body.id}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(204);
+
+    return created.body.id;
+  };
+
   beforeAll(async () => {
     app = getApp();
     adminToken = await getAuthToken('admin@example.com', 'Admin@123');
     userToken = await getAuthToken('testuser@example.com', 'Password@123');
+
+    const suffix = randomUUID();
+    const response = await request(app.getHttpServer())
+      .post('/v1/containers')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        customName: `Shared Container ${suffix}`,
+        totalVolume: 100,
+        description: 'Shared E2E fixture',
+      })
+      .expect(201);
+
+    testContainerId = response.body.id;
   });
 
   // ================================================================
@@ -21,7 +65,7 @@ describe('Containers E2E', () => {
   // ================================================================
   describe('POST /v1/containers', () => {
     it('should create a container (admin)', async () => {
-      const uniqueName = `Test Container E2E ${Date.now()}`;
+      const uniqueName = `Test Container E2E ${randomUUID()}`;
       const response = await request(app.getHttpServer())
         .post('/v1/containers')
         .set('Authorization', `Bearer ${adminToken}`)
@@ -37,13 +81,12 @@ describe('Containers E2E', () => {
       expect(Number(response.body.totalVolume)).toBe(100);
       expect(response.body.status).toBe('active');
       expect(response.body.containerCode).toBeDefined();
-      expect(response.body.totalVolume - Number(response.body.usedVolume)).toBe(100);
+      expect(Number(response.body.totalVolume) - Number(response.body.usedVolume)).toBe(100);
       expect(Number(response.body.usedVolume)).toBe(0);
-      testContainerId = response.body.id;
     });
 
     it('should trim container name and description', async () => {
-      const uniqueName = `Trimmed Container ${Date.now()}`;
+      const uniqueName = `Trimmed Container ${randomUUID()}`;
       const response = await request(app.getHttpServer())
         .post('/v1/containers')
         .set('Authorization', `Bearer ${adminToken}`)
@@ -59,7 +102,7 @@ describe('Containers E2E', () => {
     });
 
     it('should create a container with only required fields', async () => {
-      const uniqueName = `Minimal Container ${Date.now()}`;
+      const uniqueName = `Minimal Container ${randomUUID()}`;
       const response = await request(app.getHttpServer())
         .post('/v1/containers')
         .set('Authorization', `Bearer ${adminToken}`)
@@ -71,8 +114,29 @@ describe('Containers E2E', () => {
 
       expect(response.body.name).toBe(uniqueName);
       expect(Number(response.body.totalVolume)).toBe(50);
-      // ✅ Service ruan '' në vend të null
       expect(response.body.description).toBe('');
+    });
+
+    it('should reject a duplicate container name', async () => {
+      const uniqueName = `Duplicate Container ${randomUUID()}`;
+
+      await request(app.getHttpServer())
+        .post('/v1/containers')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          customName: uniqueName,
+          totalVolume: 10,
+        })
+        .expect(201);
+
+      await request(app.getHttpServer())
+        .post('/v1/containers')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          customName: uniqueName.toUpperCase(),
+          totalVolume: 20,
+        })
+        .expect(409);
     });
 
     it('should fail for user role', async () => {
@@ -119,7 +183,7 @@ describe('Containers E2E', () => {
     });
 
     it('should accept a volume with at most two decimal places', async () => {
-      const uniqueName = `Decimal Volume ${Date.now()}`;
+      const uniqueName = `Decimal Volume ${randomUUID()}`;
 
       const response = await request(app.getHttpServer())
         .post('/v1/containers')
@@ -138,7 +202,7 @@ describe('Containers E2E', () => {
         .post('/v1/containers')
         .set('Authorization', `Bearer ${adminToken}`)
         .send({
-          customName: `Invalid Decimal ${Date.now()}`,
+          customName: `Invalid Decimal ${randomUUID()}`,
           totalVolume: 10.123,
         })
         .expect(400);
@@ -149,7 +213,7 @@ describe('Containers E2E', () => {
         .post('/v1/containers')
         .set('Authorization', `Bearer ${adminToken}`)
         .send({
-          customName: `Unknown Field ${Date.now()}`,
+          customName: `Unknown Field ${randomUUID()}`,
           totalVolume: 10,
           unknownField: true,
         })
@@ -225,7 +289,7 @@ describe('Containers E2E', () => {
         .set('Authorization', `Bearer ${adminToken}`)
         .expect(200);
 
-      expect(response.body.data.every((c: any) => c.status === 'active')).toBe(true);
+      expect(response.body.data.every((c: ContainerResponse) => c.status === 'active')).toBe(true);
     });
 
     it('should filter by status (archived)', async () => {
@@ -234,7 +298,9 @@ describe('Containers E2E', () => {
         .set('Authorization', `Bearer ${adminToken}`)
         .expect(200);
 
-      expect(response.body.data.every((c: any) => c.status === 'archived')).toBe(true);
+      expect(response.body.data.every((c: ContainerResponse) => c.status === 'archived')).toBe(
+        true,
+      );
     });
 
     it('should paginate results', async () => {
@@ -259,8 +325,8 @@ describe('Containers E2E', () => {
         .expect(200);
 
       if (response.body.data.length > 1) {
-        const first = new Date(response.body.data[0].createdAt).getTime();
-        const second = new Date(response.body.data[1].createdAt).getTime();
+        const first = new Date((response.body.data[0] as ContainerResponse).createdAt).getTime();
+        const second = new Date((response.body.data[1] as ContainerResponse).createdAt).getTime();
         expect(first).toBeGreaterThanOrEqual(second);
       }
     });
@@ -272,14 +338,14 @@ describe('Containers E2E', () => {
         .expect(200);
 
       if (response.body.data.length > 1) {
-        const first = response.body.data[0].name;
-        const second = response.body.data[1].name;
+        const first = (response.body.data[0] as ContainerResponse).name;
+        const second = (response.body.data[1] as ContainerResponse).name;
         expect(first.localeCompare(second)).toBeLessThanOrEqual(0);
       }
     });
 
     it('should include deleted containers', async () => {
-      const uniqueName = `To Be Deleted ${Date.now()}`;
+      const uniqueName = `To Be Deleted ${randomUUID()}`;
       const container = await request(app.getHttpServer())
         .post('/v1/containers')
         .set('Authorization', `Bearer ${adminToken}`)
@@ -305,8 +371,8 @@ describe('Containers E2E', () => {
         .set('Authorization', `Bearer ${adminToken}`)
         .expect(200);
 
-      const found = response.body.data.some(
-        (c: any) => c.id === container.body.id && c.deletedAt !== null,
+      const found = (response.body.data as ContainerResponse[]).some(
+        (c) => c.id === container.body.id && c.deletedAt !== null,
       );
       expect(found).toBe(true);
     });
@@ -329,10 +395,10 @@ describe('Containers E2E', () => {
         .set('Authorization', `Bearer ${adminToken}`)
         .expect(200);
 
-      expect(response.body.data.every((c: any) => c.status === 'active')).toBe(true);
+      expect(response.body.data.every((c: ContainerResponse) => c.status === 'active')).toBe(true);
     });
 
-    it('should return 200 even if no active containers', async () => {
+    it('should return an array of active containers', async () => {
       const response = await request(app.getHttpServer())
         .get('/v1/containers/active')
         .set('Authorization', `Bearer ${adminToken}`)
@@ -356,7 +422,7 @@ describe('Containers E2E', () => {
   // ================================================================
   describe('GET /v1/containers/archived', () => {
     it('should return archived containers', async () => {
-      const uniqueName = `To Be Archived ${Date.now()}`;
+      const uniqueName = `To Be Archived ${randomUUID()}`;
       const container = await request(app.getHttpServer())
         .post('/v1/containers')
         .set('Authorization', `Bearer ${adminToken}`)
@@ -367,7 +433,7 @@ describe('Containers E2E', () => {
         .expect(201);
 
       await request(app.getHttpServer())
-        .put(`/v1/containers/${container.body.id}/status?status=archived`)
+        .patch(`/v1/containers/${container.body.id}/status?status=archived`)
         .set('Authorization', `Bearer ${adminToken}`)
         .expect(200);
 
@@ -376,10 +442,12 @@ describe('Containers E2E', () => {
         .set('Authorization', `Bearer ${adminToken}`)
         .expect(200);
 
-      expect(response.body.data.some((c: any) => c.id === container.body.id)).toBe(true);
+      expect(
+        (response.body.data as ContainerResponse[]).some((c) => c.id === container.body.id),
+      ).toBe(true);
     });
 
-    it('should return 200 even if no archived containers', async () => {
+    it('should return an array of archived containers', async () => {
       const response = await request(app.getHttpServer())
         .get('/v1/containers/archived')
         .set('Authorization', `Bearer ${adminToken}`)
@@ -394,7 +462,7 @@ describe('Containers E2E', () => {
   // ================================================================
   describe('GET /v1/containers/deleted', () => {
     it('should return deleted containers (admin)', async () => {
-      const uniqueName = `For Deleted List ${Date.now()}`;
+      const uniqueName = `For Deleted List ${randomUUID()}`;
       const container = await request(app.getHttpServer())
         .post('/v1/containers')
         .set('Authorization', `Bearer ${adminToken}`)
@@ -420,7 +488,9 @@ describe('Containers E2E', () => {
         .set('Authorization', `Bearer ${adminToken}`)
         .expect(200);
 
-      const found = response.body.data.some((c: any) => c.id === container.body.id);
+      const found = (response.body.data as ContainerResponse[]).some(
+        (c) => c.id === container.body.id,
+      );
       expect(found).toBe(true);
       deletedContainerId = container.body.id;
     });
@@ -442,16 +512,31 @@ describe('Containers E2E', () => {
   // ================================================================
   describe('GET /v1/containers/search', () => {
     it('should search containers by name', async () => {
+      const uniqueName = `SearchName-${randomUUID()}`;
+
+      const created = await request(app.getHttpServer())
+        .post('/v1/containers')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          customName: uniqueName,
+          totalVolume: 10,
+        })
+        .expect(201);
+
       const response = await request(app.getHttpServer())
-        .get('/v1/containers/search?query=Test')
+        .get(`/v1/containers/search?query=${encodeURIComponent(uniqueName)}`)
         .set('Authorization', `Bearer ${adminToken}`)
         .expect(200);
 
-      expect(response.body.data.some((c: any) => c.name.includes('Test'))).toBe(true);
+      expect(
+        (response.body.data as ContainerResponse[]).some(
+          (container) => container.id === created.body.id,
+        ),
+      ).toBe(true);
     });
 
     it('should search containers by containerCode', async () => {
-      const uniqueName = `Search Code Test ${Date.now()}`;
+      const uniqueName = `Search Code Test ${randomUUID()}`;
       const container = await request(app.getHttpServer())
         .post('/v1/containers')
         .set('Authorization', `Bearer ${adminToken}`)
@@ -468,17 +553,22 @@ describe('Containers E2E', () => {
         .set('Authorization', `Bearer ${adminToken}`)
         .expect(200);
 
-      const found = response.body.data.some((c: any) => c.id === container.body.id);
+      const found = (response.body.data as ContainerResponse[]).some(
+        (c) => c.id === container.body.id,
+      );
       expect(found).toBe(true);
     });
 
     it('should return empty array for non-existent search', async () => {
+      const missingQuery = `Missing-${randomUUID()}`;
+
       const response = await request(app.getHttpServer())
-        .get('/v1/containers/search?query=NonExistentContainerXYZ')
+        .get(`/v1/containers/search?query=${encodeURIComponent(missingQuery)}`)
         .set('Authorization', `Bearer ${adminToken}`)
         .expect(200);
 
-      expect(response.body.data.length).toBe(0);
+      expect(response.body.data).toHaveLength(0);
+      expect(response.body.total).toBe(0);
     });
 
     it('should fail with empty query', async () => {
@@ -496,12 +586,35 @@ describe('Containers E2E', () => {
     });
 
     it('should paginate search results', async () => {
+      const prefix = `PaginationSearch-${randomUUID()}`;
+
+      await request(app.getHttpServer())
+        .post('/v1/containers')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          customName: `${prefix}-A`,
+          totalVolume: 10,
+        })
+        .expect(201);
+
+      await request(app.getHttpServer())
+        .post('/v1/containers')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          customName: `${prefix}-B`,
+          totalVolume: 10,
+        })
+        .expect(201);
+
       const response = await request(app.getHttpServer())
-        .get('/v1/containers/search?query=Test&limit=1&offset=0')
+        .get(`/v1/containers/search?query=${encodeURIComponent(prefix)}&limit=1&offset=0`)
         .set('Authorization', `Bearer ${adminToken}`)
         .expect(200);
 
-      expect(response.body.data.length).toBeLessThanOrEqual(1);
+      expect(response.body.data).toHaveLength(1);
+      expect(response.body.total).toBeGreaterThanOrEqual(2);
+      expect(response.body.limit).toBe(1);
+      expect(response.body.offset).toBe(0);
     });
   });
 
@@ -509,12 +622,6 @@ describe('Containers E2E', () => {
   // GET CONTAINER BY ID
   // ================================================================
   describe('GET /v1/containers/:id', () => {
-    beforeAll(() => {
-      if (!testContainerId) {
-        throw new Error('testContainerId is not set. Make sure the create test runs first.');
-      }
-    });
-
     it('should get container by id', async () => {
       const response = await request(app.getHttpServer())
         .get(`/v1/containers/${testContainerId}`)
@@ -527,13 +634,12 @@ describe('Containers E2E', () => {
       expect(response.body).toHaveProperty('usedVolume');
       expect(response.body).toHaveProperty('status');
       expect(response.body).toHaveProperty('containerCode');
-      expect(response.body).toHaveProperty('items');
-      expect(Array.isArray(response.body.items)).toBe(true);
+      expect(response.body).toHaveProperty('createdBy');
     });
 
     it('should get container with includeDeleted=true for deleted container', async () => {
       if (!deletedContainerId) {
-        const uniqueName = `For Include Deleted Test ${Date.now()}`;
+        const uniqueName = `For Include Deleted Test ${randomUUID()}`;
         const container = await request(app.getHttpServer())
           .post('/v1/containers')
           .set('Authorization', `Bearer ${adminToken}`)
@@ -575,20 +681,14 @@ describe('Containers E2E', () => {
   });
 
   // ================================================================
-  // UPDATE CONTAINER
+  // UPDATE CONTAINER (PATCH)
   // ================================================================
-  describe('PUT /v1/containers/:id', () => {
-    beforeAll(() => {
-      if (!testContainerId) {
-        throw new Error('testContainerId is not set.');
-      }
-    });
-
+  describe('PATCH /v1/containers/:id', () => {
     it('should update a container', async () => {
-      const updatedName = `Updated Container ${Date.now()}`;
+      const updatedName = `Updated Container ${randomUUID()}`;
 
       const response = await request(app.getHttpServer())
-        .put(`/v1/containers/${testContainerId}`)
+        .patch(`/v1/containers/${testContainerId}`)
         .set('Authorization', `Bearer ${adminToken}`)
         .send({
           name: updatedName,
@@ -601,10 +701,10 @@ describe('Containers E2E', () => {
     });
 
     it('should update only name', async () => {
-      const updatedName = `Name Only Update ${Date.now()}`;
+      const updatedName = `Name Only Update ${randomUUID()}`;
 
       const response = await request(app.getHttpServer())
-        .put(`/v1/containers/${testContainerId}`)
+        .patch(`/v1/containers/${testContainerId}`)
         .set('Authorization', `Bearer ${adminToken}`)
         .send({
           name: updatedName,
@@ -616,7 +716,7 @@ describe('Containers E2E', () => {
 
     it('should update only description', async () => {
       const response = await request(app.getHttpServer())
-        .put(`/v1/containers/${testContainerId}`)
+        .patch(`/v1/containers/${testContainerId}`)
         .set('Authorization', `Bearer ${adminToken}`)
         .send({
           description: 'Description only update',
@@ -626,9 +726,91 @@ describe('Containers E2E', () => {
       expect(response.body.description).toBe('Description only update');
     });
 
+    it('should update total volume', async () => {
+      const response = await request(app.getHttpServer())
+        .patch(`/v1/containers/${testContainerId}`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          totalVolume: 150,
+        })
+        .expect(200);
+
+      expect(Number(response.body.totalVolume)).toBe(150);
+    });
+
+    it('should reject total volume below used volume', async () => {
+      const created = await request(app.getHttpServer())
+        .post('/v1/containers')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          customName: `Volume Guard ${randomUUID()}`,
+          totalVolume: 100,
+        })
+        .expect(201);
+
+      await request(app.getHttpServer())
+        .post('/v1/items')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          uniqueNumber: `VOL-${randomUUID()}`,
+          name: 'Volume item',
+          packageQuantity: 2,
+          productsPerPackage: 1,
+          packagePrice: 10,
+          volume: 20,
+          containerId: created.body.id,
+        })
+        .expect(201);
+
+      const containerAfterItem = await request(app.getHttpServer())
+        .get(`/v1/containers/${created.body.id}`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(200);
+
+      expect(Number(containerAfterItem.body.usedVolume)).toBe(40);
+
+      await request(app.getHttpServer())
+        .patch(`/v1/containers/${created.body.id}`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          totalVolume: 30,
+        })
+        .expect(400);
+    });
+
+    it('should reject updating to a duplicate name', async () => {
+      const suffix = randomUUID();
+
+      const first = await request(app.getHttpServer())
+        .post('/v1/containers')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          customName: `Duplicate-A-${suffix}`,
+          totalVolume: 10,
+        })
+        .expect(201);
+
+      const second = await request(app.getHttpServer())
+        .post('/v1/containers')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          customName: `Duplicate-B-${suffix}`,
+          totalVolume: 10,
+        })
+        .expect(201);
+
+      await request(app.getHttpServer())
+        .patch(`/v1/containers/${second.body.id}`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          name: first.body.name,
+        })
+        .expect(409);
+    });
+
     it('should fail for user role', async () => {
       await request(app.getHttpServer())
-        .put(`/v1/containers/${testContainerId}`)
+        .patch(`/v1/containers/${testContainerId}`)
         .set('Authorization', `Bearer ${userToken}`)
         .send({
           name: 'Hacked Name',
@@ -638,7 +820,7 @@ describe('Containers E2E', () => {
 
     it('should fail without token', async () => {
       await request(app.getHttpServer())
-        .put(`/v1/containers/${testContainerId}`)
+        .patch(`/v1/containers/${testContainerId}`)
         .send({
           name: 'No Token',
         })
@@ -647,23 +829,33 @@ describe('Containers E2E', () => {
 
     it('should fail for non-existent container', async () => {
       await request(app.getHttpServer())
-        .put('/v1/containers/00000000-0000-4000-8000-000000000000')
+        .patch('/v1/containers/00000000-0000-4000-8000-000000000000')
         .set('Authorization', `Bearer ${adminToken}`)
         .send({
           name: 'Non Existent',
         })
         .expect(404);
     });
+
+    it('should reject invalid UUID for PATCH', async () => {
+      await request(app.getHttpServer())
+        .patch('/v1/containers/not-a-uuid')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          name: 'Invalid UUID',
+        })
+        .expect(400);
+    });
   });
 
   // ================================================================
-  // UPDATE CONTAINER STATUS
+  // UPDATE CONTAINER STATUS (PATCH)
   // ================================================================
-  describe('PUT /v1/containers/:id/status', () => {
+  describe('PATCH /v1/containers/:id/status', () => {
     let statusContainerId: string;
 
     beforeAll(async () => {
-      const uniqueName = `Status Test Container ${Date.now()}`;
+      const uniqueName = `Status Test Container ${randomUUID()}`;
       const container = await request(app.getHttpServer())
         .post('/v1/containers')
         .set('Authorization', `Bearer ${adminToken}`)
@@ -677,7 +869,7 @@ describe('Containers E2E', () => {
 
     it('should update status to archived', async () => {
       const response = await request(app.getHttpServer())
-        .put(`/v1/containers/${statusContainerId}/status?status=archived`)
+        .patch(`/v1/containers/${statusContainerId}/status?status=archived`)
         .set('Authorization', `Bearer ${adminToken}`)
         .expect(200);
 
@@ -686,7 +878,7 @@ describe('Containers E2E', () => {
 
     it('should update status back to active', async () => {
       const response = await request(app.getHttpServer())
-        .put(`/v1/containers/${statusContainerId}/status?status=active`)
+        .patch(`/v1/containers/${statusContainerId}/status?status=active`)
         .set('Authorization', `Bearer ${adminToken}`)
         .expect(200);
 
@@ -695,7 +887,7 @@ describe('Containers E2E', () => {
 
     it('should update status to shipped', async () => {
       const response = await request(app.getHttpServer())
-        .put(`/v1/containers/${statusContainerId}/status?status=shipped`)
+        .patch(`/v1/containers/${statusContainerId}/status?status=shipped`)
         .set('Authorization', `Bearer ${adminToken}`)
         .expect(200);
 
@@ -704,23 +896,30 @@ describe('Containers E2E', () => {
 
     it('should fail with invalid status', async () => {
       await request(app.getHttpServer())
-        .put(`/v1/containers/${statusContainerId}/status?status=invalid`)
+        .patch(`/v1/containers/${statusContainerId}/status?status=invalid`)
         .set('Authorization', `Bearer ${adminToken}`)
         .expect(400);
     });
 
     it('should fail with missing status', async () => {
       await request(app.getHttpServer())
-        .put(`/v1/containers/${statusContainerId}/status`)
+        .patch(`/v1/containers/${statusContainerId}/status`)
         .set('Authorization', `Bearer ${adminToken}`)
         .expect(400);
     });
 
     it('should fail for user role', async () => {
       await request(app.getHttpServer())
-        .put(`/v1/containers/${statusContainerId}/status?status=archived`)
+        .patch(`/v1/containers/${statusContainerId}/status?status=archived`)
         .set('Authorization', `Bearer ${userToken}`)
         .expect(403);
+    });
+
+    it('should reject invalid UUID for status update', async () => {
+      await request(app.getHttpServer())
+        .patch('/v1/containers/not-a-uuid/status?status=active')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(400);
     });
   });
 
@@ -731,7 +930,7 @@ describe('Containers E2E', () => {
     let containerToDeleteId: string;
 
     beforeAll(async () => {
-      const uniqueName = `Soft Delete Test ${Date.now()}`;
+      const uniqueName = `Soft Delete ${randomUUID()}`;
       const container = await request(app.getHttpServer())
         .post('/v1/containers')
         .set('Authorization', `Bearer ${adminToken}`)
@@ -741,11 +940,25 @@ describe('Containers E2E', () => {
         })
         .expect(201);
       containerToDeleteId = container.body.id;
+
+      await request(app.getHttpServer())
+        .delete(`/v1/containers/${containerToDeleteId}`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(204);
     });
 
     it('should soft delete an empty container', async () => {
+      const created = await request(app.getHttpServer())
+        .post('/v1/containers')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          customName: `Soft Delete Endpoint ${randomUUID()}`,
+          totalVolume: 12,
+        })
+        .expect(201);
+
       await request(app.getHttpServer())
-        .delete(`/v1/containers/${containerToDeleteId}`)
+        .delete(`/v1/containers/${created.body.id}`)
         .set('Authorization', `Bearer ${adminToken}`)
         .expect(204);
     });
@@ -768,9 +981,9 @@ describe('Containers E2E', () => {
     });
 
     it('should soft delete a container together with its items', async () => {
-      const uniqueName = `Container With Items ${Date.now()}`;
+      const uniqueName = `Container With Items ${randomUUID()}`;
 
-      const container = await request(app.getHttpServer())
+      const containerResponse = await request(app.getHttpServer())
         .post('/v1/containers')
         .set('Authorization', `Bearer ${adminToken}`)
         .send({
@@ -779,24 +992,23 @@ describe('Containers E2E', () => {
         })
         .expect(201);
 
-      const containerId = container.body.id;
-      const itemSuffix = Date.now();
+      const containerId = containerResponse.body.id as string;
 
-      const item = await request(app.getHttpServer())
+      const itemResponse = await request(app.getHttpServer())
         .post('/v1/items')
         .set('Authorization', `Bearer ${adminToken}`)
         .send({
-          uniqueNumber: `ITEM-DELETE-TEST-${itemSuffix}`,
-          name: 'Test Item for Delete',
-          packageQuantity: 10,
-          productsPerPackage: 10,
+          uniqueNumber: `ITEM-${randomUUID()}`,
+          name: 'Container delete item',
+          packageQuantity: 2,
+          productsPerPackage: 1,
           packagePrice: 10,
-          volume: 10,
+          volume: 20,
           containerId,
         })
         .expect(201);
 
-      const itemId = item.body.id;
+      const itemId = itemResponse.body.id as string;
 
       await request(app.getHttpServer())
         .delete(`/v1/containers/${containerId}`)
@@ -808,23 +1020,25 @@ describe('Containers E2E', () => {
         .set('Authorization', `Bearer ${adminToken}`)
         .expect(404);
 
-      const deletedContainer = await request(app.getHttpServer())
+      const deletedContainerResponse = await request(app.getHttpServer())
         .get(`/v1/containers/${containerId}?includeDeleted=true`)
         .set('Authorization', `Bearer ${adminToken}`)
         .expect(200);
 
-      expect(deletedContainer.body.deletedAt).not.toBeNull();
+      expect(deletedContainerResponse.body.deletedAt).not.toBeNull();
 
-      const deletedItem = await request(app.getHttpServer())
+      const deletedItemResponse = await request(app.getHttpServer())
         .get(`/v1/items/${itemId}?includeDeleted=true`)
         .set('Authorization', `Bearer ${adminToken}`)
         .expect(200);
 
-      expect(deletedItem.body.deletedAt).not.toBeNull();
+      expect(deletedItemResponse.body.deletedAt).not.toBeNull();
+      expect(deletedItemResponse.body.deletedByContainer).toBe(true);
+      expect(deletedItemResponse.body.containerId).toBe(containerId);
     });
 
     it('should fail to soft delete for user role', async () => {
-      const uniqueName = `User Delete Attempt ${Date.now()}`;
+      const uniqueName = `User Delete Attempt ${randomUUID()}`;
       const container = await request(app.getHttpServer())
         .post('/v1/containers')
         .set('Authorization', `Bearer ${adminToken}`)
@@ -841,7 +1055,7 @@ describe('Containers E2E', () => {
     });
 
     it('should fail to soft delete without token', async () => {
-      const uniqueName = `No Token Delete ${Date.now()}`;
+      const uniqueName = `No Token Delete ${randomUUID()}`;
       const container = await request(app.getHttpServer())
         .post('/v1/containers')
         .set('Authorization', `Bearer ${adminToken}`)
@@ -853,16 +1067,49 @@ describe('Containers E2E', () => {
 
       await request(app.getHttpServer()).delete(`/v1/containers/${container.body.id}`).expect(401);
     });
+
+    it('should reject invalid UUID for DELETE', async () => {
+      await request(app.getHttpServer())
+        .delete('/v1/containers/not-a-uuid')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(400);
+    });
   });
 
   // ================================================================
-  // RESTORE CONTAINER
+  // RESTORE CONTAINER (PUT)
   // ================================================================
   describe('PUT /v1/containers/:id/restore', () => {
-    let containerToRestoreId: string;
+    it('should restore a soft-deleted container', async () => {
+      const containerId = await createDeletedContainer();
 
-    beforeAll(async () => {
-      const uniqueName = `Restore Test ${Date.now()}`;
+      const response = await request(app.getHttpServer())
+        .put(`/v1/containers/${containerId}/restore`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(200);
+
+      expect(response.body.id).toBe(containerId);
+      expect(response.body.deletedAt).toBeNull();
+    });
+
+    it('should find restored container in normal GET', async () => {
+      const containerId = await createDeletedContainer();
+
+      await request(app.getHttpServer())
+        .put(`/v1/containers/${containerId}/restore`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(200);
+
+      const response = await request(app.getHttpServer())
+        .get(`/v1/containers/${containerId}`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(200);
+
+      expect(response.body.deletedAt).toBeNull();
+    });
+
+    it('should fail to restore non-deleted container', async () => {
+      const uniqueName = `Not Deleted Restore ${randomUUID()}`;
       const container = await request(app.getHttpServer())
         .post('/v1/containers')
         .set('Authorization', `Bearer ${adminToken}`)
@@ -871,58 +1118,18 @@ describe('Containers E2E', () => {
           totalVolume: 18,
         })
         .expect(201);
-      containerToRestoreId = container.body.id;
 
       await request(app.getHttpServer())
-        .delete(`/v1/containers/${containerToRestoreId}`)
-        .set('Authorization', `Bearer ${adminToken}`)
-        .expect(204);
-    });
-
-    it('should restore a soft-deleted container', async () => {
-      const response = await request(app.getHttpServer())
-        .put(`/v1/containers/${containerToRestoreId}/restore`)
-        .set('Authorization', `Bearer ${adminToken}`)
-        .expect(200);
-
-      expect(response.body.id).toBe(containerToRestoreId);
-      expect(response.body.deletedAt).toBeNull();
-    });
-
-    it('should find restored container in normal GET', async () => {
-      const response = await request(app.getHttpServer())
-        .get(`/v1/containers/${containerToRestoreId}`)
-        .set('Authorization', `Bearer ${adminToken}`)
-        .expect(200);
-
-      expect(response.body.deletedAt).toBeNull();
-    });
-
-    it('should fail to restore non-deleted container', async () => {
-      await request(app.getHttpServer())
-        .put(`/v1/containers/${containerToRestoreId}/restore`)
+        .put(`/v1/containers/${container.body.id}/restore`)
         .set('Authorization', `Bearer ${adminToken}`)
         .expect(400);
     });
 
     it('should fail to restore for user role', async () => {
-      const uniqueName = `User Restore Attempt ${Date.now()}`;
-      const container = await request(app.getHttpServer())
-        .post('/v1/containers')
-        .set('Authorization', `Bearer ${adminToken}`)
-        .send({
-          customName: uniqueName,
-          totalVolume: 20,
-        })
-        .expect(201);
+      const containerId = await createDeletedContainer();
 
       await request(app.getHttpServer())
-        .delete(`/v1/containers/${container.body.id}`)
-        .set('Authorization', `Bearer ${adminToken}`)
-        .expect(204);
-
-      await request(app.getHttpServer())
-        .put(`/v1/containers/${container.body.id}/restore`)
+        .put(`/v1/containers/${containerId}/restore`)
         .set('Authorization', `Bearer ${userToken}`)
         .expect(403);
     });
@@ -933,48 +1140,63 @@ describe('Containers E2E', () => {
         .set('Authorization', `Bearer ${adminToken}`)
         .expect(404);
     });
+
+    it('should reject invalid UUID for restore', async () => {
+      await request(app.getHttpServer())
+        .put('/v1/containers/not-a-uuid/restore')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(400);
+    });
   });
 
   // ================================================================
   // PERMANENT DELETE CONTAINER
   // ================================================================
   describe('DELETE /v1/containers/:id/permanent', () => {
-    let containerToPermanentDeleteId: string;
-
-    beforeAll(async () => {
-      const uniqueName = `Permanent Delete Test ${Date.now()}`;
-      const container = await request(app.getHttpServer())
+    it('should reject permanent deletion of an active container', async () => {
+      const created = await request(app.getHttpServer())
         .post('/v1/containers')
         .set('Authorization', `Bearer ${adminToken}`)
         .send({
-          customName: uniqueName,
+          customName: `Active Permanent ${randomUUID()}`,
+          totalVolume: 20,
+        })
+        .expect(201);
+
+      await request(app.getHttpServer())
+        .delete(`/v1/containers/${created.body.id}/permanent`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(400);
+    });
+
+    it('should permanently delete a container and no longer find it', async () => {
+      const created = await request(app.getHttpServer())
+        .post('/v1/containers')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          customName: `Permanent Delete ${randomUUID()}`,
           totalVolume: 22,
         })
         .expect(201);
-      containerToPermanentDeleteId = container.body.id;
-    });
 
-    it('should permanently delete a container', async () => {
       await request(app.getHttpServer())
-        .delete(`/v1/containers/${containerToPermanentDeleteId}`)
+        .delete(`/v1/containers/${created.body.id}`)
         .set('Authorization', `Bearer ${adminToken}`)
         .expect(204);
 
       await request(app.getHttpServer())
-        .delete(`/v1/containers/${containerToPermanentDeleteId}/permanent`)
+        .delete(`/v1/containers/${created.body.id}/permanent`)
         .set('Authorization', `Bearer ${adminToken}`)
         .expect(204);
-    });
 
-    it('should return 404 after permanent delete', async () => {
       await request(app.getHttpServer())
-        .get(`/v1/containers/${containerToPermanentDeleteId}?includeDeleted=true`)
+        .get(`/v1/containers/${created.body.id}?includeDeleted=true`)
         .set('Authorization', `Bearer ${adminToken}`)
         .expect(404);
     });
 
     it('should fail to permanently delete for user role', async () => {
-      const uniqueName = `User Permanent Delete ${Date.now()}`;
+      const uniqueName = `User Permanent Delete ${randomUUID()}`;
       const container = await request(app.getHttpServer())
         .post('/v1/containers')
         .set('Authorization', `Bearer ${adminToken}`)
@@ -1000,6 +1222,13 @@ describe('Containers E2E', () => {
         .delete('/v1/containers/00000000-0000-4000-8000-000000000000/permanent')
         .set('Authorization', `Bearer ${adminToken}`)
         .expect(404);
+    });
+
+    it('should reject invalid UUID for permanent delete', async () => {
+      await request(app.getHttpServer())
+        .delete('/v1/containers/not-a-uuid/permanent')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(400);
     });
   });
 });

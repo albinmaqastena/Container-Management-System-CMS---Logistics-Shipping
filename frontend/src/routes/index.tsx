@@ -1,50 +1,104 @@
-// src/routes/index.tsx
-import React from 'react';
-import { Routes, Route, Navigate } from 'react-router-dom';
-import { PrivateRoute } from './PrivateRoute';
+import {
+  Navigate,
+  Route,
+  Routes,
+} from 'react-router-dom';
+
 import { AdminRoute } from './AdminRoute';
-import { LoginPage } from '../pages/LoginPage';
-import { RegisterPage } from '../pages/RegisterPage';
-import { DashboardPage } from '../pages/DashboardPage';
+import { PrivateRoute } from './PrivateRoute';
+
+import { ContainerDetailPage } from '../pages/ContainerDetailPage';
 import { ContainersPage } from '../pages/ContainersPage';
 import { CreateContainerPage } from '../pages/CreateContainerPage';
-import { ContainerDetailPage } from '../pages/ContainerDetailPage';
-import { ItemsPage } from '../pages/ItemsPage';
+import { DashboardPage } from '../pages/DashboardPage';
 import { ForgotPasswordPage } from '../pages/ForgotPasswordPage';
-import { ResetPasswordPage } from '../pages/ResetPasswordPage';
+import { ItemsPage } from '../pages/ItemsPage';
+import { LoginPage } from '../pages/LoginPage';
+import { NotFoundPage } from '../pages/NotFoundPage';
 import { ProfilePage } from '../pages/ProfilePage';
+import { RegisterPage } from '../pages/RegisterPage';
+import { ResetPasswordPage } from '../pages/ResetPasswordPage';
 import { SessionsPage } from '../pages/SessionsPage';
 import { UserManagementPage } from '../pages/UserManagementPage';
-import { NotFoundPage } from '../pages/NotFoundPage';
 
-export const AppRoutes: React.FC = () => {
+export const AppRoutes = () => {
   return (
     <Routes>
-      {/* Public Routes */}
-      <Route path="/login" element={<LoginPage />} />
-      <Route path="/register" element={<RegisterPage />} />
-      <Route path="/forgot-password" element={<ForgotPasswordPage />} />
-      <Route path="/reset-password" element={<ResetPasswordPage />} />
+      <Route
+        path="/login"
+        element={<LoginPage />}
+      />
+      <Route
+        path="/register"
+        element={<RegisterPage />}
+      />
+      <Route
+        path="/forgot-password"
+        element={<ForgotPasswordPage />}
+      />
+      <Route
+        path="/reset-password"
+        element={<ResetPasswordPage />}
+      />
 
-      {/* Private Routes */}
-      <Route path="/" element={<PrivateRoute />}>
-        <Route index element={<Navigate to="/dashboard" />} />
-        <Route path="dashboard" element={<DashboardPage />} />
-        <Route path="containers" element={<ContainersPage />} />
-        <Route path="containers/create" element={<CreateContainerPage />} />
-        <Route path="containers/:id" element={<ContainerDetailPage />} />
-        <Route path="items" element={<ItemsPage />} />
-        <Route path="profile" element={<ProfilePage />} />
-        <Route path="sessions" element={<SessionsPage />} />
+      <Route element={<PrivateRoute />}>
+        <Route
+          index
+          element={
+            <Navigate
+              to="/dashboard"
+              replace
+            />
+          }
+        />
+
+        <Route
+          path="/dashboard"
+          element={<DashboardPage />}
+        />
+
+        <Route
+          path="/containers"
+          element={<ContainersPage />}
+        />
+
+        <Route
+          path="/containers/create"
+          element={<CreateContainerPage />}
+        />
+
+        <Route
+          path="/containers/:id"
+          element={<ContainerDetailPage />}
+        />
+
+        <Route
+          path="/items"
+          element={<ItemsPage />}
+        />
+
+        <Route
+          path="/profile"
+          element={<ProfilePage />}
+        />
+
+        <Route
+          path="/sessions"
+          element={<SessionsPage />}
+        />
+
+        <Route element={<AdminRoute />}>
+          <Route
+            path="/admin/users"
+            element={<UserManagementPage />}
+          />
+        </Route>
       </Route>
 
-      {/* Admin Routes */}
-      <Route path="/" element={<AdminRoute />}>
-        <Route path="admin/users" element={<UserManagementPage />} />
-      </Route>
-
-      {/* 404 */}
-      <Route path="*" element={<NotFoundPage />} />
+      <Route
+        path="*"
+        element={<NotFoundPage />}
+      />
     </Routes>
   );
 };

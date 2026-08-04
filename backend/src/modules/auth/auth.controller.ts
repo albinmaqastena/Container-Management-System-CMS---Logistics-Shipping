@@ -1,5 +1,3 @@
-// src/modules/auth/auth.controller.ts
-
 import {
   Body,
   Controller,
@@ -7,7 +5,6 @@ import {
   Get,
   HttpCode,
   HttpStatus,
-  Logger,
   Param,
   ParseBoolPipe,
   Post,
@@ -18,362 +15,297 @@ import {
   ValidationPipe,
 } from '@nestjs/common';
 import {
+  ApiBadRequestResponse,
   ApiBearerAuth,
-  ApiBody,
+  ApiConflictResponse,
+  ApiCreatedResponse,
+  ApiForbiddenResponse,
+  ApiNoContentResponse,
+  ApiNotFoundResponse,
+  ApiOkResponse,
   ApiOperation,
   ApiQuery,
-  ApiResponse,
+  ApiServiceUnavailableResponse,
   ApiTags,
+  ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import type { Request as ExpressRequest } from 'express';
 
+import { AUTH_THROTTLE_LIMIT, AUTH_THROTTLE_TTL } from './auth-throttle.constants';
 import { AuthService } from './auth.service';
 import { AuthResponseDto } from './dto/auth-response.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { LoginDto } from './dto/login.dto';
+import { PaginatedUsersResponseDto } from './dto/paginated-users-response.dto';
+import { RefreshResponseDto } from './dto/refresh-response.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { RegisterDto } from './dto/register.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
-import { SessionDto } from './dto/session.dto';
+import { SessionsResponseDto } from './dto/sessions-response.dto';
 import { UserResponseDto } from './dto/user-response.dto';
-import { User, UserRole } from './entities/user.entity';
-
+import { UserRole } from './entities/user.entity';
 import { Public } from '../../common/decorators/public.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
+import { MessageResponseDto } from '../../common/dto/message-response.dto';
+import { PaginationDto } from '../../common/dto/pagination.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { RolesGuard } from '../../common/guards/roles.guard';
 import { UUIDValidationPipe } from '../../common/pipes/uuid-validation.pipe';
-import { PaginatedResponseDto, PaginationDto } from '../../common/dto/pagination.dto';
+import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import type { AuthenticatedUser } from './interfaces/authenticated-request.interface';
 
-const AUTH_THROTTLE_LIMIT = process.env.NODE_ENV === 'test' ? 100000 : 5;
-
-const AUTH_THROTTLE_TTL = process.env.NODE_ENV === 'test' ? 1000 : 60000;
-
-interface AuthenticatedRequest extends ExpressRequest {
-  user: User;
-}
+const queryValidationPipe = new ValidationPipe({
+  transform: true,
+  whitelist: true,
+  forbidNonWhitelisted: true,
+});
 
 @ApiTags('Authentication')
 @Controller('auth')
 export class AuthController {
-  private readonly logger = new Logger(AuthController.name);
-
   constructor(private readonly authService: AuthService) {}
 
   @Post('login')
   @Public()
-  @Throttle({
-    default: {
-      limit: AUTH_THROTTLE_LIMIT,
-      ttl: AUTH_THROTTLE_TTL,
-    },
-  })
+  @Throttle({ default: { limit: AUTH_THROTTLE_LIMIT, ttl: AUTH_THROTTLE_TTL } })
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Login user' })
-  @ApiResponse({
-    status: HttpStatus.OK,
-    description: 'Login successful',
-    type: AuthResponseDto,
-  })
-  @ApiResponse({
-    status: HttpStatus.UNAUTHORIZED,
-    description: 'Invalid credentials or account unavailable',
-  })
+  @ApiOkResponse({ description: 'Login successful', type: AuthResponseDto })
+  @ApiUnauthorizedResponse({ description: 'Invalid credentials or account unavailable' })
+  @ApiServiceUnavailableResponse({ description: 'Authentication session could not be created' })
   async login(
     @Body() loginDto: LoginDto,
     @Request() req: ExpressRequest,
   ): Promise<AuthResponseDto> {
-    const forwardedFor = req.headers['x-forwarded-for'];
-    const forwardedIp = Array.isArray(forwardedFor)
-      ? forwardedFor[0]
-      : forwardedFor?.split(',')[0]?.trim();
-
-    const ip = forwardedIp || req.ip || req.socket?.remoteAddress || '0.0.0.0';
-
+    const ip = req.ip || req.socket?.remoteAddress || '0.0.0.0';
     const userAgent = req.headers['user-agent'] || 'unknown';
-
-    this.logger.debug(`Login attempt from IP: ${ip}`);
-
     return this.authService.login(loginDto, ip, userAgent);
   }
 
   @Post('register')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)
-  @Throttle({
-    default: {
-      limit: AUTH_THROTTLE_LIMIT,
-      ttl: AUTH_THROTTLE_TTL,
-    },
-  })
-  @ApiBearerAuth()
-  @ApiOperation({
-    summary: 'Register a new user',
-  })
-  @ApiResponse({
-    status: HttpStatus.CREATED,
-    description: 'User created successfully',
-    type: UserResponseDto,
-  })
-  @ApiResponse({
-    status: HttpStatus.CONFLICT,
-    description: 'User already exists',
-  })
+  @Throttle({ default: { limit: AUTH_THROTTLE_LIMIT, ttl: AUTH_THROTTLE_TTL } })
+  @ApiBearerAuth('JWT-auth')
+  @ApiOperation({ summary: 'Register a new user' })
+  @ApiCreatedResponse({ description: 'User created successfully', type: UserResponseDto })
+  @ApiUnauthorizedResponse({ description: 'Authentication is required' })
+  @ApiForbiddenResponse({ description: 'Insufficient permissions' })
+  @ApiConflictResponse({ description: 'User already exists' })
+  @ApiBadRequestResponse({ description: 'Invalid registration data' })
   async register(
     @Body() registerDto: RegisterDto,
-    @Request() req: AuthenticatedRequest,
-  ): Promise<Partial<User>> {
-    return this.authService.register(registerDto, req.user);
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<UserResponseDto> {
+    return this.authService.register(registerDto, user);
   }
 
   @Post('logout')
+  @Throttle({ default: { limit: AUTH_THROTTLE_LIMIT, ttl: AUTH_THROTTLE_TTL } })
   @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
+  @ApiBearerAuth('JWT-auth')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({
-    summary: 'Logout from the current session',
-  })
-  @ApiBody({
-    type: RefreshTokenDto,
-  })
-  @ApiResponse({
-    status: HttpStatus.OK,
-    description: 'Logged out successfully',
-  })
-  async logout(
-    @Request() req: AuthenticatedRequest,
-    @Body() dto: RefreshTokenDto,
-  ): Promise<{ message: string }> {
-    await this.authService.logout(req.user.id, dto.refreshToken);
-
-    return {
-      message: 'Logged out successfully',
-    };
+  @ApiOperation({ summary: 'Logout from the current session' })
+  @ApiOkResponse({ description: 'Logged out successfully', type: MessageResponseDto })
+  @ApiUnauthorizedResponse({ description: 'Authentication is required' })
+  async logout(@CurrentUser() user: AuthenticatedUser): Promise<MessageResponseDto> {
+    await this.authService.logout(user.id, user.sid);
+    return new MessageResponseDto('Logged out successfully');
   }
 
   @Post('logout-all')
+  @Throttle({ default: { limit: AUTH_THROTTLE_LIMIT, ttl: AUTH_THROTTLE_TTL } })
   @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
+  @ApiBearerAuth('JWT-auth')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({
-    summary: 'Logout from all devices',
-  })
-  async logoutAll(@Request() req: AuthenticatedRequest): Promise<{ message: string }> {
-    await this.authService.logoutAll(req.user.id);
-
-    return {
-      message: 'Logged out from all devices',
-    };
+  @ApiOperation({ summary: 'Logout from all devices' })
+  @ApiOkResponse({ description: 'Logged out from all devices', type: MessageResponseDto })
+  @ApiUnauthorizedResponse({ description: 'Authentication is required' })
+  async logoutAll(@CurrentUser() user: AuthenticatedUser): Promise<MessageResponseDto> {
+    await this.authService.logoutAll(user.id);
+    return new MessageResponseDto('Logged out from all devices');
   }
 
   @Post('refresh')
   @Public()
+  @Throttle({ default: { limit: AUTH_THROTTLE_LIMIT, ttl: AUTH_THROTTLE_TTL } })
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({
-    summary: 'Refresh access and refresh tokens',
-  })
-  @ApiResponse({
-    status: HttpStatus.OK,
-    description: 'Tokens refreshed successfully',
-  })
-  async refreshToken(@Body() dto: RefreshTokenDto): Promise<{
-    accessToken: string;
-    refreshToken: string;
-  }> {
+  @ApiOperation({ summary: 'Refresh access and refresh tokens' })
+  @ApiOkResponse({ description: 'Tokens refreshed successfully', type: RefreshResponseDto })
+  @ApiUnauthorizedResponse({ description: 'Invalid or expired refresh token' })
+  @ApiServiceUnavailableResponse({ description: 'Token rotation could not be completed' })
+  async refreshToken(@Body() dto: RefreshTokenDto): Promise<RefreshResponseDto> {
     return this.authService.refreshAccessToken(dto.refreshToken);
   }
 
   @Post('change-password')
+  @Throttle({ default: { limit: AUTH_THROTTLE_LIMIT, ttl: AUTH_THROTTLE_TTL } })
   @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
+  @ApiBearerAuth('JWT-auth')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({
-    summary: 'Change the current user password',
+  @ApiOperation({ summary: 'Change the current user password' })
+  @ApiOkResponse({ description: 'Password changed successfully', type: MessageResponseDto })
+  @ApiUnauthorizedResponse({ description: 'Authentication is required' })
+  @ApiBadRequestResponse({
+    description: 'New password must be different from the current password',
   })
   async changePassword(
     @Body() dto: ChangePasswordDto,
-    @Request() req: AuthenticatedRequest,
-  ): Promise<{ message: string }> {
-    await this.authService.changePassword(req.user.id, dto.currentPassword, dto.newPassword);
-
-    return {
-      message: 'Password changed successfully',
-    };
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<MessageResponseDto> {
+    await this.authService.changePassword(user.id, dto.currentPassword, dto.newPassword);
+    return new MessageResponseDto('Password changed successfully');
   }
 
   @Post('forgot-password')
   @Public()
-  @Throttle({
-    default: {
-      limit: AUTH_THROTTLE_LIMIT,
-      ttl: AUTH_THROTTLE_TTL,
-    },
-  })
+  @Throttle({ default: { limit: AUTH_THROTTLE_LIMIT, ttl: AUTH_THROTTLE_TTL } })
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({
-    summary: 'Request a password reset',
+  @ApiOperation({ summary: 'Request a password reset' })
+  @ApiOkResponse({ type: MessageResponseDto })
+  @ApiServiceUnavailableResponse({
+    description: 'Password reset email service is temporarily unavailable',
   })
-  async forgotPassword(@Body() dto: ForgotPasswordDto): Promise<{ message: string }> {
+  async forgotPassword(@Body() dto: ForgotPasswordDto): Promise<MessageResponseDto> {
     return this.authService.forgotPassword(dto.email);
   }
 
   @Post('reset-password')
   @Public()
-  @Throttle({
-    default: {
-      limit: AUTH_THROTTLE_LIMIT,
-      ttl: AUTH_THROTTLE_TTL,
-    },
-  })
+  @Throttle({ default: { limit: AUTH_THROTTLE_LIMIT, ttl: AUTH_THROTTLE_TTL } })
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({
-    summary: 'Reset password using a reset token',
-  })
-  async resetPassword(@Body() dto: ResetPasswordDto): Promise<{ message: string }> {
+  @ApiOperation({ summary: 'Reset password using a reset token' })
+  @ApiOkResponse({ type: MessageResponseDto })
+  @ApiUnauthorizedResponse({ description: 'Invalid or expired reset token' })
+  @ApiBadRequestResponse({ description: 'Invalid password or token format' })
+  async resetPassword(@Body() dto: ResetPasswordDto): Promise<MessageResponseDto> {
     return this.authService.resetPassword(dto.token, dto.newPassword);
   }
 
   @Get('me')
   @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
-  @ApiOperation({
-    summary: 'Get current user profile',
-  })
-  @ApiResponse({
-    status: HttpStatus.OK,
-    type: UserResponseDto,
-  })
-  async getProfile(@Request() req: AuthenticatedRequest): Promise<Partial<User>> {
-    return this.authService.getProfile(req.user.id);
+  @ApiBearerAuth('JWT-auth')
+  @ApiOperation({ summary: 'Get current user profile' })
+  @ApiOkResponse({ type: UserResponseDto })
+  @ApiUnauthorizedResponse({ description: 'Authentication is required' })
+  async getProfile(@CurrentUser() user: AuthenticatedUser): Promise<UserResponseDto> {
+    return this.authService.getProfile(user.id);
   }
 
   @Get('sessions')
   @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
-  @ApiOperation({
-    summary: 'Get active sessions',
-  })
-  @ApiResponse({
-    status: HttpStatus.OK,
-    type: [SessionDto],
-  })
-  async getSessions(@Request() req: AuthenticatedRequest): Promise<{ sessions: SessionDto[] }> {
-    const sessions = await this.authService.getUserSessionsDetailed(req.user.id);
-
-    return { sessions };
+  @ApiBearerAuth('JWT-auth')
+  @ApiOperation({ summary: 'Get active sessions' })
+  @ApiOkResponse({ type: SessionsResponseDto })
+  @ApiUnauthorizedResponse({ description: 'Authentication is required' })
+  async getSessions(@CurrentUser() user: AuthenticatedUser): Promise<SessionsResponseDto> {
+    const sessions = await this.authService.getUserSessionsDetailed(user.id, user.sid);
+    return new SessionsResponseDto(sessions);
   }
 
   @Delete('sessions/:sessionId')
+  @Throttle({ default: { limit: AUTH_THROTTLE_LIMIT, ttl: AUTH_THROTTLE_TTL } })
   @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
-  @ApiOperation({
-    summary: 'Revoke a specific session',
-  })
+  @ApiBearerAuth('JWT-auth')
+  @ApiOperation({ summary: 'Revoke a specific session' })
+  @ApiOkResponse({ type: MessageResponseDto })
+  @ApiUnauthorizedResponse({ description: 'Authentication is required' })
+  @ApiNotFoundResponse({ description: 'Session not found' })
+  @ApiBadRequestResponse({ description: 'Invalid session data' })
   async revokeSession(
-    @Request() req: AuthenticatedRequest,
-    @Param('sessionId', UUIDValidationPipe)
-    sessionId: string,
-  ): Promise<{ message: string }> {
-    await this.authService.revokeSession(req.user.id, sessionId);
-
-    return {
-      message: 'Session revoked successfully',
-    };
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('sessionId', UUIDValidationPipe) sessionId: string,
+  ): Promise<MessageResponseDto> {
+    await this.authService.revokeSession(user.id, sessionId);
+    return new MessageResponseDto('Session revoked successfully');
   }
 
   @Get('users/deleted')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.SUPER_ADMIN)
-  @ApiBearerAuth()
-  @ApiOperation({
-    summary: 'Get soft-deleted users',
-  })
+  @ApiBearerAuth('JWT-auth')
+  @ApiOperation({ summary: 'Get soft-deleted users' })
+  @ApiOkResponse({ type: PaginatedUsersResponseDto })
+  @ApiUnauthorizedResponse({ description: 'Authentication is required' })
+  @ApiForbiddenResponse({ description: 'Insufficient permissions' })
   async getDeletedUsers(
-    @Query(
-      new ValidationPipe({
-        transform: true,
-        whitelist: true,
-        forbidNonWhitelisted: true,
-      }),
-    )
-    query: PaginationDto,
-  ): Promise<PaginatedResponseDto<Partial<User>>> {
-    return this.authService.findDeletedUsers(this.createPaginationDto(query));
+    @Query(queryValidationPipe) query: PaginationDto,
+  ): Promise<PaginatedUsersResponseDto> {
+    const result = await this.authService.findDeletedUsers(query);
+    return new PaginatedUsersResponseDto(result.data, result.total, result.limit, result.offset);
   }
 
   @Delete('users/:id')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.SUPER_ADMIN)
-  @ApiBearerAuth()
+  @ApiBearerAuth('JWT-auth')
   @HttpCode(HttpStatus.NO_CONTENT)
-  @ApiOperation({
-    summary: 'Soft delete a user',
+  @ApiOperation({ summary: 'Soft delete a user' })
+  @ApiNoContentResponse({ description: 'User soft-deleted successfully' })
+  @ApiUnauthorizedResponse({ description: 'Authentication is required' })
+  @ApiForbiddenResponse({ description: 'Insufficient permissions' })
+  @ApiNotFoundResponse({ description: 'User not found' })
+  @ApiBadRequestResponse({
+    description: 'Cannot delete own account, deleted user, or protected Super Admin',
   })
-  async softDeleteUser(@Param('id', UUIDValidationPipe) id: string): Promise<void> {
-    await this.authService.softDeleteUser(id);
+  async softDeleteUser(
+    @Param('id', UUIDValidationPipe) id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<void> {
+    await this.authService.softDeleteUser(id, user.id);
   }
 
   @Put('users/:id/restore')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.SUPER_ADMIN)
-  @ApiBearerAuth()
-  @ApiOperation({
-    summary: 'Restore a soft-deleted user',
-  })
-  async restoreUser(@Param('id', UUIDValidationPipe) id: string): Promise<User> {
+  @ApiBearerAuth('JWT-auth')
+  @ApiOperation({ summary: 'Restore a soft-deleted user' })
+  @ApiOkResponse({ type: UserResponseDto })
+  @ApiUnauthorizedResponse({ description: 'Authentication is required' })
+  @ApiForbiddenResponse({ description: 'Insufficient permissions' })
+  @ApiNotFoundResponse({ description: 'User not found' })
+  @ApiBadRequestResponse({ description: 'User is not deleted' })
+  async restoreUser(@Param('id', UUIDValidationPipe) id: string): Promise<UserResponseDto> {
     return this.authService.restoreUser(id);
   }
 
   @Delete('users/:id/permanent')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.SUPER_ADMIN)
-  @ApiBearerAuth()
+  @ApiBearerAuth('JWT-auth')
   @HttpCode(HttpStatus.NO_CONTENT)
-  @ApiOperation({
-    summary: 'Permanently delete a user',
+  @ApiOperation({ summary: 'Permanently delete a user' })
+  @ApiNoContentResponse({ description: 'User permanently deleted successfully' })
+  @ApiUnauthorizedResponse({ description: 'Authentication is required' })
+  @ApiForbiddenResponse({ description: 'Insufficient permissions' })
+  @ApiNotFoundResponse({ description: 'User not found' })
+  @ApiBadRequestResponse({
+    description:
+      'User must be soft-deleted first, cannot delete own account, or protected Super Admin',
   })
-  async permanentDeleteUser(@Param('id', UUIDValidationPipe) id: string): Promise<void> {
-    await this.authService.permanentDeleteUser(id);
+  async permanentDeleteUser(
+    @Param('id', UUIDValidationPipe) id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<void> {
+    await this.authService.permanentDeleteUser(id, user.id);
   }
 
   @Get('users/:id')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.SUPER_ADMIN)
-  @ApiBearerAuth()
-  @ApiOperation({
-    summary: 'Get a user by ID',
-  })
-  @ApiQuery({
-    name: 'includeDeleted',
-    type: Boolean,
-    required: false,
-    example: false,
-  })
-  @ApiResponse({
-    status: HttpStatus.OK,
-    type: UserResponseDto,
-  })
+  @ApiBearerAuth('JWT-auth')
+  @ApiOperation({ summary: 'Get a user by ID' })
+  @ApiQuery({ name: 'includeDeleted', type: Boolean, required: false, example: false })
+  @ApiOkResponse({ type: UserResponseDto })
+  @ApiUnauthorizedResponse({ description: 'Authentication is required' })
+  @ApiForbiddenResponse({ description: 'Insufficient permissions' })
+  @ApiNotFoundResponse({ description: 'User not found' })
   async getUserById(
     @Param('id', UUIDValidationPipe) id: string,
-    @Query('includeDeleted', new ParseBoolPipe({ optional: true }))
-    includeDeleted?: boolean,
-  ): Promise<Partial<User>> {
+    @Query('includeDeleted', new ParseBoolPipe({ optional: true })) includeDeleted?: boolean,
+  ): Promise<UserResponseDto> {
     return this.authService.findUserById(id, includeDeleted ?? false);
-  }
-
-  private createPaginationDto(query: PaginationDto): PaginationDto {
-    const limit = Number(query.limit);
-    const offset = Number(query.offset);
-
-    const paginationDto = new PaginationDto();
-
-    paginationDto.limit = Number.isInteger(limit) && limit > 0 ? limit : 10;
-
-    paginationDto.offset = Number.isInteger(offset) && offset >= 0 ? offset : 0;
-
-    paginationDto.sort = query.sort || undefined;
-
-    return paginationDto;
   }
 }

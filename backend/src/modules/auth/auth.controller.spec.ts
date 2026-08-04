@@ -1,98 +1,114 @@
 // src/modules/auth/auth.controller.spec.ts
 import { Test, TestingModule } from '@nestjs/testing';
+import { UnauthorizedException } from '@nestjs/common';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
-import { User, UserRole } from './entities/user.entity';
+import { UserRole } from './entities/user.entity';
 import { AuthResponseDto } from './dto/auth-response.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { PaginationDto } from '../../common/dto/pagination.dto';
+import { AuthenticatedUser } from './interfaces/authenticated-request.interface';
+import type { Request } from 'express';
+
+type AuthServiceMock = {
+  login: jest.MockedFunction<AuthService['login']>;
+  register: jest.MockedFunction<AuthService['register']>;
+  logout: jest.MockedFunction<AuthService['logout']>;
+  logoutAll: jest.MockedFunction<AuthService['logoutAll']>;
+  getUserSessionsDetailed: jest.MockedFunction<AuthService['getUserSessionsDetailed']>;
+  revokeSession: jest.MockedFunction<AuthService['revokeSession']>;
+  refreshAccessToken: jest.MockedFunction<AuthService['refreshAccessToken']>;
+  changePassword: jest.MockedFunction<AuthService['changePassword']>;
+  forgotPassword: jest.MockedFunction<AuthService['forgotPassword']>;
+  resetPassword: jest.MockedFunction<AuthService['resetPassword']>;
+  getProfile: jest.MockedFunction<AuthService['getProfile']>;
+  findDeletedUsers: jest.MockedFunction<AuthService['findDeletedUsers']>;
+  softDeleteUser: jest.MockedFunction<AuthService['softDeleteUser']>;
+  restoreUser: jest.MockedFunction<AuthService['restoreUser']>;
+  permanentDeleteUser: jest.MockedFunction<AuthService['permanentDeleteUser']>;
+  findUserById: jest.MockedFunction<AuthService['findUserById']>;
+};
+
+type TestRequestOverrides = {
+  ip?: string;
+  headers?: Record<string, string | undefined>;
+  socket?: {
+    remoteAddress?: string;
+  };
+};
+
+const createRequest = (overrides: TestRequestOverrides = {}): Request =>
+  ({
+    ip: '127.0.0.1',
+    headers: {},
+    socket: {},
+    ...overrides,
+  }) as unknown as Request;
 
 describe('AuthController', () => {
   let controller: AuthController;
-  let authService: any;
+  let authService: AuthServiceMock;
 
-  const createMockUser = (overrides: Partial<User> = {}): User => {
-    const defaultUser: Partial<User> = {
-      id: '70dd2947-2b10-4ddb-aa44-48f1d5f71e1d',
-      username: 'admin',
-      email: 'admin@example.com',
-      password: 'hashed',
-      role: UserRole.ADMIN,
-      isActive: true,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-      containers: [],
-      validatePassword: jest.fn(),
-      hashPassword: jest.fn(),
-      resetPasswordToken: null,
-      resetPasswordExpires: null,
-      failedLoginAttempts: 0,
-      lockedUntil: null,
-      lastLogin: null,
-      lastLoginIp: null,
-      lastLoginUserAgent: null,
-      deletedAt: null,
-    };
-    return { ...defaultUser, ...overrides } as User;
+  const mockAuthenticatedUser: AuthenticatedUser = {
+    id: '70dd2947-2b10-4ddb-aa44-48f1d5f71e1d',
+    username: 'admin',
+    email: 'admin@example.com',
+    role: UserRole.ADMIN,
+    isActive: true,
+    sid: 'session-id',
   };
 
-  const mockUser = createMockUser();
-
-  const createAuthenticatedRequest = (user: User = mockUser) =>
-    ({
-      user,
-      headers: {},
-      socket: {},
-      ip: '127.0.0.1',
-    }) as any;
+  const mockUserResponse = {
+    id: mockAuthenticatedUser.id,
+    username: mockAuthenticatedUser.username,
+    email: mockAuthenticatedUser.email,
+    role: mockAuthenticatedUser.role,
+    isActive: mockAuthenticatedUser.isActive,
+    lastLogin: null,
+    lastLoginIp: null,
+    lastLoginUserAgent: null,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    deletedAt: null,
+  };
 
   const mockAuthResponse: AuthResponseDto = {
     accessToken: 'test-token',
-    user: {
-      id: mockUser.id,
-      username: mockUser.username,
-      email: mockUser.email,
-      role: mockUser.role,
-      isActive: mockUser.isActive,
-      lastLogin: mockUser.lastLogin ?? null,
-      lastLoginIp: mockUser.lastLoginIp ?? null,
-      lastLoginUserAgent: mockUser.lastLoginUserAgent ?? null,
-      createdAt: mockUser.createdAt,
-      updatedAt: mockUser.updatedAt,
-      deletedAt: mockUser.deletedAt ?? null,
-    },
+    user: mockUserResponse,
     refreshToken: 'refresh-token',
   };
 
   beforeEach(async () => {
     authService = {
       login: jest.fn().mockResolvedValue(mockAuthResponse),
-      register: jest.fn().mockResolvedValue(mockUser),
+      register: jest.fn().mockResolvedValue(mockUserResponse),
       logout: jest.fn().mockResolvedValue(undefined),
       logoutAll: jest.fn().mockResolvedValue(undefined),
       getUserSessionsDetailed: jest.fn().mockResolvedValue([
         {
-          userId: mockUser.id,
+          userId: mockAuthenticatedUser.id,
           id: 'session-1',
           createdAt: new Date(),
           expiresAt: new Date(),
           ip: '127.0.0.1',
           userAgent: 'chrome',
           isActive: true,
+          isCurrent: true,
         },
         {
-          userId: mockUser.id,
+          userId: mockAuthenticatedUser.id,
           id: 'session-2',
           createdAt: new Date(),
           expiresAt: new Date(),
           ip: '127.0.0.1',
           userAgent: 'firefox',
           isActive: true,
+          isCurrent: false,
         },
       ]),
       revokeSession: jest.fn().mockResolvedValue(undefined),
@@ -103,19 +119,20 @@ describe('AuthController', () => {
       changePassword: jest.fn().mockResolvedValue(undefined),
       forgotPassword: jest.fn().mockResolvedValue({ message: 'Reset link sent' }),
       resetPassword: jest.fn().mockResolvedValue({ message: 'Password reset successfully' }),
-      getProfile: jest.fn().mockResolvedValue(mockUser),
+      getProfile: jest.fn().mockResolvedValue(mockUserResponse),
       findDeletedUsers: jest.fn().mockResolvedValue({
-        data: [mockUser],
+        data: [mockUserResponse],
         total: 1,
         limit: 10,
         offset: 0,
         totalPages: 1,
         currentPage: 1,
+        hasMore: false,
       }),
       softDeleteUser: jest.fn().mockResolvedValue(undefined),
-      restoreUser: jest.fn().mockResolvedValue(mockUser),
+      restoreUser: jest.fn().mockResolvedValue(mockUserResponse),
       permanentDeleteUser: jest.fn().mockResolvedValue(undefined),
-      findUserById: jest.fn().mockResolvedValue(mockUser),
+      findUserById: jest.fn().mockResolvedValue(mockUserResponse),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -134,18 +151,55 @@ describe('AuthController', () => {
   describe('login', () => {
     it('should call authService.login with loginDto, ip and userAgent', async () => {
       const loginDto: LoginDto = { email: 'admin@example.com', password: 'Admin@123' };
-      const req = {
+      const req = createRequest({
         ip: '127.0.0.1',
         headers: { 'user-agent': 'test-agent' },
         socket: { remoteAddress: '127.0.0.1' },
-      } as any;
+      });
 
       const result = await controller.login(loginDto, req);
 
       expect(authService.login).toHaveBeenCalledWith(loginDto, req.ip, req.headers['user-agent']);
       expect(result).toBe(mockAuthResponse);
-      // ✅ Refresh token duhet të jetë i definuar (nuk lidhet me vlerë specifike)
       expect(result.refreshToken).toBeDefined();
+    });
+
+    it('should use socket IP and default user-agent when request values are missing', async () => {
+      const loginDto: LoginDto = {
+        email: 'admin@example.com',
+        password: 'Admin@123',
+      };
+
+      const req = createRequest({
+        ip: undefined,
+        headers: {},
+        socket: {
+          remoteAddress: '10.0.0.5',
+        },
+      });
+
+      const result = await controller.login(loginDto, req);
+
+      expect(authService.login).toHaveBeenCalledWith(loginDto, '10.0.0.5', 'unknown');
+      expect(result).toBe(mockAuthResponse);
+    });
+
+    it('should fallback to 0.0.0.0 when no IP is available', async () => {
+      const loginDto: LoginDto = {
+        email: 'admin@example.com',
+        password: 'Admin@123',
+      };
+
+      const req = createRequest({
+        ip: undefined,
+        headers: {},
+        socket: {},
+      });
+
+      const result = await controller.login(loginDto, req);
+
+      expect(authService.login).toHaveBeenCalledWith(loginDto, '0.0.0.0', 'unknown');
+      expect(result).toBe(mockAuthResponse);
     });
   });
 
@@ -154,31 +208,35 @@ describe('AuthController', () => {
       const registerDto: RegisterDto = {
         username: 'newuser',
         email: 'newuser@example.com',
-        password: 'password123',
+        password: 'Password@123',
         role: UserRole.USER,
       };
-      const req = createAuthenticatedRequest();
-      const result = await controller.register(registerDto, req);
-      expect(authService.register).toHaveBeenCalledWith(registerDto, req.user);
-      expect(result).toBe(mockUser);
+      const result = await controller.register(registerDto, mockAuthenticatedUser);
+      expect(authService.register).toHaveBeenCalledWith(registerDto, mockAuthenticatedUser);
+      expect(result).toBe(mockUserResponse);
     });
   });
 
   describe('logout', () => {
-    it('should call authService.logout with user id and refresh token from body', async () => {
-      const req = createAuthenticatedRequest();
-      const dto: RefreshTokenDto = { refreshToken: 'refresh-token' };
-      const result = await controller.logout(req, dto);
-      expect(authService.logout).toHaveBeenCalledWith(mockUser.id, dto.refreshToken);
+    it('should call authService.logout with user id and current session id', async () => {
+      const result = await controller.logout(mockAuthenticatedUser);
+      expect(authService.logout).toHaveBeenCalledWith(
+        mockAuthenticatedUser.id,
+        mockAuthenticatedUser.sid,
+      );
       expect(result).toEqual({ message: 'Logged out successfully' });
+    });
+
+    it('should propagate service errors', async () => {
+      authService.logout.mockRejectedValueOnce(new UnauthorizedException());
+      await expect(controller.logout(mockAuthenticatedUser)).rejects.toThrow(UnauthorizedException);
     });
   });
 
   describe('logoutAll', () => {
     it('should call authService.logoutAll with user id', async () => {
-      const req = createAuthenticatedRequest();
-      const result = await controller.logoutAll(req);
-      expect(authService.logoutAll).toHaveBeenCalledWith(mockUser.id);
+      const result = await controller.logoutAll(mockAuthenticatedUser);
+      expect(authService.logoutAll).toHaveBeenCalledWith(mockAuthenticatedUser.id);
       expect(result).toEqual({ message: 'Logged out from all devices' });
     });
   });
@@ -197,11 +255,13 @@ describe('AuthController', () => {
 
   describe('changePassword', () => {
     it('should call authService.changePassword with user id and passwords', async () => {
-      const req = createAuthenticatedRequest();
-      const dto: ChangePasswordDto = { currentPassword: 'old', newPassword: 'New@123' };
-      const result = await controller.changePassword(dto, req);
+      const dto: ChangePasswordDto = {
+        currentPassword: 'OldPassword@123',
+        newPassword: 'NewPassword@123',
+      };
+      const result = await controller.changePassword(dto, mockAuthenticatedUser);
       expect(authService.changePassword).toHaveBeenCalledWith(
-        mockUser.id,
+        mockAuthenticatedUser.id,
         dto.currentPassword,
         dto.newPassword,
       );
@@ -220,7 +280,7 @@ describe('AuthController', () => {
 
   describe('resetPassword', () => {
     it('should call authService.resetPassword with token and new password', async () => {
-      const dto: ResetPasswordDto = { token: 'reset-token', newPassword: 'New@123' };
+      const dto: ResetPasswordDto = { token: 'reset-token', newPassword: 'NewPassword@123' };
       const result = await controller.resetPassword(dto);
       expect(authService.resetPassword).toHaveBeenCalledWith(dto.token, dto.newPassword);
       expect(result).toEqual({ message: 'Password reset successfully' });
@@ -228,99 +288,105 @@ describe('AuthController', () => {
   });
 
   describe('getProfile', () => {
-    it('should delegate profile retrieval to authService', async () => {
-      const safeUser = mockAuthResponse.user;
-      authService.getProfile.mockResolvedValue(safeUser);
-
-      const req = createAuthenticatedRequest();
-      const result = await controller.getProfile(req);
-
-      expect(authService.getProfile).toHaveBeenCalledWith(mockUser.id);
-      expect(result).toEqual(safeUser);
+    it('should delegate profile retrieval to authService with current user', async () => {
+      const result = await controller.getProfile(mockAuthenticatedUser);
+      expect(authService.getProfile).toHaveBeenCalledWith(mockAuthenticatedUser.id);
+      expect(result).toEqual(mockUserResponse);
     });
   });
 
   describe('getSessions', () => {
-    it('should call authService.getUserSessionsDetailed and return sessions array', async () => {
-      const req = createAuthenticatedRequest();
-      const result = await controller.getSessions(req);
-      expect(authService.getUserSessionsDetailed).toHaveBeenCalledWith(mockUser.id);
+    it('should call authService.getUserSessionsDetailed with user id and current session id', async () => {
+      const result = await controller.getSessions(mockAuthenticatedUser);
+      expect(authService.getUserSessionsDetailed).toHaveBeenCalledWith(
+        mockAuthenticatedUser.id,
+        mockAuthenticatedUser.sid,
+      );
       expect(result).toHaveProperty('sessions');
       expect(result.sessions).toHaveLength(2);
-      expect(result.sessions[0]).toHaveProperty('userId', mockUser.id);
+      expect(result.sessions[0]).toHaveProperty('userId', mockAuthenticatedUser.id);
       expect(result.sessions[0]).toHaveProperty('id');
       expect(result.sessions[0]).toHaveProperty('createdAt');
       expect(result.sessions[0]).toHaveProperty('expiresAt');
       expect(result.sessions[0]).toHaveProperty('isActive');
+      expect(result.sessions[0].isCurrent).toBe(true);
+      expect(result.sessions[1].isCurrent).toBe(false);
     });
   });
 
   describe('revokeSession', () => {
     it('should call authService.revokeSession with user id and session id', async () => {
-      const req = createAuthenticatedRequest();
       const sessionId = 'session-123';
-      const result = await controller.revokeSession(req, sessionId);
-      expect(authService.revokeSession).toHaveBeenCalledWith(mockUser.id, sessionId);
+      const result = await controller.revokeSession(mockAuthenticatedUser, sessionId);
+      expect(authService.revokeSession).toHaveBeenCalledWith(mockAuthenticatedUser.id, sessionId);
       expect(result).toEqual({ message: 'Session revoked successfully' });
     });
   });
 
   describe('getDeletedUsers', () => {
-    it('should call authService.findDeletedUsers with pagination dto', async () => {
+    it('should call authService.findDeletedUsers with pagination dto and return paginated result', async () => {
       const paginationDto: PaginationDto = { limit: 10, offset: 0 };
       const result = await controller.getDeletedUsers(paginationDto);
       expect(authService.findDeletedUsers).toHaveBeenCalledWith(
         expect.objectContaining({
           limit: 10,
           offset: 0,
-          sort: undefined,
         }),
       );
-      expect(result).toHaveProperty('data');
-      expect(result).toHaveProperty('total');
-      expect(result).toHaveProperty('limit');
-      expect(result).toHaveProperty('offset');
+      expect(result).toHaveProperty('data', [mockUserResponse]);
+      expect(result).toHaveProperty('total', 1);
+      expect(result).toHaveProperty('limit', 10);
+      expect(result).toHaveProperty('offset', 0);
+      expect(result).toHaveProperty('totalPages', 1);
+      expect(result).toHaveProperty('currentPage', 1);
+      expect(result).toHaveProperty('hasMore', false);
     });
   });
 
   describe('softDeleteUser', () => {
-    it('should call authService.softDeleteUser with user id', async () => {
-      const userId = '70dd2947-2b10-4ddb-aa44-48f1d5f71e1d';
-      await controller.softDeleteUser(userId);
-      expect(authService.softDeleteUser).toHaveBeenCalledWith(userId);
+    it('should call authService.softDeleteUser with target user id and current user id', async () => {
+      const userId = 'target-user-id';
+      const result = await controller.softDeleteUser(userId, mockAuthenticatedUser);
+      expect(authService.softDeleteUser).toHaveBeenCalledWith(userId, mockAuthenticatedUser.id);
+      expect(result).toBeUndefined();
     });
   });
 
   describe('restoreUser', () => {
     it('should call authService.restoreUser with user id and return restored user', async () => {
-      const userId = '70dd2947-2b10-4ddb-aa44-48f1d5f71e1d';
+      const userId = 'target-user-id';
       const result = await controller.restoreUser(userId);
       expect(authService.restoreUser).toHaveBeenCalledWith(userId);
-      expect(result).toBe(mockUser);
-      // ✅ Nuk presim që restoreUser të thërrasë save direkt
+      expect(result).toBe(mockUserResponse);
     });
   });
 
   describe('permanentDeleteUser', () => {
-    it('should call authService.permanentDeleteUser with user id', async () => {
-      const userId = '70dd2947-2b10-4ddb-aa44-48f1d5f71e1d';
-      await controller.permanentDeleteUser(userId);
-      expect(authService.permanentDeleteUser).toHaveBeenCalledWith(userId);
+    it('should call authService.permanentDeleteUser with target user id and current user id', async () => {
+      const userId = 'target-user-id';
+      const result = await controller.permanentDeleteUser(userId, mockAuthenticatedUser);
+      expect(authService.permanentDeleteUser).toHaveBeenCalledWith(
+        userId,
+        mockAuthenticatedUser.id,
+      );
+      expect(result).toBeUndefined();
     });
   });
 
   describe('getUserById', () => {
     it('should call authService.findUserById with user id and includeDeleted flag', async () => {
-      const userId = '70dd2947-2b10-4ddb-aa44-48f1d5f71e1d';
+      const userId = 'target-user-id';
       const includeDeleted = true;
-      await controller.getUserById(userId, includeDeleted);
+      const result = await controller.getUserById(userId, includeDeleted);
       expect(authService.findUserById).toHaveBeenCalledWith(userId, true);
+      expect(result).toBe(mockUserResponse);
     });
 
     it('should default includeDeleted to false when not provided', async () => {
-      const userId = '70dd2947-2b10-4ddb-aa44-48f1d5f71e1d';
-      await controller.getUserById(userId);
+      const userId = 'target-user-id';
+      const result = await controller.getUserById(userId);
       expect(authService.findUserById).toHaveBeenCalledWith(userId, false);
+      expect(result).toBe(mockUserResponse);
     });
   });
 });
