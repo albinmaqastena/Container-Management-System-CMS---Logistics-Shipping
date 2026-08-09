@@ -1,51 +1,364 @@
 /* src/styles/global.css */
-* {
+
+/* ================================
+   RESET
+================================ */
+
+*,
+*::before,
+*::after {
   margin: 0;
   padding: 0;
   box-sizing: border-box;
 }
 
+html {
+  width: 100%;
+  min-height: 100%;
+  scroll-behavior: smooth;
+  -webkit-text-size-adjust: 100%;
+}
+
 body {
-  font-family: 'Roboto', 'Helvetica', 'Arial', sans-serif;
-  background-color: #f5f5f5;
+  width: 100%;
+  min-width: 320px;
+  min-height: 100vh;
+  min-height: 100dvh;
+
+  margin: 0;
+
+  font-family:
+    'Roboto',
+    'Helvetica Neue',
+    'Helvetica',
+    'Arial',
+    sans-serif;
+
+  background-color: #f7f7f8;
+  color: #181818;
+
+  line-height: 1.5;
+
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-}
 
-/* Custom scrollbar */
-::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
-}
-
-::-webkit-scrollbar-track {
-  background: #f1f1f1;
-  border-radius: 4px;
-}
-
-::-webkit-scrollbar-thumb {
-  background: #888;
-  border-radius: 4px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: #555;
+  overflow-x: hidden;
 }
 
 #root {
+  width: 100%;
   min-height: 100vh;
+  min-height: 100dvh;
 }
 
-/* Utility classes */
+
+/* ================================
+   BASIC ELEMENTS
+================================ */
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+button {
+  -webkit-tap-highlight-color: transparent;
+}
+
+a {
+  color: inherit;
+}
+
+img,
+svg {
+  max-width: 100%;
+}
+
+img {
+  display: block;
+}
+
+
+/* ================================
+   SELECTION
+================================ */
+
+::selection {
+  background-color: #1c1c1c;
+  color: #ffffff;
+}
+
+
+/* ================================
+   SCROLLBAR
+================================ */
+
+/* Firefox */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #c7c7c9 transparent;
+}
+
+/* Chrome / Edge / Safari */
+::-webkit-scrollbar {
+  width: 7px;
+  height: 7px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background-color: #c7c7c9;
+
+  border-radius: 999px;
+
+  border: 2px solid transparent;
+
+  background-clip: padding-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background-color: #969699;
+}
+
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+
+/* ================================
+   FOCUS
+================================ */
+
+:focus-visible {
+  outline: 2px solid rgba(24, 24, 24, 0.7);
+  outline-offset: 2px;
+}
+
+
+/* ================================
+   UTILITY CLASSES
+================================ */
+
 .text-center {
   text-align: center;
 }
+
 .text-muted {
-  color: #6c757d;
+  color: #77777c;
 }
-.mt-1 { margin-top: 8px; }
-.mt-2 { margin-top: 16px; }
-.mt-3 { margin-top: 24px; }
-.mb-1 { margin-bottom: 8px; }
-.mb-2 { margin-bottom: 16px; }
-.mb-3 { margin-bottom: 24px; }
+
+.mt-1 {
+  margin-top: 8px;
+}
+
+.mt-2 {
+  margin-top: 16px;
+}
+
+.mt-3 {
+  margin-top: 24px;
+}
+
+.mb-1 {
+  margin-bottom: 8px;
+}
+
+.mb-2 {
+  margin-bottom: 16px;
+}
+
+.mb-3 {
+  margin-bottom: 24px;
+}
+
+
+/* ================================
+   RESPONSIVE
+================================ */
+
+@media (max-width: 600px) {
+  body {
+    min-width: 0;
+  }
+
+  ::-webkit-scrollbar {
+    width: 5px;
+    height: 5px;
+  }
+}
+
+
+/* ================================
+   PRINT
+================================ */
+
+@media print {
+  body {
+    background: #ffffff;
+  }
+
+  ::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+/* ================================
+   TOAST NOTIFICATIONS
+================================ */
+
+.Toastify__toast-container {
+  width: min(380px, calc(100vw - 24px));
+  padding: 0;
+}
+
+.app-toast {
+  min-height: 64px;
+
+  padding: 14px 16px;
+
+  border-radius: 12px;
+
+  background: #ffffff;
+
+  color: #202024;
+
+  border: 1px solid rgba(0, 0, 0, 0.07);
+
+  box-shadow:
+    0 12px 32px rgba(0, 0, 0, 0.11);
+
+  font-family:
+    'Roboto',
+    'Helvetica Neue',
+    'Helvetica',
+    'Arial',
+    sans-serif;
+
+  font-size: 0.875rem;
+  font-weight: 500;
+
+  line-height: 1.5;
+}
+
+.app-toast:hover {
+  transform: translateY(-1px);
+
+  box-shadow:
+    0 15px 36px rgba(0, 0, 0, 0.13);
+}
+
+.Toastify__toast-icon {
+  width: 21px;
+  margin-inline-end: 12px;
+}
+
+/* Success */
+.Toastify__toast--success .Toastify__toast-icon {
+  color: #237a43;
+}
+
+/* Error */
+.Toastify__toast--error .Toastify__toast-icon {
+  color: #c73842;
+}
+
+/* Warning */
+.Toastify__toast--warning .Toastify__toast-icon {
+  color: #c67a0a;
+}
+
+/* Info */
+.Toastify__toast--info .Toastify__toast-icon {
+  color: #367fa6;
+}
+
+.Toastify__toast-body {
+  margin: 0;
+  padding: 0;
+
+  color: #29292d;
+}
+
+.Toastify__close-button {
+  color: #7c7c81;
+
+  opacity: 0.75;
+
+  transition:
+    opacity 0.18s ease,
+    transform 0.18s ease;
+}
+
+.Toastify__close-button:hover {
+  color: #7c7c81;
+
+  opacity: 1;
+
+  transform: scale(1.06);
+}
+
+.app-toast-progress {
+  height: 3px;
+
+  opacity: 0.85;
+}
+
+/* Progress colors */
+.Toastify__toast--success .app-toast-progress {
+  background: #237a43;
+}
+
+.Toastify__toast--error .app-toast-progress {
+  background: #c73842;
+}
+
+.Toastify__toast--warning .app-toast-progress {
+  background: #c67a0a;
+}
+
+.Toastify__toast--info .app-toast-progress {
+  background: #367fa6;
+}
+
+
+/* Loading toast */
+.Toastify__toast--default {
+  background: #ffffff;
+  color: #29292d;
+}
+
+.Toastify__spinner {
+  width: 20px;
+  height: 20px;
+
+  border: 2px solid #dedee1;
+  border-right-color: #202020;
+}
+
+
+/* Mobile */
+@media (max-width: 600px) {
+  .Toastify__toast-container {
+    width: calc(100vw - 20px);
+
+    left: 10px;
+    right: 10px;
+
+    padding: 0;
+  }
+
+  .app-toast {
+    min-height: 60px;
+
+    padding: 12px 14px;
+
+    border-radius: 10px;
+
+    font-size: 0.84rem;
+  }
+}

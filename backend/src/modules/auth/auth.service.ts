@@ -725,6 +725,41 @@ export class AuthService {
     );
   }
 
+  async findUsers(
+  paginationDto: PaginationDto,
+): Promise<PaginatedResponseDto<UserResponseDto>> {
+  const limit = paginationDto.limit ?? 10;
+  const offset = paginationDto.offset ?? 0;
+
+  const queryBuilder = this.userRepository
+    .createQueryBuilder('user')
+    .where('user.deletedAt IS NULL');
+
+  const sortObject = buildSortObject(
+    paginationDto.sort,
+    ALLOWED_SORT_FIELDS.users,
+  );
+
+  if (Object.keys(sortObject).length > 0) {
+    for (const [field, direction] of Object.entries(sortObject)) {
+      queryBuilder.addOrderBy(`user.${field}`, direction);
+    }
+  } else {
+    queryBuilder.orderBy('user.createdAt', 'DESC');
+  }
+
+  queryBuilder.skip(offset).take(limit);
+
+  const [users, total] = await queryBuilder.getManyAndCount();
+
+  return new PaginatedResponseDto<UserResponseDto>(
+    users.map((u) => this.sanitizeUser(u)),
+    total,
+    limit,
+    offset,
+  );
+}
+
   // ─── PRIVATE HELPERS ──────────────────────────────────────────────────────
 
   private sanitizeUser(user: User): UserResponseDto {

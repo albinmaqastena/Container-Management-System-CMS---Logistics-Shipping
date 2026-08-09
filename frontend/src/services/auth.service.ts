@@ -112,6 +112,16 @@ export const authService = {
     return response.data;
   },
 
+  getUsers: async (
+  params?: PaginationParams,
+): Promise<PaginatedResponse<User>> => {
+  const response = await apiClient.get<PaginatedResponse<User>>(
+    API_ENDPOINTS.USERS.ALL,
+    { params },
+  );
+  return response.data;
+},
+
   softDeleteUser: async (userId: string): Promise<void> => {
     await apiClient.delete(API_ENDPOINTS.USERS.BY_ID(userId));
   },

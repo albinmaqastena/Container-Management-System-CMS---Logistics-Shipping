@@ -1,30 +1,34 @@
-import React, { useState } from 'react';
+// src/pages/CreateContainerPage.tsx
+
+import { useState } from 'react';
+import type { ChangeEvent, FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
+
 import {
   Box,
   Paper,
   Typography,
   TextField,
   Button,
-  Alert,
   Breadcrumbs,
   Link,
-  Stepper,
-  Step,
-  StepLabel,
-  StepContent,
 } from '@mui/material';
+
 import {
   ArrowBack as ArrowBackIcon,
   Save as SaveIcon,
   Cancel as CancelIcon,
 } from '@mui/icons-material';
-import { toast } from 'react-toastify';
-import { useContainers } from '../contexts/ContainerContext';
 
-export const CreateContainerPage: React.FC = () => {
+import { toast } from 'react-toastify';
+
+import { useContainers } from '../hooks/useContainers';
+
+import { ConfirmDialog } from '../components/common/Modals/ConfirmDialog';
+
+export const CreateContainerPage = () => {
   const navigate = useNavigate();
-  const { createContainer, loading } = useContainers();
+  const { createContainer } = useContainers();
 
   const [formData, setFormData] = useState({
     customName: '',
@@ -38,48 +42,67 @@ export const CreateContainerPage: React.FC = () => {
   }>({});
 
   const [submitting, setSubmitting] = useState(false);
-  const [activeStep, setActiveStep] = useState(0);
+  const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
+  const [cancelDestination, setCancelDestination] = useState('/containers');
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, value } = e.target;
-    setFormData((prev) => ({ ...prev, [name]: value }));
+  const hasChanges =
+    Boolean(formData.customName.trim()) ||
+    Boolean(formData.totalVolume.trim()) ||
+    Boolean(formData.description.trim());
+
+  const handleChange = (
+    event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
+    ): void => {
+    const { name, value } = event.target;
+
+    setFormData((prev) => ({
+        ...prev,
+        [name]: value,
+    }));
 
     if (errors[name as keyof typeof errors]) {
-      setErrors((prev) => ({ ...prev, [name]: undefined }));
+        setErrors((prev) => ({
+        ...prev,
+        [name]: undefined,
+        }));
     }
-  };
+    };
 
   const validate = (): boolean => {
     const newErrors: typeof errors = {};
 
-    if (!formData.customName.trim()) {
+    const name = formData.customName.trim();
+
+    if (!name) {
       newErrors.customName = 'Container name is required';
-    } else if (formData.customName.trim().length < 2) {
-      newErrors.customName = 'Container name must be at least 2 characters';
-    } else if (formData.customName.trim().length > 100) {
-      newErrors.customName = 'Container name must be less than 100 characters';
+    } else if (name.length < 2) {
+      newErrors.customName =
+        'Container name must be at least 2 characters';
+    } else if (name.length > 100) {
+      newErrors.customName =
+        'Container name must be less than 100 characters';
     }
+
+    const volume = Number(formData.totalVolume);
 
     if (!formData.totalVolume) {
       newErrors.totalVolume = 'Total volume is required';
-    } else {
-      const volume = parseFloat(formData.totalVolume);
-      if (isNaN(volume) || volume <= 0) {
-        newErrors.totalVolume = 'Total volume must be a positive number';
-      } else if (volume > 10000) {
-        newErrors.totalVolume = 'Total volume cannot exceed 10,000 m³';
-      }
+    } else if (!Number.isFinite(volume) || volume <= 0) {
+      newErrors.totalVolume =
+        'Total volume must be a positive number';
     }
 
     setErrors(newErrors);
+
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = async (
+    event: FormEvent,
+  ): Promise<void> => {
+    event.preventDefault();
 
     if (!validate()) {
-      setActiveStep(0);
       toast.warning('Please fix the errors before submitting');
       return;
     }
@@ -89,127 +112,262 @@ export const CreateContainerPage: React.FC = () => {
     try {
       const container = await createContainer({
         customName: formData.customName.trim(),
-        totalVolume: parseFloat(formData.totalVolume),
+        totalVolume: Number(formData.totalVolume),
         description: formData.description.trim() || undefined,
       });
 
-      toast.success(`Container "${container.name}" created successfully!`);
+      toast.success(
+        `Container "${container.name}" created successfully!`,
+      );
+
       navigate(`/containers/${container.id}`);
-    } catch (error: any) {
-      toast.error(error.message || 'Failed to create container');
-      setActiveStep(0);
+    } catch (error: unknown) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : 'Failed to create container';
+
+      toast.error(message);
     } finally {
       setSubmitting(false);
     }
   };
 
-  const handleCancel = () => {
-    if (formData.customName || formData.totalVolume || formData.description) {
-      if (window.confirm('Are you sure you want to cancel? Your changes will be lost.')) {
-        navigate('/containers');
-      }
-    } else {
-      navigate('/containers');
+  const requestNavigation = (
+    destination: string,
+  ): void => {
+    if (hasChanges) {
+      setCancelDestination(destination);
+      setCancelDialogOpen(true);
+      return;
     }
+
+    navigate(destination);
   };
 
-  const steps = [
-    {
-      label: 'Container Details',
-      description: 'Enter the basic information for your container',
-    },
-    {
-      label: 'Review & Create',
-      description: 'Review the details and create your container',
-    },
-  ];
+  const handleConfirmCancel = (): void => {
+    setCancelDialogOpen(false);
+    navigate(cancelDestination);
+  };
 
-  const isStepComplete = (step: number): boolean => {
-    if (step === 0) {
-      return !!formData.customName.trim() && !!formData.totalVolume;
-    }
-    return true;
+  const handleCancelDialogClose = (): void => {
+    setCancelDialogOpen(false);
   };
 
   return (
-    <Box sx={{ p: 3, maxWidth: 800, mx: 'auto' }}>
-      <Breadcrumbs sx={{ mb: 3 }}>
+    <Box
+      sx={{
+        width: '100%',
+        maxWidth: 900,
+        mx: 'auto',
+
+        px: {
+          xs: 0,
+          sm: 0.5,
+          md: 1,
+        },
+
+        pb: {
+          xs: 3,
+          sm: 4,
+        },
+      }}
+    >
+      {/* Breadcrumbs */}
+      <Breadcrumbs
+        sx={{
+          mb: {
+            xs: 2,
+            sm: 2.5,
+          },
+
+          color: '#76767b',
+
+          '& .MuiBreadcrumbs-separator': {
+            color: '#b1b1b5',
+          },
+        }}
+      >
         <Link
           component="button"
           variant="body2"
-          onClick={() => navigate('/dashboard')}
-          sx={{ textDecoration: 'none' }}
+          onClick={() => requestNavigation('/dashboard')}
+          sx={{
+            color: '#68686d',
+            fontWeight: 600,
+            textDecoration: 'none',
+
+            '&:hover': {
+              color: '#202024',
+              textDecoration: 'none',
+            },
+          }}
         >
           Dashboard
         </Link>
+
         <Link
           component="button"
           variant="body2"
-          onClick={() => navigate('/containers')}
-          sx={{ textDecoration: 'none' }}
+          onClick={() => requestNavigation('/containers')}
+          sx={{
+            color: '#68686d',
+            fontWeight: 600,
+            textDecoration: 'none',
+
+            '&:hover': {
+              color: '#202024',
+              textDecoration: 'none',
+            },
+          }}
         >
           Containers
         </Link>
-        <Typography color="textPrimary" variant="body2">
+
+        <Typography
+          variant="body2"
+          sx={{
+            color: '#202024',
+            fontWeight: 700,
+          }}
+        >
           Create Container
         </Typography>
       </Breadcrumbs>
 
-      <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
+      {/* Header */}
+      <Box
+        sx={{
+          display: 'flex',
+
+          flexDirection: {
+            xs: 'column',
+            sm: 'row',
+          },
+
+          alignItems: {
+            xs: 'flex-start',
+            sm: 'center',
+          },
+
+          gap: {
+            xs: 1.5,
+            sm: 2,
+          },
+
+          mb: {
+            xs: 2.5,
+            sm: 3,
+          },
+        }}
+      >
         <Button
           startIcon={<ArrowBackIcon />}
-          onClick={() => navigate('/containers')}
-          sx={{ mr: 2 }}
+          onClick={() => requestNavigation('/containers')}
+          disabled={submitting}
+          sx={{
+            minHeight: 42,
+
+            px: 1.5,
+
+            borderRadius: 2,
+
+            color: '#343438',
+
+            backgroundColor: '#ffffff',
+
+            border: '1px solid #d1d1d5',
+
+            fontSize: '0.84rem',
+
+            fontWeight: 700,
+
+            textTransform: 'none',
+
+            '&:hover': {
+              color: '#18181b',
+
+              backgroundColor: '#f2f2f4',
+
+              borderColor: '#b5b5ba',
+            },
+
+            '&.Mui-disabled': {
+              color: '#747479',
+
+              backgroundColor: '#eeeeF0',
+
+              borderColor: '#ceced2',
+
+              opacity: 1,
+            },
+          }}
         >
           Back
         </Button>
-        <Typography variant="h4" component="h1">
-          Create New Container
-        </Typography>
+
+        <Box>
+          <Typography
+            variant="h4"
+            component="h1"
+            sx={{
+              color: '#17171a',
+
+              fontSize: {
+                xs: '1.5rem',
+                sm: '1.75rem',
+                md: '1.95rem',
+              },
+
+              fontWeight: 800,
+
+              lineHeight: 1.2,
+
+              letterSpacing: '-0.03em',
+            }}
+          >
+            Create New Container
+          </Typography>
+        </Box>
       </Box>
 
-      <Paper sx={{ p: 4 }}>
-        <Stepper activeStep={activeStep} orientation="vertical" sx={{ mb: 4 }}>
-          {steps.map((step, index) => (
-            <Step key={index}>
-              <StepLabel
-                optional={
-                  index === 0 && (
-                    <Typography variant="caption" color="textSecondary">
-                      {isStepComplete(index) ? '✓ Complete' : 'Required fields'}
-                    </Typography>
-                  )
-                }
-              >
-                {step.label}
-              </StepLabel>
-              <StepContent>
-                <Typography color="textSecondary" sx={{ mb: 2 }}>
-                  {step.description}
-                </Typography>
-                <Box sx={{ display: 'flex', gap: 2 }}>
-                  <Button
-                    variant="contained"
-                    onClick={() => {
-                      if (index === 0 && !isStepComplete(0)) {
-                        toast.warning('Please fill in all required fields');
-                        return;
-                      }
-                      setActiveStep(index + 1);
-                    }}
-                    disabled={!isStepComplete(index)}
-                  >
-                    Continue
-                  </Button>
-                  <Button onClick={() => setActiveStep(0)}>Back</Button>
-                </Box>
-              </StepContent>
-            </Step>
-          ))}
-        </Stepper>
+      {/* Main Form Card */}
+      <Paper
+        elevation={0}
+        sx={{
+          overflow: 'hidden',
 
+          p: {
+            xs: 2.25,
+            sm: 3,
+            md: 4,
+          },
+
+          borderRadius: {
+            xs: 2.5,
+            sm: 3,
+          },
+
+          backgroundColor: '#ffffff',
+
+          border: '1px solid #d7d7db',
+
+          boxShadow:
+            '0 7px 24px rgba(0,0,0,0.065)',
+        }}
+      >
         <form onSubmit={handleSubmit}>
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+          <Box
+            sx={{
+              display: 'flex',
+              flexDirection: 'column',
+
+              gap: {
+                xs: 2.5,
+                sm: 3,
+              },
+            }}
+          >
             <TextField
               name="customName"
               label="Container Name"
@@ -219,8 +377,69 @@ export const CreateContainerPage: React.FC = () => {
               fullWidth
               placeholder="e.g., Alpha Container, Main Storage, etc."
               error={!!errors.customName}
-              helperText={errors.customName || 'Choose a unique name for your container'}
+              helperText={
+                errors.customName ||
+                'Choose a unique name for your container'
+              }
               disabled={submitting}
+              sx={{
+                '& .MuiInputLabel-root': {
+                  color: '#5f5f64',
+                  fontWeight: 600,
+                },
+
+                '& .MuiInputLabel-root.Mui-focused': {
+                  color: '#202024',
+                },
+
+                '& .MuiOutlinedInput-root': {
+                  borderRadius: 2.25,
+
+                  backgroundColor: '#ffffff',
+
+                  color: '#202024',
+
+                  '& fieldset': {
+                    borderColor: '#cdCDD2',
+                  },
+
+                  '&:hover fieldset': {
+                    borderColor: '#9f9fa5',
+                  },
+
+                  '&.Mui-focused fieldset': {
+                    borderColor: '#202024',
+                    borderWidth: 1.5,
+                  },
+
+                  '&.Mui-disabled': {
+                    backgroundColor: '#f3f3f5',
+                  },
+                },
+
+                '& .MuiInputBase-input': {
+                  color: '#202024',
+                  WebkitTextFillColor: '#202024',
+
+                  fontSize: {
+                    xs: '16px',
+                    sm: '0.92rem',
+                  },
+
+                  '&::placeholder': {
+                    color: '#929297',
+                    opacity: 1,
+                  },
+                },
+
+                '& .MuiFormHelperText-root': {
+                  color: errors.customName
+                    ? undefined
+                    : '#707075',
+
+                  fontSize: '0.75rem',
+                },
+              }}
             />
 
             <TextField
@@ -233,11 +452,75 @@ export const CreateContainerPage: React.FC = () => {
               fullWidth
               placeholder="e.g., 1000"
               error={!!errors.totalVolume}
-              helperText={errors.totalVolume || 'Enter the total capacity of the container'}
+              helperText={
+                errors.totalVolume ||
+                'Enter the total capacity of the container'
+              }
               slotProps={{
-                htmlInput: { min: 0.01, step: 0.01 },
+                htmlInput: {
+                  min: 0.01,
+                  step: 0.01,
+                },
               }}
               disabled={submitting}
+              sx={{
+                '& .MuiInputLabel-root': {
+                  color: '#5f5f64',
+                  fontWeight: 600,
+                },
+
+                '& .MuiInputLabel-root.Mui-focused': {
+                  color: '#202024',
+                },
+
+                '& .MuiOutlinedInput-root': {
+                  borderRadius: 2.25,
+
+                  backgroundColor: '#ffffff',
+
+                  color: '#202024',
+
+                  '& fieldset': {
+                    borderColor: '#cdCDD2',
+                  },
+
+                  '&:hover fieldset': {
+                    borderColor: '#9f9fa5',
+                  },
+
+                  '&.Mui-focused fieldset': {
+                    borderColor: '#202024',
+                    borderWidth: 1.5,
+                  },
+
+                  '&.Mui-disabled': {
+                    backgroundColor: '#f3f3f5',
+                  },
+                },
+
+                '& .MuiInputBase-input': {
+                  color: '#202024',
+                  WebkitTextFillColor: '#202024',
+
+                  fontSize: {
+                    xs: '16px',
+                    sm: '0.92rem',
+                  },
+
+                  '&::placeholder': {
+                    color: '#929297',
+                    opacity: 1,
+                  },
+                },
+
+                '& .MuiFormHelperText-root': {
+                  color: errors.totalVolume
+                    ? undefined
+                    : '#707075',
+
+                  fontSize: '0.75rem',
+                },
+              }}
             />
 
             <TextField
@@ -250,48 +533,258 @@ export const CreateContainerPage: React.FC = () => {
               rows={4}
               placeholder="Describe the purpose of this container..."
               disabled={submitting}
+              sx={{
+                '& .MuiInputLabel-root': {
+                  color: '#5f5f64',
+                  fontWeight: 600,
+                },
+
+                '& .MuiInputLabel-root.Mui-focused': {
+                  color: '#202024',
+                },
+
+                '& .MuiOutlinedInput-root': {
+                  borderRadius: 2.25,
+
+                  backgroundColor: '#ffffff',
+
+                  color: '#202024',
+
+                  '& fieldset': {
+                    borderColor: '#cdCDD2',
+                  },
+
+                  '&:hover fieldset': {
+                    borderColor: '#9f9fa5',
+                  },
+
+                  '&.Mui-focused fieldset': {
+                    borderColor: '#202024',
+                    borderWidth: 1.5,
+                  },
+
+                  '&.Mui-disabled': {
+                    backgroundColor: '#f3f3f5',
+                  },
+                },
+
+                '& textarea': {
+                  color: '#202024',
+                  WebkitTextFillColor: '#202024',
+
+                  fontSize: {
+                    xs: '16px',
+                    sm: '0.92rem',
+                  },
+
+                  '&::placeholder': {
+                    color: '#929297',
+                    opacity: 1,
+                  },
+                },
+              }}
             />
 
-            <Paper variant="outlined" sx={{ p: 2, bgcolor: 'grey.50' }}>
-              <Typography variant="subtitle2" color="textSecondary" gutterBottom>
-                ℹ️ Container Code
+            {/* Container Code Info */}
+            <Paper
+              variant="outlined"
+              sx={{
+                p: {
+                  xs: 1.75,
+                  sm: 2,
+                },
+
+                borderRadius: 2.25,
+
+                backgroundColor: '#eeeeF0',
+
+                borderColor: '#cdCDD2',
+
+                boxShadow: 'none',
+              }}
+            >
+              <Typography
+                variant="subtitle2"
+                gutterBottom
+                sx={{
+                  color: '#343438',
+
+                  fontWeight: 800,
+
+                  fontSize: '0.77rem',
+
+                  textTransform: 'uppercase',
+
+                  letterSpacing: '0.04em',
+                }}
+              >
+                Container Code
               </Typography>
-              <Typography variant="body2">
-                The container code will be auto-generated based on the current timestamp
-                and the first 3 letters of your container name.
+
+              <Typography
+                variant="body2"
+                sx={{
+                  color: '#55555a',
+
+                  fontSize: {
+                    xs: '0.8rem',
+                    sm: '0.84rem',
+                  },
+
+                  fontWeight: 500,
+
+                  lineHeight: 1.55,
+                }}
+              >
+                The container code will be generated automatically.
               </Typography>
-              {formData.customName && (
-                <Typography variant="body2" sx={{ mt: 1 }}>
-                  <strong>Preview:</strong>{' '}
-                  <code>
-                    {Date.now()}-{formData.customName.trim().substring(0, 3).toUpperCase()}
-                  </code>
-                </Typography>
-              )}
             </Paper>
 
-            <Box sx={{ display: 'flex', gap: 2, justifyContent: 'flex-end', mt: 2 }}>
+            {/* Actions */}
+            <Box
+              sx={{
+                display: 'flex',
+
+                flexDirection: {
+                  xs: 'column-reverse',
+                  sm: 'row',
+                },
+
+                gap: {
+                  xs: 1,
+                  sm: 1.25,
+                },
+
+                justifyContent: 'flex-end',
+
+                mt: {
+                  xs: 0.5,
+                  sm: 1,
+                },
+
+                pt: {
+                  xs: 2,
+                  sm: 2.5,
+                },
+
+                borderTop: '1px solid #e4e4e7',
+              }}
+            >
               <Button
                 variant="outlined"
-                onClick={handleCancel}
+                onClick={() =>
+                  requestNavigation('/containers')
+                }
                 disabled={submitting}
                 startIcon={<CancelIcon />}
+                sx={{
+                  minHeight: 46,
+
+                  px: 2.25,
+
+                  borderRadius: 2,
+
+                  color: '#3d3d42',
+
+                  borderColor: '#c6c6cb',
+
+                  backgroundColor: '#ffffff',
+
+                  fontSize: '0.84rem',
+
+                  fontWeight: 700,
+
+                  textTransform: 'none',
+
+                  '&:hover': {
+                    color: '#202024',
+
+                    borderColor: '#a3a3a8',
+
+                    backgroundColor: '#f2f2f4',
+                  },
+
+                  '&.Mui-disabled': {
+                    color: '#77777c',
+
+                    borderColor: '#ceced2',
+
+                    backgroundColor: '#eeeeF0',
+
+                    opacity: 1,
+                  },
+                }}
               >
                 Cancel
               </Button>
+
               <Button
                 type="submit"
                 variant="contained"
-                disabled={submitting || loading}
+                disabled={submitting}
                 startIcon={<SaveIcon />}
-                sx={{ minWidth: 150 }}
+                sx={{
+                  minWidth: 150,
+
+                  minHeight: 46,
+
+                  px: 2.5,
+
+                  borderRadius: 2,
+
+                  backgroundColor: '#202024',
+
+                  color: '#ffffff',
+
+                  fontSize: '0.84rem',
+
+                  fontWeight: 700,
+
+                  textTransform: 'none',
+
+                  boxShadow: 'none',
+
+                  '&:hover': {
+                    backgroundColor: '#111114',
+
+                    color: '#ffffff',
+
+                    boxShadow:
+                      '0 5px 14px rgba(0,0,0,0.12)',
+                  },
+
+                  '&.Mui-disabled': {
+                    backgroundColor: '#505055',
+
+                    color: '#f2f2f3',
+
+                    opacity: 1,
+
+                    boxShadow: 'none',
+                  },
+                }}
               >
-                {submitting || loading ? 'Creating...' : 'Create Container'}
+                {submitting
+                  ? 'Creating...'
+                  : 'Create Container'}
               </Button>
             </Box>
           </Box>
         </form>
       </Paper>
+
+      <ConfirmDialog
+        open={cancelDialogOpen}
+        title="Cancel Container Creation"
+        message="Are you sure you want to cancel? Your changes will be lost."
+        confirmLabel="Yes, Cancel"
+        cancelLabel="Continue Editing"
+        onConfirm={handleConfirmCancel}
+        onCancel={handleCancelDialogClose}
+        confirmColor="warning"
+      />
     </Box>
   );
 };
+
+export default CreateContainerPage;

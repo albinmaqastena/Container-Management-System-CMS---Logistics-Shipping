@@ -1,152 +1,511 @@
 // src/components/dashboard/DashboardStats.tsx
-import React from 'react';
-import { Box, Card, CardContent, Typography, Skeleton } from '@mui/material';
+
 import {
-  Inventory as InventoryIcon,
-  Storage as StorageIcon,
-  Assessment as AssessmentIcon,
-  Archive as ArchiveIcon,
+  useEffect,
+  useState,
+} from 'react';
+
+import type { ReactNode } from 'react';
+
+import {
+  Box,
+  Card,
+  CardContent,
+  Grid,
+  Skeleton,
+  Typography,
+  useTheme,
+} from '@mui/material';
+
+import {
+  Inventory2Outlined as InventoryIcon,
+  ArchiveOutlined as ArchiveIcon,
+  InventoryOutlined as ItemsIcon,
 } from '@mui/icons-material';
-import { useContainers } from '../../contexts/ContainerContext';
+
+import { useContainers } from '../../hooks/useContainers';
+import { itemService } from '../../services/item.service';
 
 interface StatItem {
   title: string;
-  value: string | number;
-  icon: React.ReactNode;
-  color: string;
+  value: number;
+  description: string;
+  icon: ReactNode;
 }
 
-export const DashboardStats: React.FC = () => {
-  const { activeContainers, archivedContainers, loading } = useContainers();
+export const DashboardStats = () => {
+  const theme = useTheme();
 
-  // ✅ Konverto vlerat në numër para llogaritjes
-  const totalItems = activeContainers.reduce(
-    (sum, container) => sum + (container.items?.length || 0),
-    0
-  );
+  const {
+    activeContainers,
+    archivedContainers,
+    isLoading,
+  } = useContainers();
 
-  const totalVolume = activeContainers.reduce(
-    (sum, container) => sum + Number(container.totalVolume),
-    0
-  );
+  const [
+    activeItemsCount,
+    setActiveItemsCount,
+  ] = useState(0);
 
-  const usedVolume = activeContainers.reduce(
-    (sum, container) => sum + Number(container.usedVolume),
-    0
-  );
+  const [
+    itemsCountLoading,
+    setItemsCountLoading,
+  ] = useState(true);
 
-  const usagePercentage = totalVolume > 0 ? (usedVolume / totalVolume) * 100 : 0;
+  useEffect(() => {
+    let active = true;
+
+    const loadActiveItemsCount =
+      async (): Promise<void> => {
+        setItemsCountLoading(true);
+
+        try {
+          const total =
+            await itemService.getActiveCount();
+
+          if (!active) {
+            return;
+          }
+
+          setActiveItemsCount(total);
+        } catch {
+          if (!active) {
+            return;
+          }
+
+          setActiveItemsCount(0);
+        } finally {
+          if (active) {
+            setItemsCountLoading(false);
+          }
+        }
+      };
+
+    void loadActiveItemsCount();
+
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const stats: StatItem[] = [
     {
       title: 'Active Containers',
       value: activeContainers.length,
-      icon: <InventoryIcon sx={{ fontSize: 32 }} />,
-      color: '#4caf50',
+      description:
+        'Containers currently in use',
+      icon: <InventoryIcon />,
     },
     {
-      title: 'Total Items',
-      value: totalItems,
-      icon: <StorageIcon sx={{ fontSize: 32 }} />,
-      color: '#2196f3',
-    },
-    {
-      title: 'Volume Usage',
-      value: `${usagePercentage.toFixed(1)}%`,
-      icon: <AssessmentIcon sx={{ fontSize: 32 }} />,
-      color: '#ff9800',
-    },
-    {
-      title: 'Archived',
+      title: 'Archived Containers',
       value: archivedContainers.length,
-      icon: <ArchiveIcon sx={{ fontSize: 32 }} />,
-      color: '#9e9e9e',
+      description:
+        'Containers moved to archive',
+      icon: <ArchiveIcon />,
+    },
+    {
+      title: 'Active Items',
+      value: activeItemsCount,
+      description:
+        'Items in active containers',
+      icon: <ItemsIcon />,
     },
   ];
 
+  const loading =
+    isLoading ||
+    itemsCountLoading;
+
   if (loading) {
     return (
-      <Box
-        sx={{
-          display: 'flex',
-          flexWrap: 'wrap',
-          gap: 3,
+      <Grid
+        container
+        spacing={{
+          xs: 2,
+          sm: 2.5,
+          md: 3,
         }}
       >
-        {[...Array(4)].map((_, i) => (
-          <Box
-            key={i}
-            sx={{
-              flex: '1 1 200px',
-              minWidth: { xs: '100%', sm: 'calc(50% - 12px)', md: 'calc(25% - 18px)' },
+        {Array.from({
+          length: 3,
+        }).map((_, index) => (
+          <Grid
+            key={index}
+            size={{
+              xs: 12,
+              sm: 6,
+              lg: 4,
             }}
           >
-            <Card sx={{ height: '100%' }}>
-              <CardContent>
-                <Skeleton variant="text" width="60%" />
-                <Skeleton variant="text" width="40%" height={40} />
-                <Skeleton variant="circular" width={40} height={40} />
+            <Card
+              elevation={0}
+              sx={{
+                height: '100%',
+
+                border:
+                  '1px solid #d7d7db',
+
+                borderRadius: 3,
+
+                backgroundColor:
+                  '#ffffff',
+
+                boxShadow:
+                  '0 6px 18px rgba(0,0,0,0.05)',
+              }}
+            >
+              <CardContent
+                sx={{
+                  p: {
+                    xs: 2.25,
+                    sm: 2.75,
+                    md: 3,
+                  },
+
+                  '&:last-child': {
+                    pb: {
+                      xs: 2.25,
+                      sm: 2.75,
+                      md: 3,
+                    },
+                  },
+                }}
+              >
+                <Box
+                  sx={{
+                    display: 'flex',
+
+                    alignItems:
+                      'flex-start',
+
+                    justifyContent:
+                      'space-between',
+
+                    gap: 2,
+                  }}
+                >
+                  <Box
+                    sx={{
+                      flex: 1,
+                    }}
+                  >
+                    <Skeleton
+                      width={130}
+                      height={18}
+                    />
+
+                    <Skeleton
+                      width={80}
+                      height={52}
+                      sx={{
+                        mt: 0.5,
+                      }}
+                    />
+
+                    <Skeleton
+                      width="70%"
+                      height={18}
+                      sx={{
+                        mt: 0.75,
+                      }}
+                    />
+                  </Box>
+
+                  <Skeleton
+                    variant="rounded"
+                    width={52}
+                    height={52}
+                    sx={{
+                      borderRadius: 2,
+                    }}
+                  />
+                </Box>
               </CardContent>
             </Card>
-          </Box>
+          </Grid>
         ))}
-      </Box>
+      </Grid>
     );
   }
 
   return (
-    <Box
-      sx={{
-        display: 'flex',
-        flexWrap: 'wrap',
-        gap: 3,
+    <Grid
+      container
+      spacing={{
+        xs: 2,
+        sm: 2.5,
+        md: 3,
       }}
     >
-      {stats.map((stat, index) => (
-        <Box
-          key={index}
-          sx={{
-            flex: '1 1 200px',
-            minWidth: { xs: '100%', sm: 'calc(50% - 12px)', md: 'calc(25% - 18px)' },
-          }}
-        >
-          <Card
-            sx={{
-              height: '100%',
-              transition: 'transform 0.2s, box-shadow 0.2s',
-              '&:hover': {
-                transform: 'translateY(-4px)',
-                boxShadow: 4,
-              },
-            }}
-          >
-            <CardContent>
-              <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-                <Box
+      {stats.map(
+        (stat, index) => {
+          const isActive =
+            index === 0;
+
+          const isArchived =
+            index === 1;
+
+          const accentColor =
+            isActive
+              ? theme.palette.success.main
+              : isArchived
+                ? theme.palette.grey[500]
+                : '#3f5368';
+
+          const iconBg =
+            isActive
+              ? '#eaf6ee'
+              : isArchived
+                ? '#eeeeF0'
+                : '#edf2f7';
+
+          const iconColor =
+            isActive
+              ? '#2d7a46'
+              : isArchived
+                ? '#4f4f54'
+                : '#3f5368';
+
+          return (
+            <Grid
+              key={stat.title}
+              size={{
+                xs: 12,
+                sm: 6,
+                lg: 4,
+              }}
+            >
+              <Card
+                elevation={0}
+                sx={{
+                  position:
+                    'relative',
+
+                  height: '100%',
+
+                  overflow:
+                    'hidden',
+
+                  borderRadius: 3,
+
+                  backgroundColor:
+                    '#ffffff',
+
+                  border:
+                    '1px solid #d7d7db',
+
+                  boxShadow:
+                    '0 6px 20px rgba(0,0,0,0.055)',
+
+                  transition:
+                    'transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease',
+
+                  '&::before': {
+                    content: '""',
+
+                    position:
+                      'absolute',
+
+                    top: 0,
+                    left: 0,
+
+                    width: 4,
+
+                    height: '100%',
+
+                    backgroundColor:
+                      accentColor,
+                  },
+
+                  '&:hover': {
+                    transform:
+                      'translateY(-3px)',
+
+                    borderColor:
+                      '#b9b9be',
+
+                    boxShadow:
+                      '0 12px 28px rgba(0,0,0,0.11)',
+                  },
+                }}
+              >
+                <CardContent
                   sx={{
-                    backgroundColor: `${stat.color}20`,
-                    borderRadius: '50%',
-                    padding: 1.5,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    mr: 2,
-                    color: stat.color,
+                    p: {
+                      xs: 2.25,
+                      sm: 2.75,
+                      md: 3,
+                    },
+
+                    pl: {
+                      xs: 2.75,
+                      sm: 3.25,
+                      md: 3.5,
+                    },
+
+                    '&:last-child': {
+                      pb: {
+                        xs: 2.25,
+                        sm: 2.75,
+                        md: 3,
+                      },
+                    },
                   }}
                 >
-                  {stat.icon}
-                </Box>
-                <Typography variant="subtitle2" color="textSecondary">
-                  {stat.title}
-                </Typography>
-              </Box>
-              <Typography variant="h4" sx={{ fontWeight: 600 }}>
-                {stat.value}
-              </Typography>
-            </CardContent>
-          </Card>
-        </Box>
-      ))}
-    </Box>
+                  <Box
+                    sx={{
+                      display: 'flex',
+
+                      alignItems:
+                        'flex-start',
+
+                      justifyContent:
+                        'space-between',
+
+                      gap: {
+                        xs: 1.5,
+                        sm: 2,
+                      },
+                    }}
+                  >
+                    <Box
+                      sx={{
+                        flex: 1,
+
+                        minWidth: 0,
+                      }}
+                    >
+                      <Typography
+                        variant="body2"
+                        sx={{
+                          color:
+                            '#55555a',
+
+                          fontWeight:
+                            700,
+
+                          letterSpacing:
+                            '0.045em',
+
+                          textTransform:
+                            'uppercase',
+
+                          fontSize: {
+                            xs: '0.66rem',
+                            sm: '0.7rem',
+                          },
+                        }}
+                      >
+                        {stat.title}
+                      </Typography>
+
+                      <Typography
+                        sx={{
+                          mt: 0.5,
+
+                          color:
+                            '#17171a',
+
+                          fontSize: {
+                            xs: '2rem',
+                            sm: '2.35rem',
+                            md: '2.55rem',
+                          },
+
+                          lineHeight:
+                            1.05,
+
+                          fontWeight:
+                            800,
+
+                          letterSpacing:
+                            '-0.035em',
+                        }}
+                      >
+                        {stat.value}
+                      </Typography>
+
+                      <Typography
+                        variant="body2"
+                        sx={{
+                          mt: 0.8,
+
+                          color:
+                            '#616166',
+
+                          fontWeight:
+                            500,
+
+                          fontSize: {
+                            xs: '0.78rem',
+                            sm: '0.82rem',
+                          },
+
+                          lineHeight:
+                            1.5,
+                        }}
+                      >
+                        {
+                          stat.description
+                        }
+                      </Typography>
+                    </Box>
+
+                    <Box
+                      sx={{
+                        width: {
+                          xs: 46,
+                          sm: 50,
+                          md: 52,
+                        },
+
+                        height: {
+                          xs: 46,
+                          sm: 50,
+                          md: 52,
+                        },
+
+                        flexShrink: 0,
+
+                        display: 'flex',
+
+                        alignItems:
+                          'center',
+
+                        justifyContent:
+                          'center',
+
+                        borderRadius: 2,
+
+                        backgroundColor:
+                          iconBg,
+
+                        color:
+                          iconColor,
+
+                        border:
+                          '1px solid rgba(0,0,0,0.07)',
+
+                        '& svg': {
+                          fontSize: {
+                            xs: 22,
+                            sm: 24,
+                            md: 25,
+                          },
+                        },
+                      }}
+                    >
+                      {stat.icon}
+                    </Box>
+                  </Box>
+                </CardContent>
+              </Card>
+            </Grid>
+          );
+        },
+      )}
+    </Grid>
   );
 };
+
+export default DashboardStats;

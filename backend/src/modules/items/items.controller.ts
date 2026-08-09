@@ -117,6 +117,8 @@ export class ItemsController {
     return this.itemsService.findAll(query, query.containerId, query.includeDeleted === 'true');
   }
 
+  
+
   @Get('deleted')
   @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)
   @ApiOperation({ summary: 'Get all soft-deleted items' })
@@ -175,6 +177,25 @@ export class ItemsController {
   ): Promise<PaginatedResponseDto<Item>> {
     return this.itemsService.searchItems(query.query, query, query.containerId);
   }
+
+  @Get('count-active')
+    @ApiOperation({
+    summary: 'Get total number of active items',
+    })
+    @ApiResponse({
+    status: HttpStatus.OK,
+    description: 'Active items count retrieved successfully',
+    })
+    async countActiveItems(): Promise<{
+    total: number;
+    }> {
+    const total =
+        await this.itemsService.countActiveItems();
+
+    return {
+        total,
+    };
+    }
 
   @Get(':id')
   @ApiOperation({ summary: 'Get an item by ID' })

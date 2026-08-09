@@ -1,48 +1,23 @@
-import { toast, ToastOptions } from 'react-toastify';
+// src/components/common/UI/ToastNotifications.tsx
 
-export const ToastNotification = {
-  success: (message: string, options?: ToastOptions) => {
-    toast.success(message, {
-      position: 'top-right',
-      autoClose: 3000,
-      hideProgressBar: false,
-      closeOnClick: true,
-      pauseOnHover: true,
-      draggable: true,
-      ...options,
-    });
-  },
-  error: (message: string, options?: ToastOptions) => {
-    toast.error(message, {
-      position: 'top-right',
-      autoClose: 4000,
-      hideProgressBar: false,
-      closeOnClick: true,
-      pauseOnHover: true,
-      draggable: true,
-      ...options,
-    });
-  },
-  info: (message: string, options?: ToastOptions) => {
-    toast.info(message, {
-      position: 'top-right',
-      autoClose: 3000,
-      hideProgressBar: false,
-      closeOnClick: true,
-      pauseOnHover: true,
-      draggable: true,
-      ...options,
-    });
-  },
-  warning: (message: string, options?: ToastOptions) => {
-    toast.warning(message, {
-      position: 'top-right',
-      autoClose: 3000,
-      hideProgressBar: false,
-      closeOnClick: true,
-      pauseOnHover: true,
-      draggable: true,
-      ...options,
-    });
-  },
+import { ToastContainer } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
+
+export const ToastNotifications = () => {
+  return (
+    <ToastContainer
+      position="top-right"
+      autoClose={3000}
+      hideProgressBar={false}
+      newestOnTop
+      closeOnClick
+      rtl={false}
+      pauseOnFocusLoss
+      draggable
+      pauseOnHover
+      limit={4}
+    />
+  );
 };
+
+export default ToastNotifications;

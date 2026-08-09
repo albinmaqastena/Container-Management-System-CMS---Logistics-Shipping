@@ -222,6 +222,25 @@ export class AuthController {
     return new MessageResponseDto('Session revoked successfully');
   }
 
+  @Get('users')
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN)
+@ApiBearerAuth('JWT-auth')
+@ApiOperation({ summary: 'Get users' })
+@ApiOkResponse({ type: PaginatedUsersResponseDto })
+async getUsers(
+  @Query(queryValidationPipe) query: PaginationDto,
+): Promise<PaginatedUsersResponseDto> {
+  const result = await this.authService.findUsers(query);
+
+  return new PaginatedUsersResponseDto(
+    result.data,
+    result.total,
+    result.limit,
+    result.offset,
+  );
+}
+
   @Get('users/deleted')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.SUPER_ADMIN)

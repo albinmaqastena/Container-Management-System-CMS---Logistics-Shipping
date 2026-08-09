@@ -1,27 +1,78 @@
 // src/components/containers/ContainerList.tsx
-import React from 'react';
-import { Box, Typography } from '@mui/material';
-import { Container } from '../../types';
+
+import type { Container } from '../../types';
+
+import {
+  Box,
+  Grid,
+  Typography,
+} from '@mui/material';
+
 import { ContainerCard } from './ContainerCard';
+
 import { useNavigate } from 'react-router-dom';
 
 interface ContainerListProps {
   containers: Container[];
-  isArchived?: boolean;
   emptyMessage?: string;
 }
 
-export const ContainerList: React.FC<ContainerListProps> = ({
+export const ContainerList = ({
   containers,
-  isArchived = false,
   emptyMessage = 'No containers found',
-}) => {
+}: ContainerListProps) => {
   const navigate = useNavigate();
 
   if (containers.length === 0) {
     return (
-      <Box sx={{ textAlign: 'center', py: 8 }}>
-        <Typography variant="h6" color="textSecondary">
+      <Box
+        role="status"
+        sx={{
+          width: '100%',
+
+          minHeight: {
+            xs: 220,
+            sm: 260,
+          },
+
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+
+          px: {
+            xs: 2,
+            sm: 3,
+          },
+
+          py: {
+            xs: 5,
+            sm: 6,
+          },
+
+          textAlign: 'center',
+
+          backgroundColor: '#ffffff',
+
+          border: '1px dashed #d8d8dc',
+
+          borderRadius: 2.5,
+        }}
+      >
+        <Typography
+          variant="body2"
+          sx={{
+            color: '#77777c',
+
+            fontSize: {
+              xs: '0.84rem',
+              sm: '0.9rem',
+            },
+
+            fontWeight: 500,
+
+            lineHeight: 1.6,
+          }}
+        >
           {emptyMessage}
         </Typography>
       </Box>
@@ -29,35 +80,48 @@ export const ContainerList: React.FC<ContainerListProps> = ({
   }
 
   return (
-    <Box
+    <Grid
+      container
+      spacing={{
+        xs: 2,
+        sm: 2.5,
+        md: 3,
+      }}
       sx={{
-        display: 'flex',
-        flexWrap: 'wrap',
-        gap: 3,
+        width: '100%',
+
+        alignItems: 'stretch',
       }}
     >
       {containers.map((container) => (
-        <Box
+        <Grid
           key={container.id}
+          size={{
+            xs: 12,
+            sm: 6,
+            md: 4,
+          }}
           sx={{
-            width: {
-              xs: '100%',
-              sm: 'calc(50% - 12px)',
-              md: 'calc(33.33% - 16px)',
-            },
-            minWidth: {
-              xs: '100%',
-              sm: '280px',
-            },
+            display: 'flex',
           }}
         >
-          <ContainerCard
-            container={container}
-            isArchived={isArchived}
-            onClick={() => navigate(`/containers/${container.id}`)}
-          />
-        </Box>
+          <Box
+            sx={{
+              width: '100%',
+              height: '100%',
+            }}
+          >
+            <ContainerCard
+              container={container}
+              onClick={() =>
+                navigate(
+                  `/containers/${container.id}`,
+                )
+              }
+            />
+          </Box>
+        </Grid>
       ))}
-    </Box>
+    </Grid>
   );
 };

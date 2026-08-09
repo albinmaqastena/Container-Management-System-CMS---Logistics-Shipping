@@ -1,37 +1,31 @@
 // src/App.tsx
-import React from 'react';
+
 import { BrowserRouter } from 'react-router-dom';
-import { ToastContainer } from 'react-toastify';
 import { HelmetProvider } from 'react-helmet-async';
+
 import { AuthProvider } from './contexts/AuthContext';
 import { ContainerProvider } from './contexts/ContainerContext';
 import { ItemProvider } from './contexts/ItemContext';
-import { ThemeProvider } from './contexts/ThemeContext'; // ✅ Përdor ThemeProvider-in e personalizuar
-import { AppRoutes } from './routes';
-import { Layout } from './components/common/Layout/Layout';
-// @ts-ignore
-require('react-toastify/dist/ReactToastify.css');
+import { ThemeProvider } from './contexts/ThemeContext';
 
-const App: React.FC = () => {
+import { AppRoutes } from './routes';
+
+import { Layout } from './components/common/Layout/Layout';
+import { ToastNotifications } from './components/common/UI/ToastNotifications';
+
+const App = () => {
   return (
     <HelmetProvider>
       <BrowserRouter>
         <AuthProvider>
           <ContainerProvider>
             <ItemProvider>
-              <ThemeProvider> {/* ✅ Tema menaxhohet nga ThemeContext */}
+              <ThemeProvider>
                 <Layout>
                   <AppRoutes />
                 </Layout>
-                <ToastContainer
-                  position="top-right"
-                  autoClose={3000}
-                  hideProgressBar={false}
-                  newestOnTop
-                  closeOnClick
-                  pauseOnHover
-                  draggable
-                />
+
+                <ToastNotifications />
               </ThemeProvider>
             </ItemProvider>
           </ContainerProvider>

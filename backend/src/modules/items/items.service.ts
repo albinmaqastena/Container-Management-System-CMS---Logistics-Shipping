@@ -674,6 +674,18 @@ export class ItemsService {
     await this.clearItemCaches(containerId);
   }
 
+  async countActiveItems(): Promise<number> {
+  return this.itemRepository
+    .createQueryBuilder('item')
+    .innerJoin('item.container', 'container')
+    .where('item.deletedAt IS NULL')
+    .andWhere('container.deletedAt IS NULL')
+    .andWhere('container.status = :status', {
+      status: ContainerStatus.ACTIVE,
+    })
+    .getCount();
+}
+
   async cleanupExpiredItems(retentionDays: number): Promise<number> {
     if (
       !Number.isInteger(retentionDays) ||

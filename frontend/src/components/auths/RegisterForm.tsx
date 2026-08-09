@@ -1,5 +1,5 @@
 // src/components/auths/RegisterForm.tsx
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import type { ChangeEvent, FormEvent } from 'react';
 import axios from 'axios';
 import { useAuth } from '../../hooks/useAuth';
@@ -17,7 +17,8 @@ import {
 import { Visibility, VisibilityOff, Person, Email, Lock } from '@mui/icons-material';
 
 interface RegisterFormProps {
-  onSuccess?: () => void;
+  onSuccess?: () => void | Promise<void>;
+  onLoadingChange?: (isLoading: boolean) => void;
 }
 
 interface RegisterFormData {
@@ -28,21 +29,30 @@ interface RegisterFormData {
   role: UserRole;
 }
 
-export const RegisterForm = ({ onSuccess }: RegisterFormProps) => {
+const initialFormData: RegisterFormData = {
+  username: '',
+  email: '',
+  password: '',
+  confirmPassword: '',
+  role: ROLES.USER,
+};
+
+export const RegisterForm = ({ onSuccess, onLoadingChange }: RegisterFormProps) => {
   const { register, user } = useAuth();
 
-  const [formData, setFormData] = useState<RegisterFormData>({
-    username: '',
-    email: '',
-    password: '',
-    confirmPassword: '',
-    role: ROLES.USER,
-  });
+  const [formData, setFormData] = useState<RegisterFormData>(initialFormData);
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
+  useEffect(() => {
+    onLoadingChange?.(loading);
+  }, [loading, onLoadingChange]);
+
   const isAdmin =
+    user?.role === ROLES.ADMIN || user?.role === ROLES.SUPER_ADMIN;
+
+  const canCreateAdmin =
     user?.role === ROLES.ADMIN || user?.role === ROLES.SUPER_ADMIN;
 
   const handleChange = (
@@ -52,11 +62,12 @@ export const RegisterForm = ({ onSuccess }: RegisterFormProps) => {
 
     setFormData((current) => ({
       ...current,
-      [name]:
-        name === 'role'
-          ? (value as UserRole)
-          : value,
+      [name]: name === 'role' ? (value as UserRole) : value,
     }));
+
+    if (error) {
+      setError(null);
+    }
   };
 
   const handleSubmit = async (
@@ -70,6 +81,11 @@ export const RegisterForm = ({ onSuccess }: RegisterFormProps) => {
 
     if (!username || !email) {
       setError('Username and email are required');
+      return;
+    }
+
+    if (username.length < 3) {
+      setError('Username must be at least 3 characters');
       return;
     }
 
@@ -93,7 +109,10 @@ export const RegisterForm = ({ onSuccess }: RegisterFormProps) => {
         role: formData.role,
       });
 
-      onSuccess?.();
+      setFormData(initialFormData);
+      setShowPassword(false);
+
+      await onSuccess?.();
     } catch (error: unknown) {
       if (axios.isAxiosError(error)) {
         const message = error.response?.data?.message;
@@ -105,7 +124,11 @@ export const RegisterForm = ({ onSuccess }: RegisterFormProps) => {
               : 'Registration failed',
         );
       } else {
-        setError('Registration failed');
+        setError(
+          error instanceof Error
+            ? error.message
+            : 'Registration failed',
+        );
       }
     } finally {
       setLoading(false);
@@ -203,6 +226,7 @@ export const RegisterForm = ({ onSuccess }: RegisterFormProps) => {
                   onClick={() => setShowPassword((prev) => !prev)}
                   onMouseDown={(event) => event.preventDefault()}
                   edge="end"
+                  disabled={loading}
                 >
                   {showPassword ? <VisibilityOff /> : <Visibility />}
                 </IconButton>
@@ -245,7 +269,7 @@ export const RegisterForm = ({ onSuccess }: RegisterFormProps) => {
         disabled={loading}
       >
         <MenuItem value={ROLES.USER}>User</MenuItem>
-        {user?.role === ROLES.SUPER_ADMIN && (
+        {canCreateAdmin && (
           <MenuItem value={ROLES.ADMIN}>Admin</MenuItem>
         )}
         {user?.role === ROLES.SUPER_ADMIN && (

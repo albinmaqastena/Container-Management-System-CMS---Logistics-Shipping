@@ -22,6 +22,7 @@ import type {
   ItemQueryParams,
   ItemSearchParams,
 } from '../types';
+import { useAuth } from '../hooks/useAuth';
 
 // ------------------------------------------------------------------
 // Helpers (jashtë komponentit)
@@ -115,6 +116,10 @@ export const ItemProvider = ({ children }: ItemProviderProps) => {
   const [error, setError] = useState<string | null>(null);
   const [pagination, setPagination] = useState<PaginationState>({ ...DEFAULT_PAGINATION });
   const [deletedPagination, setDeletedPagination] = useState<PaginationState>({ ...DEFAULT_PAGINATION });
+  const {
+  isAuthenticated,
+  isLoading: authLoading,
+} = useAuth();
 
   // Ref për numërimin e kërkesave aktive për isFetching dhe isLoading
   const fetchCountRef = useRef(0);
@@ -442,8 +447,22 @@ export const ItemProvider = ({ children }: ItemProviderProps) => {
   // Initial load
   // ------------------------------------------------------------------
   useEffect(() => {
-    void fetchItems();
-  }, [fetchItems]);
+  if (authLoading) {
+    return;
+  }
+
+  if (!isAuthenticated) {
+    setItems([]);
+    setDeletedItems([]);
+    return;
+  }
+
+  void fetchItems();
+}, [
+  authLoading,
+  isAuthenticated,
+  fetchItems,
+]);
 
   // ------------------------------------------------------------------
   // Expose context value

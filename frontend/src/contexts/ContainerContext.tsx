@@ -22,6 +22,7 @@ import type {
   PaginatedResponse,
   PaginationState,
 } from '../types';
+import { useAuth } from '../hooks/useAuth';
 
 // ------------------------------------------------------------------
 // Helpers (jashtë komponentit)
@@ -126,6 +127,10 @@ export const ContainerProvider = ({ children }: ContainerProviderProps) => {
   const [activePagination, setActivePagination] = useState<PaginationState>({ ...DEFAULT_PAGINATION });
   const [archivedPagination, setArchivedPagination] = useState<PaginationState>({ ...DEFAULT_PAGINATION });
   const [deletedPagination, setDeletedPagination] = useState<PaginationState>({ ...DEFAULT_PAGINATION });
+  const {
+  isAuthenticated,
+  isLoading: authLoading,
+} = useAuth();
 
   // Ref për numërimin e kërkesave aktive për isFetching dhe isLoading
   const fetchCountRef = useRef(0);
@@ -588,11 +593,28 @@ export const ContainerProvider = ({ children }: ContainerProviderProps) => {
   // Initial load
   // ------------------------------------------------------------------
   useEffect(() => {
-    void Promise.all([
-      fetchActiveContainers(),
-      fetchArchivedContainers(),
-    ]);
-  }, [fetchActiveContainers, fetchArchivedContainers]);
+  if (authLoading) {
+    return;
+  }
+
+  if (!isAuthenticated) {
+    setContainers([]);
+    setActiveContainers([]);
+    setArchivedContainers([]);
+    setDeletedContainers([]);
+    return;
+  }
+
+  void Promise.all([
+    fetchActiveContainers(),
+    fetchArchivedContainers(),
+  ]);
+}, [
+  authLoading,
+  isAuthenticated,
+  fetchActiveContainers,
+  fetchArchivedContainers,
+]);
 
   // ------------------------------------------------------------------
   // Expose context value

@@ -1,5 +1,5 @@
 // src/pages/SessionsPage.tsx
-import React, { useState, useEffect, useCallback } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import {
   Box,
@@ -16,45 +16,92 @@ import {
   Alert,
   Button,
   CircularProgress,
+  Tooltip,
 } from '@mui/material';
 import { Delete as DeleteIcon, Refresh as RefreshIcon } from '@mui/icons-material';
-import { Session } from '../types';
-import { formatDistanceToNow } from 'date-fns/formatDistanceToNow'; // ✅ Import i rregulluar
+import { formatDistanceToNow } from 'date-fns/formatDistanceToNow';
+import { ConfirmDialog } from '../components/common/Modals/ConfirmDialog';
+import type { Session } from '../types';
 
-export const SessionsPage: React.FC = () => {
+const formatRelativeDate = (value: string): string => {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return 'Unknown';
+  }
+  return formatDistanceToNow(date, { addSuffix: true });
+};
+
+export const SessionsPage = () => {
   const { getSessions, revokeSession } = useAuth();
   const [sessions, setSessions] = useState<Session[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [sessionToRevoke, setSessionToRevoke] = useState<string | null>(null);
+  const [revoking, setRevoking] = useState(false);
 
-  const loadSessions = useCallback(async () => {
-    setLoading(true);
-    setError('');
-    try {
-      const data = await getSessions();
-      setSessions(data);
-    } catch (err: any) {
-      setError(err.message || 'Failed to load sessions');
-    } finally {
-      setLoading(false);
-    }
-  }, [getSessions]);
+  const loadSessions = useCallback(
+    async (isRefresh = false): Promise<void> => {
+      if (isRefresh) {
+        setRefreshing(true);
+      } else {
+        setLoading(true);
+      }
+      setError(null);
+
+      try {
+        const data = await getSessions();
+        setSessions(data);
+      } catch (err: unknown) {
+        const message =
+          err instanceof Error ? err.message : 'Failed to load sessions';
+        setError(message);
+      } finally {
+        if (isRefresh) {
+          setRefreshing(false);
+        } else {
+          setLoading(false);
+        }
+      }
+    },
+    [getSessions],
+  );
 
   useEffect(() => {
-    loadSessions();
+    void loadSessions();
   }, [loadSessions]);
 
-  const handleRevoke = async (sessionId: string) => {
-    if (!window.confirm('Are you sure you want to revoke this session?')) return;
+  const handleRevokeRequest = (sessionId: string): void => {
+    setSessionToRevoke(sessionId);
+  };
+
+  const handleConfirmRevoke = async (): Promise<void> => {
+    if (!sessionToRevoke || revoking) return;
+
+    setRevoking(true);
+    setError(null);
+
     try {
-      await revokeSession(sessionId);
-      await loadSessions();
-    } catch (err) {
-      setError('Failed to revoke session');
+      await revokeSession(sessionToRevoke);
+      setSessionToRevoke(null);
+      await loadSessions(true);
+    } catch (err: unknown) {
+      const message =
+        err instanceof Error ? err.message : 'Failed to revoke session';
+      setError(message);
+    } finally {
+      setRevoking(false);
     }
   };
 
-  if (loading) {
+  const handleCancelRevoke = (): void => {
+    setSessionToRevoke(null);
+  };
+
+  const isBusy = loading || refreshing || revoking;
+
+  // Shfaq spinner vetëm për initial load
+  if (loading && sessions.length === 0) {
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', mt: 4 }}>
         <CircularProgress />
@@ -64,34 +111,55 @@ export const SessionsPage: React.FC = () => {
 
   return (
     <Box sx={{ p: 3 }}>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+      <Box
+        sx={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          mb: 3,
+          flexWrap: 'wrap',
+          gap: 1,
+        }}
+      >
         <Typography variant="h4">Active Sessions</Typography>
         <Button
           variant="outlined"
-          startIcon={<RefreshIcon />}
-          onClick={loadSessions}
-          disabled={loading}
+          startIcon={
+            refreshing ? <CircularProgress size={18} /> : <RefreshIcon />
+          }
+          onClick={() => void loadSessions(true)}
+          disabled={isBusy}
         >
-          Refresh
+          {refreshing ? 'Refreshing...' : 'Refresh'}
         </Button>
       </Box>
 
       {error && (
-        <Alert severity="error" sx={{ mb: 2 }}>
+        <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError(null)}>
           {error}
         </Alert>
       )}
 
       <Paper>
         <TableContainer>
-          <Table>
+          <Table aria-label="Active sessions">
             <TableHead>
               <TableRow>
-                <TableCell>Session ID</TableCell>
-                <TableCell>Created</TableCell>
-                <TableCell>Expires</TableCell>
-                <TableCell>Status</TableCell>
-                <TableCell align="right">Actions</TableCell>
+                <TableCell component="th" scope="col">
+                  Session ID
+                </TableCell>
+                <TableCell component="th" scope="col">
+                  Created
+                </TableCell>
+                <TableCell component="th" scope="col">
+                  Expires
+                </TableCell>
+                <TableCell component="th" scope="col">
+                  Status
+                </TableCell>
+                <TableCell component="th" scope="col" align="right">
+                  Actions
+                </TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
@@ -105,16 +173,15 @@ export const SessionsPage: React.FC = () => {
                 sessions.map((session) => (
                   <TableRow key={session.id}>
                     <TableCell>
-                      <Typography variant="caption" sx={{ fontFamily: 'monospace' }}>
+                      <Typography
+                        variant="caption"
+                        sx={{ fontFamily: 'monospace' }}
+                      >
                         {session.id}
                       </Typography>
                     </TableCell>
-                    <TableCell>
-                      {formatDistanceToNow(new Date(session.createdAt), { addSuffix: true })}
-                    </TableCell>
-                    <TableCell>
-                      {formatDistanceToNow(new Date(session.expiresAt), { addSuffix: true })}
-                    </TableCell>
+                    <TableCell>{formatRelativeDate(session.createdAt)}</TableCell>
+                    <TableCell>{formatRelativeDate(session.expiresAt)}</TableCell>
                     <TableCell>
                       <Chip
                         label={session.isActive ? 'Active' : 'Revoked'}
@@ -124,13 +191,17 @@ export const SessionsPage: React.FC = () => {
                     </TableCell>
                     <TableCell align="right">
                       {session.isActive && (
-                        <IconButton
-                          size="small"
-                          color="error"
-                          onClick={() => handleRevoke(session.id)}
-                        >
-                          <DeleteIcon />
-                        </IconButton>
+                        <Tooltip title="Revoke session">
+                          <IconButton
+                            size="small"
+                            color="error"
+                            onClick={() => handleRevokeRequest(session.id)}
+                            aria-label={`Revoke session ${session.id}`}
+                            disabled={isBusy}
+                          >
+                            <DeleteIcon />
+                          </IconButton>
+                        </Tooltip>
                       )}
                     </TableCell>
                   </TableRow>
@@ -140,6 +211,18 @@ export const SessionsPage: React.FC = () => {
           </Table>
         </TableContainer>
       </Paper>
+
+      <ConfirmDialog
+        open={!!sessionToRevoke}
+        title="Revoke Session"
+        message="Are you sure you want to revoke this session? The user will be logged out from this device."
+        confirmLabel="Revoke"
+        cancelLabel="Cancel"
+        onConfirm={handleConfirmRevoke}
+        onCancel={handleCancelRevoke}
+        loading={revoking}
+        confirmColor="error"
+      />
     </Box>
   );
 };

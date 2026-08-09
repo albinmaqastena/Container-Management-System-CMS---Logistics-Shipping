@@ -24,6 +24,7 @@ export const API_ENDPOINTS = {
   },
 
   USERS: {
+    ALL: '/auth/users',
     DELETED: '/auth/users/deleted',
     BY_ID: (id: string) => `/auth/users/${id}`,
     RESTORE: (id: string) => `/auth/users/${id}/restore`,
@@ -52,6 +53,7 @@ export const API_ENDPOINTS = {
     RESTORE: (id: string) => `/items/${id}/restore`,
     PERMANENT_DELETE: (id: string) =>
       `/items/${id}/permanent`,
+    COUNT_ACTIVE: '/items/count-active',
   },
 
   REPORTS: {

@@ -142,4 +142,14 @@ export const itemService = {
     );
     return response.data;
   },
+
+  getActiveCount: async (): Promise<number> => {
+  const response = await apiClient.get<{
+    total: number;
+  }>(
+    API_ENDPOINTS.ITEMS.COUNT_ACTIVE,
+  );
+
+  return response.data.total;
+},
 };

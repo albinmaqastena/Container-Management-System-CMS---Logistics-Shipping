@@ -1,19 +1,29 @@
 // src/components/auths/LoginForm.tsx
+
 import { useState } from 'react';
 import type { FormEvent } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import type { Location } from 'react-router-dom';
 import axios from 'axios';
-import { useAuth } from '../../hooks/useAuth';
+
 import {
+  Alert,
   Box,
   Button,
-  TextField,
-  Alert,
-  InputAdornment,
   IconButton,
+  InputAdornment,
+  TextField,
+  Typography,
 } from '@mui/material';
-import { Visibility, VisibilityOff, Email, Lock } from '@mui/icons-material';
+
+import {
+  EmailOutlined as EmailIcon,
+  LockOutlined as LockIcon,
+  VisibilityOutlined as VisibilityIcon,
+  VisibilityOffOutlined as VisibilityOffIcon,
+} from '@mui/icons-material';
+
+import { useAuth } from '../../hooks/useAuth';
 
 interface LoginLocationState {
   from?: Location;
@@ -30,11 +40,9 @@ export const LoginForm = () => {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  // Merr location-in e plotë nga state (pathname, search, hash)
   const locationState = location.state as LoginLocationState | null;
   const fromLocation = locationState?.from;
 
-  // Siguria: kontrollo vetëm pathname-in për të shmangur redirect në /login
   const isSafeLocation =
     fromLocation &&
     fromLocation.pathname.startsWith('/') &&
@@ -45,7 +53,9 @@ export const LoginForm = () => {
     ? `${fromLocation.pathname}${fromLocation.search}${fromLocation.hash}`
     : '/dashboard';
 
-  const handleSubmit = async (event: FormEvent<HTMLFormElement>): Promise<void> => {
+  const handleSubmit = async (
+    event: FormEvent<HTMLFormElement>,
+  ): Promise<void> => {
     event.preventDefault();
     setError(null);
 
@@ -63,10 +73,12 @@ export const LoginForm = () => {
         email: normalizedEmail.toLowerCase(),
         password,
       });
+
       navigate(safeFrom, { replace: true });
     } catch (error: unknown) {
       if (axios.isAxiosError(error)) {
         const message = error.response?.data?.message;
+
         setError(
           Array.isArray(message)
             ? message.join(', ')
@@ -82,6 +94,44 @@ export const LoginForm = () => {
     }
   };
 
+  const inputSx = {
+    '& .MuiOutlinedInput-root': {
+      minHeight: 56,
+      borderRadius: 2.5,
+      backgroundColor: '#fff',
+      color: '#1a1a1a',
+
+      '& fieldset': {
+        borderColor: '#dddddd',
+      },
+
+      '&:hover fieldset': {
+        borderColor: '#999999',
+      },
+
+      '&.Mui-focused fieldset': {
+        borderColor: '#1f1f1f',
+        borderWidth: 1.5,
+      },
+    },
+
+    '& input': {
+      color: '#1a1a1a',
+      WebkitTextFillColor: '#1a1a1a',
+
+      // 16px në mobile shmang auto-zoom në iOS Safari
+      fontSize: {
+        xs: '16px',
+        sm: '0.95rem',
+      },
+
+      '&::placeholder': {
+        color: '#999999',
+        opacity: 1,
+      },
+    },
+  } as const;
+
   return (
     <Box
       component="form"
@@ -90,76 +140,171 @@ export const LoginForm = () => {
       sx={{ width: '100%' }}
     >
       {error && (
-        <Alert severity="error" role="alert" sx={{ mb: 2 }}>
+        <Alert
+          severity="error"
+          role="alert"
+          sx={{
+            mb: 2.5,
+            borderRadius: 2,
+          }}
+        >
           {error}
         </Alert>
       )}
 
-      <TextField
-        margin="normal"
-        required
-        fullWidth
-        autoFocus
-        label="Email Address"
-        type="email"
-        autoComplete="email"
-        disabled={loading}
-        value={email}
-        onChange={(e) => setEmail(e.target.value)}
-        slotProps={{
-          input: {
-            startAdornment: (
-              <InputAdornment position="start">
-                <Email color="action" />
-              </InputAdornment>
-            ),
-          },
-        }}
-      />
+      {/* Email */}
+      <Box sx={{ mb: 2 }}>
+        <Typography
+          component="label"
+          htmlFor="login-email"
+          sx={{
+            display: 'block',
+            mb: 0.8,
+            color: '#1b1b1b',
+            fontSize: '0.92rem',
+            fontWeight: 600,
+          }}
+        >
+          Email
+        </Typography>
 
-      <TextField
-        margin="normal"
-        required
-        fullWidth
-        label="Password"
-        type={showPassword ? 'text' : 'password'}
-        autoComplete="current-password"
-        disabled={loading}
-        value={password}
-        onChange={(e) => setPassword(e.target.value)}
-        slotProps={{
-          input: {
-            startAdornment: (
-              <InputAdornment position="start">
-                <Lock color="action" />
-              </InputAdornment>
-            ),
-            endAdornment: (
-              <InputAdornment position="end">
-                <IconButton
-                  type="button"
-                  aria-label={showPassword ? 'Hide password' : 'Show password'}
-                  onClick={() => setShowPassword((prev) => !prev)}
-                  onMouseDown={(event) => event.preventDefault()}
-                  edge="end"
-                >
-                  {showPassword ? <VisibilityOff /> : <Visibility />}
-                </IconButton>
-              </InputAdornment>
-            ),
-          },
-        }}
-      />
+        <TextField
+          id="login-email"
+          required
+          fullWidth
+          autoFocus
+          type="email"
+          autoComplete="email"
+          placeholder="email@example.com"
+          disabled={loading}
+          value={email}
+          onChange={(event) => setEmail(event.target.value)}
+          sx={inputSx}
+          slotProps={{
+            input: {
+              startAdornment: (
+                <InputAdornment position="start">
+                  <EmailIcon
+                    sx={{
+                      color: '#777777',
+                      fontSize: 21,
+                    }}
+                  />
+                </InputAdornment>
+              ),
+            },
+          }}
+        />
+      </Box>
+
+      {/* Password */}
+      <Box>
+        <Typography
+          component="label"
+          htmlFor="login-password"
+          sx={{
+            display: 'block',
+            mb: 0.8,
+            color: '#1b1b1b',
+            fontSize: '0.92rem',
+            fontWeight: 600,
+          }}
+        >
+          Fjalëkalimi
+        </Typography>
+
+        <TextField
+          id="login-password"
+          required
+          fullWidth
+          type={showPassword ? 'text' : 'password'}
+          autoComplete="current-password"
+          placeholder="Fjalëkalimi juaj"
+          disabled={loading}
+          value={password}
+          onChange={(event) => setPassword(event.target.value)}
+          sx={inputSx}
+          slotProps={{
+            input: {
+              startAdornment: (
+                <InputAdornment position="start">
+                  <LockIcon
+                    sx={{
+                      color: '#777777',
+                      fontSize: 21,
+                    }}
+                  />
+                </InputAdornment>
+              ),
+
+              endAdornment: (
+                <InputAdornment position="end">
+                  <IconButton
+                    type="button"
+                    aria-label={
+                      showPassword
+                        ? 'Hide password'
+                        : 'Show password'
+                    }
+                    onClick={() =>
+                      setShowPassword((previous) => !previous)
+                    }
+                    onMouseDown={(event) =>
+                      event.preventDefault()
+                    }
+                    disabled={loading}
+                    edge="end"
+                    sx={{
+                      color: '#777777',
+
+                      '&:hover': {
+                        backgroundColor: '#f3f3f3',
+                      },
+                    }}
+                  >
+                    {showPassword ? (
+                      <VisibilityOffIcon fontSize="small" />
+                    ) : (
+                      <VisibilityIcon fontSize="small" />
+                    )}
+                  </IconButton>
+                </InputAdornment>
+              ),
+            },
+          }}
+        />
+      </Box>
 
       <Button
         type="submit"
         fullWidth
         variant="contained"
-        size="large"
         disabled={loading}
-        sx={{ mt: 3, mb: 2 }}
+        sx={{
+          mt: 3,
+          height: 56,
+          borderRadius: 2.25,
+          backgroundColor: '#202020',
+          color: '#ffffff',
+          fontSize: '0.96rem',
+          fontWeight: 600,
+          textTransform: 'none',
+          boxShadow: 'none',
+          transition: 'all 0.2s ease',
+
+          '&:hover': {
+            backgroundColor: '#0f0f0f',
+            boxShadow: '0 8px 20px rgba(0,0,0,0.14)',
+            transform: 'translateY(-1px)',
+          },
+
+          '&.Mui-disabled': {
+            backgroundColor: '#555555',
+            color: '#dddddd',
+          },
+        }}
       >
-        {loading ? 'Signing in...' : 'Sign In'}
+        {loading ? 'Duke u kyçur...' : 'Kyçu'}
       </Button>
     </Box>
   );
