@@ -16,7 +16,6 @@ import { RecentActivity } from '../components/dashboard/RecentActivity';
 
 export const DashboardPage = () => {
   const { user } = useAuth();
-  const theme = useTheme();
 
   const isSuperAdmin =
     user?.role === ROLES.SUPER_ADMIN;

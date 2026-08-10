@@ -26,12 +26,6 @@ interface ChangePasswordFormProps {
   onSuccess?: () => void;
 }
 
-interface ChangePasswordFormData {
-  currentPassword: string;
-  newPassword: string;
-  confirmPassword: string;
-}
-
 export const ChangePasswordForm = ({
   onSuccess,
 }: ChangePasswordFormProps) => {
