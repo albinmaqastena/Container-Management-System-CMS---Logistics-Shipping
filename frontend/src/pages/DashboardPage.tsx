@@ -3,7 +3,6 @@
 import {
   Box,
   Typography,
-  useTheme,
   Avatar,
 } from '@mui/material';
 
