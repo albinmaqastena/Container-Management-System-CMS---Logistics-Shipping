@@ -1,0 +1,47 @@
+# ============================================
+# STAGE 1: BUILD REACT
+# ============================================
+
+FROM node:22-alpine AS builder
+
+WORKDIR /app
+
+COPY package.json package-lock.json ./
+
+RUN npm ci
+
+COPY . .
+
+# Railway variables që duhen gjatë React build-it
+ARG REACT_APP_API_URL
+ARG REACT_APP_VERSION
+ARG REACT_APP_ENVIRONMENT
+ARG REACT_APP_ENABLE_DEBUG
+ARG REACT_APP_ENABLE_MOCK
+
+ENV REACT_APP_API_URL=$REACT_APP_API_URL
+ENV REACT_APP_VERSION=$REACT_APP_VERSION
+ENV REACT_APP_ENVIRONMENT=$REACT_APP_ENVIRONMENT
+ENV REACT_APP_ENABLE_DEBUG=$REACT_APP_ENABLE_DEBUG
+ENV REACT_APP_ENABLE_MOCK=$REACT_APP_ENABLE_MOCK
+
+ENV NODE_ENV=production
+
+RUN npm run build
+
+
+# ============================================
+# STAGE 2: PRODUCTION SERVER
+# ============================================
+
+FROM caddy:2-alpine AS production
+
+WORKDIR /app
+
+COPY Caddyfile /etc/caddy/Caddyfile
+
+COPY --from=builder /app/build ./build
+
+EXPOSE 3000
+
+CMD ["caddy", "run", "--config", "/etc/caddy/Caddyfile", "--adapter", "caddyfile"]

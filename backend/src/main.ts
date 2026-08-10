@@ -1,196 +1,358 @@
 // src/main.ts
 
-import { Logger, ValidationPipe, VersioningType } from '@nestjs/common';
+import {
+  Logger,
+  ValidationPipe,
+  VersioningType,
+} from '@nestjs/common';
+
 import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
 import { NestExpressApplication } from '@nestjs/platform-express';
-import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+
+import {
+  DocumentBuilder,
+  SwaggerModule,
+} from '@nestjs/swagger';
+
 import compression from 'compression';
 import * as dotenv from 'dotenv';
-import type { Response } from 'express';
-import * as fs from 'fs';
 import helmet from 'helmet';
-import { join } from 'path';
 
 import { AppModule } from './app.module';
-import { HttpExceptionFilter } from './common/filters/http-exception.filter';
+
+import {
+  HttpExceptionFilter,
+} from './common/filters/http-exception.filter';
 
 dotenv.config();
 
-const bootstrapLogger = new Logger('Bootstrap');
+const bootstrapLogger =
+  new Logger('Bootstrap');
 
 async function bootstrap(): Promise<void> {
-  const configService = new ConfigService();
-  const nodeEnv = configService.get<string>('NODE_ENV', 'development');
-  const isProduction = nodeEnv === 'production';
-  const port = configService.get<number>('PORT', 3000);
-  const frontendUrls = configService
-    .get<string>('FRONTEND_URLS', 'http://localhost:3001')
-    .split(',')
-    .map((url) => url.trim())
-    .filter(Boolean);
+  const configService =
+    new ConfigService();
 
-  bootstrapLogger.log('Starting Container Management System');
-  bootstrapLogger.log(`NODE_ENV: ${nodeEnv}`);
-  bootstrapLogger.log(`Port: ${port}`);
-  bootstrapLogger.log(`Database: ${configService.get<string>('DB_DATABASE', 'unknown')}`);
+  const nodeEnv =
+    configService.get<string>(
+      'NODE_ENV',
+      'development',
+    );
 
-  const app = await createApplication(configService, isProduction);
+  const isProduction =
+    nodeEnv === 'production';
 
+  /*
+   * Railway injecton PORT automatikisht.
+   * 3000 mbetet vetëm fallback për local development.
+   */
+  const port =
+    configService.get<number>(
+      'PORT',
+      3000,
+    );
+
+  const frontendUrls =
+    configService
+      .get<string>(
+        'FRONTEND_URLS',
+        'http://localhost:3001',
+      )
+      .split(',')
+      .map((url) => url.trim())
+      .filter(Boolean);
+
+  bootstrapLogger.log(
+    'Starting Container Management System',
+  );
+
+  bootstrapLogger.log(
+    `NODE_ENV: ${nodeEnv}`,
+  );
+
+  bootstrapLogger.log(
+    `Port: ${port}`,
+  );
+
+  bootstrapLogger.log(
+    `Database: ${configService.get<string>(
+      'DB_DATABASE',
+      'unknown',
+    )}`,
+  );
+
+  /*
+   * Mos konfiguro SSL këtu.
+   * Railway terminon HTTPS përpara aplikacionit.
+   */
+  const app =
+    await NestFactory.create<NestExpressApplication>(
+      AppModule,
+    );
+
+  /*
+   * Railway përdor reverse proxy.
+   */
   app.set('trust proxy', true);
-
-  const uploadsPath = join(process.cwd(), 'uploads');
-
-  if (fs.existsSync(uploadsPath)) {
-    app.useStaticAssets(uploadsPath, {
-      prefix: '/uploads/',
-      setHeaders: (response: Response) => {
-        response.setHeader('Cache-Control', 'public, max-age=31536000');
-      },
-    });
-  }
 
   app.use(
     helmet({
       contentSecurityPolicy: {
         directives: {
-          defaultSrc: ["'self'"],
-          styleSrc: ["'self'", "'unsafe-inline'"],
-          imgSrc: ["'self'", 'data:', 'https:'],
-          scriptSrc: ["'self'", "'unsafe-inline'"],
+          defaultSrc: [
+            "'self'",
+          ],
+
+          styleSrc: [
+            "'self'",
+            "'unsafe-inline'",
+          ],
+
+          imgSrc: [
+            "'self'",
+            'data:',
+            'https:',
+          ],
+
+          scriptSrc: [
+            "'self'",
+            "'unsafe-inline'",
+          ],
         },
       },
+
       hsts: isProduction
         ? {
             maxAge: 31536000,
-            includeSubDomains: true,
+            includeSubDomains:
+              true,
             preload: true,
           }
         : false,
+
       frameguard: {
         action: 'deny',
       },
+
       noSniff: true,
+
       referrerPolicy: {
-        policy: 'strict-origin-when-cross-origin',
+        policy:
+          'strict-origin-when-cross-origin',
       },
     }),
   );
 
-  app.use(compression());
+  app.use(
+    compression(),
+  );
 
   app.enableCors({
-    origin: isProduction ? frontendUrls : true,
+    origin: isProduction
+      ? frontendUrls
+      : true,
+
     credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'Accept'],
-    exposedHeaders: ['Content-Range', 'X-Content-Range'],
+
+    methods: [
+      'GET',
+      'POST',
+      'PUT',
+      'DELETE',
+      'PATCH',
+      'OPTIONS',
+    ],
+
+    allowedHeaders: [
+      'Content-Type',
+      'Authorization',
+      'Accept',
+    ],
+
+    exposedHeaders: [
+      'Content-Range',
+      'X-Content-Range',
+      'Content-Disposition',
+    ],
+
     maxAge: 86400,
   });
 
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
+
       transform: true,
-      forbidNonWhitelisted: true,
+
+      forbidNonWhitelisted:
+        true,
+
       transformOptions: {
-        enableImplicitConversion: true,
+        enableImplicitConversion:
+          true,
       },
     }),
   );
 
-  app.useGlobalFilters(new HttpExceptionFilter());
+  app.useGlobalFilters(
+    new HttpExceptionFilter(),
+  );
 
   app.enableVersioning({
-    type: VersioningType.URI,
+    type:
+      VersioningType.URI,
+
     defaultVersion: '1',
   });
 
+  /*
+   * Swagger vetëm në development.
+   */
   if (!isProduction) {
-    configureSwagger(app, port);
+    configureSwagger(
+      app,
+      port,
+    );
   }
 
   app.enableShutdownHooks();
 
-  await app.listen(port, '0.0.0.0');
+  /*
+   * Railway rekomandon të dëgjosh në të gjitha interfaces.
+   *
+   * :: mbulon IPv6 dhe IPv4 në environment-et e reja të Railway.
+   */
+  await app.listen(
+    port,
+    '::',
+  );
 
-  bootstrapLogger.log(`Application is running on http://localhost:${port}`);
-  bootstrapLogger.log(`Environment: ${nodeEnv}`);
+  bootstrapLogger.log(
+    `Application started on port ${port}`,
+  );
+
+  bootstrapLogger.log(
+    `Environment: ${nodeEnv}`,
+  );
 }
 
-async function createApplication(
-  configService: ConfigService,
-  isProduction: boolean,
-): Promise<NestExpressApplication> {
-  if (!isProduction) {
-    return NestFactory.create<NestExpressApplication>(AppModule);
-  }
+function configureSwagger(
+  app: NestExpressApplication,
+  port: number,
+): void {
+  const config =
+    new DocumentBuilder()
+      .setTitle(
+        'Container Management System API',
+      )
+      .setDescription(
+        'API for authentication, containers, items, files and audit logs.',
+      )
+      .setVersion('1.0')
+      .addBearerAuth(
+        {
+          type: 'http',
 
-  const sslKeyPath = configService.get<string>('SSL_KEY_PATH', './certs/key.pem');
-  const sslCertPath = configService.get<string>('SSL_CERT_PATH', './certs/cert.pem');
+          scheme: 'bearer',
 
-  if (!fs.existsSync(sslKeyPath) || !fs.existsSync(sslCertPath)) {
-    bootstrapLogger.warn('SSL certificates not found. Falling back to HTTP.');
+          bearerFormat:
+            'JWT',
 
-    return NestFactory.create<NestExpressApplication>(AppModule);
-  }
+          name: 'JWT',
 
-  const httpsOptions = {
-    key: fs.readFileSync(sslKeyPath),
-    cert: fs.readFileSync(sslCertPath),
-  };
+          description:
+            'Enter JWT token',
 
-  bootstrapLogger.log('HTTPS enabled');
+          in: 'header',
+        },
 
-  return NestFactory.create<NestExpressApplication>(AppModule, { httpsOptions });
-}
+        'JWT-auth',
+      )
+      .addTag(
+        'Authentication',
+        'Login, register, refresh and logout',
+      )
+      .addTag(
+        'Containers',
+        'Container management operations',
+      )
+      .addTag(
+        'Items',
+        'Item management operations',
+      )
+      .addTag(
+        'Files',
+        'File upload operations',
+      )
+      .addTag(
+        'Audit Logs',
+        'Audit log operations',
+      )
+      .addTag(
+        'Health',
+        'Health check endpoint',
+      )
+      .addServer(
+        `http://localhost:${port}`,
+        'Development Server',
+      )
+      .build();
 
-function configureSwagger(app: NestExpressApplication, port: number): void {
-  const config = new DocumentBuilder()
-    .setTitle('Container Management System API')
-    .setDescription('API for authentication, containers, items, files and audit logs.')
-    .setVersion('1.0')
-    .addBearerAuth(
-      {
-        type: 'http',
-        scheme: 'bearer',
-        bearerFormat: 'JWT',
-        name: 'JWT',
-        description: 'Enter JWT token',
-        in: 'header',
+  const document =
+    SwaggerModule.createDocument(
+      app,
+      config,
+    );
+
+  SwaggerModule.setup(
+    'api-docs',
+    app,
+    document,
+    {
+      swaggerOptions: {
+        persistAuthorization:
+          true,
+
+        displayRequestDuration:
+          true,
+
+        filter: true,
+
+        tryItOutEnabled:
+          true,
+
+        operationsSorter:
+          'alpha',
+
+        tagsSorter: 'alpha',
+
+        defaultModelsExpandDepth:
+          3,
+
+        defaultModelExpandDepth:
+          3,
       },
-      'JWT-auth',
-    )
-    .addTag('Authentication', 'Login, register, refresh and logout')
-    .addTag('Containers', 'Container management operations')
-    .addTag('Items', 'Item management operations')
-    .addTag('Files', 'File upload operations')
-    .addTag('Audit Logs', 'Audit log operations')
-    .addTag('Health', 'Health check endpoint')
-    .addServer(`http://localhost:${port}`, 'Development Server')
-    .build();
-
-  const document = SwaggerModule.createDocument(app, config);
-
-  SwaggerModule.setup('api-docs', app, document, {
-    swaggerOptions: {
-      persistAuthorization: true,
-      displayRequestDuration: true,
-      filter: true,
-      tryItOutEnabled: true,
-      operationsSorter: 'alpha',
-      tagsSorter: 'alpha',
-      defaultModelsExpandDepth: 3,
-      defaultModelExpandDepth: 3,
     },
-  });
+  );
 
-  bootstrapLogger.log(`Swagger UI: http://localhost:${port}/api-docs`);
+  bootstrapLogger.log(
+    `Swagger UI: http://localhost:${port}/api-docs`,
+  );
 }
 
-void bootstrap().catch((error: unknown) => {
-  const message = error instanceof Error ? error.stack || error.message : 'Unknown bootstrap error';
+void bootstrap().catch(
+  (error: unknown) => {
+    const message =
+      error instanceof Error
+        ? error.stack ||
+          error.message
+        : 'Unknown bootstrap error';
 
-  bootstrapLogger.error(message);
-  process.exitCode = 1;
-});
+    bootstrapLogger.error(
+      message,
+    );
+
+    process.exitCode = 1;
+  },
+);

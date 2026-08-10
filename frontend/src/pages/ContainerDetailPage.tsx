@@ -31,6 +31,8 @@ import {
   Unarchive as UnarchiveIcon,
   Delete as DeleteIcon,
   Refresh as RefreshIcon,
+  PictureAsPdfOutlined as PdfIcon,
+  TableChartOutlined as ExcelIcon,
 } from '@mui/icons-material';
 
 import { toast } from 'react-toastify';
@@ -38,6 +40,7 @@ import { toast } from 'react-toastify';
 import { useContainers } from '../hooks/useContainers';
 import { useItems } from '../hooks/useItems';
 import { useAuth } from '../hooks/useAuth';
+import { useReports } from '../hooks/useReports';
 
 import { ROLES } from '../utilis/constants';
 
@@ -90,6 +93,12 @@ export const ContainerDetailPage = () => {
   const navigate = useNavigate();
 
   const { user } = useAuth();
+
+  const {
+    exportContainerPdf,
+    exportContainerExcel,
+    loading: reportsLoading,
+  } = useReports();
 
   const {
     getContainer,
@@ -261,6 +270,54 @@ export const ContainerDetailPage = () => {
     }, [
       loadContainerDetails,
       refreshing,
+    ]);
+
+  const handleExportPdf =
+    useCallback(async (): Promise<void> => {
+      if (
+        !container ||
+        reportsLoading.containerPdf
+      ) {
+        return;
+      }
+
+      try {
+        await exportContainerPdf(
+          container.id,
+        );
+      } catch {
+        toast.error(
+          'Failed to export PDF report',
+        );
+      }
+    }, [
+      container,
+      exportContainerPdf,
+      reportsLoading.containerPdf,
+    ]);
+
+  const handleExportExcel =
+    useCallback(async (): Promise<void> => {
+      if (
+        !container ||
+        reportsLoading.containerExcel
+      ) {
+        return;
+      }
+
+      try {
+        await exportContainerExcel(
+          container.id,
+        );
+      } catch {
+        toast.error(
+          'Failed to export Excel report',
+        );
+      }
+    }, [
+      container,
+      exportContainerExcel,
+      reportsLoading.containerExcel,
     ]);
 
   const handleStatusChange =
@@ -455,7 +512,9 @@ export const ContainerDetailPage = () => {
   const isBusy =
     statusLoading ||
     refreshing ||
-    deleteLoading;
+    deleteLoading ||
+    reportsLoading.containerPdf ||
+    reportsLoading.containerExcel;
 
   return (
     <Box
@@ -566,6 +625,7 @@ export const ContainerDetailPage = () => {
             flexWrap: 'wrap',
           }}
         >
+          {/* Refresh */}
           <IconButton
             onClick={handleRefresh}
             title="Refresh"
@@ -620,6 +680,153 @@ export const ContainerDetailPage = () => {
 
           {isAdmin && (
             <>
+              {/* Export PDF */}
+              <Button
+                variant="outlined"
+                startIcon={
+                  reportsLoading.containerPdf ? (
+                    <CircularProgress
+                      size={17}
+                      color="inherit"
+                    />
+                  ) : (
+                    <PdfIcon />
+                  )
+                }
+                onClick={() => {
+                  void handleExportPdf();
+                }}
+                disabled={isBusy}
+                sx={{
+                  minHeight: 40,
+
+                  px: {
+                    xs: 1.25,
+                    sm: 1.5,
+                  },
+
+                  borderRadius: 2,
+
+                  borderColor:
+                    '#d4b9bc',
+
+                  color: '#a8323b',
+
+                  backgroundColor:
+                    '#ffffff',
+
+                  fontSize: '0.78rem',
+
+                  fontWeight: 700,
+
+                  textTransform: 'none',
+
+                  boxShadow: 'none',
+
+                  '&:hover': {
+                    borderColor:
+                      '#c78f95',
+
+                    backgroundColor:
+                      '#fff5f5',
+
+                    color: '#a8323b',
+
+                    boxShadow: 'none',
+                  },
+
+                  '&.Mui-disabled': {
+                    borderColor:
+                      '#dedee2',
+
+                    backgroundColor:
+                      '#f5f5f6',
+
+                    color: '#99999e',
+
+                    opacity: 1,
+                  },
+                }}
+              >
+                {reportsLoading.containerPdf
+                  ? 'Exporting...'
+                  : 'PDF'}
+              </Button>
+
+              {/* Export Excel */}
+              <Button
+                variant="outlined"
+                startIcon={
+                  reportsLoading.containerExcel ? (
+                    <CircularProgress
+                      size={17}
+                      color="inherit"
+                    />
+                  ) : (
+                    <ExcelIcon />
+                  )
+                }
+                onClick={() => {
+                  void handleExportExcel();
+                }}
+                disabled={isBusy}
+                sx={{
+                  minHeight: 40,
+
+                  px: {
+                    xs: 1.25,
+                    sm: 1.5,
+                  },
+
+                  borderRadius: 2,
+
+                  borderColor:
+                    '#bfd6c7',
+
+                  color: '#327047',
+
+                  backgroundColor:
+                    '#ffffff',
+
+                  fontSize: '0.78rem',
+
+                  fontWeight: 700,
+
+                  textTransform: 'none',
+
+                  boxShadow: 'none',
+
+                  '&:hover': {
+                    borderColor:
+                      '#91bca0',
+
+                    backgroundColor:
+                      '#f2f8f4',
+
+                    color: '#327047',
+
+                    boxShadow: 'none',
+                  },
+
+                  '&.Mui-disabled': {
+                    borderColor:
+                      '#dedee2',
+
+                    backgroundColor:
+                      '#f5f5f6',
+
+                    color: '#99999e',
+
+                    opacity: 1,
+                  },
+                }}
+              >
+                {reportsLoading.containerExcel
+                  ? 'Exporting...'
+                  : 'Excel'}
+              </Button>
+
+              {/* Archive / Activate */}
               <IconButton
                 color={
                   isArchived
@@ -684,6 +891,7 @@ export const ContainerDetailPage = () => {
                 )}
               </IconButton>
 
+              {/* Delete */}
               <IconButton
                 color="error"
                 onClick={

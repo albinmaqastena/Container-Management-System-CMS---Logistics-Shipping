@@ -3,35 +3,36 @@
 # ============================================
 # STAGE 1: BUILD
 # ============================================
+
 FROM node:22-alpine AS builder
 
 WORKDIR /app
 
 COPY package.json package-lock.json ./
 
-# Install all dependencies required to compile NestJS.
-# Lifecycle scripts are disabled because source files are not copied yet.
 RUN npm ci --ignore-scripts
 
 COPY . .
 
 RUN npm run build
 
-# Keep only runtime dependencies in the final node_modules.
-RUN npm prune --omit=dev && npm cache clean --force
+RUN npm prune --omit=dev \
+  && npm cache clean --force
+
 
 # ============================================
 # STAGE 2: PRODUCTION
 # ============================================
+
 FROM node:22-alpine AS production
 
 ENV NODE_ENV=production
 
 WORKDIR /app
 
-RUN addgroup -S nodejs -g 1001 \
+RUN apk add --no-cache curl \
+  && addgroup -S nodejs -g 1001 \
   && adduser -S nestjs -u 1001 -G nodejs \
-  && mkdir -p /app/uploads \
   && chown -R nestjs:nodejs /app
 
 COPY --from=builder --chown=nestjs:nodejs /app/dist ./dist

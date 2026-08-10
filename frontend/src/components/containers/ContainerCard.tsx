@@ -23,6 +23,7 @@ import {
   Delete as DeleteIcon,
   Archive as ArchiveIcon,
   Unarchive as UnarchiveIcon,
+  EditOutlined as EditIcon,
 } from '@mui/icons-material';
 
 import type { Container } from '../../types';
@@ -34,6 +35,7 @@ import { useContainers } from '../../hooks/useContainers';
 import { ROLES } from '../../utilis/constants';
 
 import { ConfirmDialog } from '../common/Modals/ConfirmDialog';
+import { EditContainerModal } from './EditContainerModal';
 
 // Helper jashtë komponentit
 const formatDate = (value: string): string => {
@@ -81,6 +83,11 @@ export const ContainerCard = ({
   ] = useState(false);
 
   const [
+    editDialogOpen,
+    setEditDialogOpen,
+  ] = useState(false);
+
+  const [
     statusLoading,
     setStatusLoading,
   ] = useState(false);
@@ -118,17 +125,17 @@ export const ContainerCard = ({
       : 0;
 
   const rawAvailableVolume = Number(
-  container.availableVolume,
-);
+    container.availableVolume,
+  );
 
-const availableVolume =
-  Number.isFinite(rawAvailableVolume) &&
-  rawAvailableVolume >= 0
-    ? rawAvailableVolume
-    : Math.max(
-        safeTotalVolume - usedVolume,
-        0,
-      );
+  const availableVolume =
+    Number.isFinite(rawAvailableVolume) &&
+    rawAvailableVolume >= 0
+      ? rawAvailableVolume
+      : Math.max(
+          safeTotalVolume - usedVolume,
+          0,
+        );
 
   const usagePercentage =
     safeTotalVolume > 0
@@ -170,6 +177,13 @@ const availableVolume =
     } finally {
       setStatusLoading(false);
     }
+  };
+
+  const handleEditClick = (
+    event: MouseEvent,
+  ): void => {
+    event.stopPropagation();
+    setEditDialogOpen(true);
   };
 
   const handleDeleteClick = (
@@ -463,30 +477,65 @@ const availableVolume =
         </Box>
       </Box>
 
-      {/* Created date */}
-      <Box
-        sx={{
-          mt: 2.1,
+      {/* Created & Last Updated */}
+<Box
+  sx={{
+    mt: 2.1,
+    pt: 1.5,
+    borderTop: '1px solid #e0e0e3',
 
-          pt: 1.5,
+    display: 'flex',
 
-          borderTop: '1px solid #e0e0e3',
-        }}
-      >
-        <Typography
-          variant="body2"
-          sx={{
-            color: '#717176',
+    flexDirection: {
+      xs: 'column',
+      sm: 'row',
+    },
 
-            fontSize: '0.75rem',
+    alignItems: {
+      xs: 'flex-start',
+      sm: 'center',
+    },
 
-            fontWeight: 500,
-          }}
-        >
-          Created:{' '}
-          {formatDate(container.createdAt)}
-        </Typography>
-      </Box>
+    justifyContent: 'space-between',
+
+    gap: {
+      xs: 0.5,
+      sm: 2,
+    },
+  }}
+>
+  <Typography
+    variant="body2"
+    sx={{
+      color: '#717176',
+
+      fontSize: '0.75rem',
+
+      fontWeight: 500,
+
+      whiteSpace: 'nowrap',
+    }}
+  >
+    Created:{' '}
+    {formatDate(container.createdAt)}
+  </Typography>
+
+  <Typography
+    variant="body2"
+    sx={{
+      color: '#717176',
+
+      fontSize: '0.75rem',
+
+      fontWeight: 500,
+
+      whiteSpace: 'nowrap',
+    }}
+  >
+    Last updated:{' '}
+    {formatDate(container.updatedAt)}
+  </Typography>
+</Box>
     </CardContent>
   );
 
@@ -546,8 +595,7 @@ const availableVolume =
 
           '&:hover': onClick
             ? {
-                transform:
-                  'translateY(-4px)',
+                transform: 'translateY(-4px)',
 
                 borderColor: '#a8a8ae',
 
@@ -608,6 +656,62 @@ const availableVolume =
                 'linear-gradient(180deg, #f5f5f6 0%, #eeeeef 100%)',
             }}
           >
+            {/* Edit */}
+            <Tooltip title="Edit container">
+              <IconButton
+                size="small"
+                onClick={handleEditClick}
+                aria-label={`Edit ${container.name}`}
+                disabled={isLoading}
+                sx={{
+                  width: 38,
+                  height: 38,
+
+                  borderRadius: 2,
+
+                  color: '#48484d',
+
+                  border: '1px solid #cfcfd3',
+
+                  backgroundColor: '#ffffff',
+
+                  boxShadow:
+                    '0 2px 7px rgba(0,0,0,0.055)',
+
+                  transition:
+                    'transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease',
+
+                  '&:hover': {
+                    color: '#202024',
+
+                    backgroundColor: '#ffffff',
+
+                    borderColor: '#b5b5ba',
+
+                    transform: 'scale(1.05)',
+
+                    boxShadow:
+                      '0 5px 12px rgba(0,0,0,0.10)',
+                  },
+
+                  '&.Mui-disabled': {
+                    color: '#99999e',
+
+                    backgroundColor: '#f5f5f6',
+
+                    borderColor: '#dedee1',
+                  },
+                }}
+              >
+                <EditIcon
+                  sx={{
+                    fontSize: 20,
+                  }}
+                />
+              </IconButton>
+            </Tooltip>
+
+            {/* Archive / Activate */}
             <Tooltip
               title={
                 isArchived
@@ -690,6 +794,7 @@ const availableVolume =
               </IconButton>
             </Tooltip>
 
+            {/* Delete */}
             <Tooltip title="Delete">
               <IconButton
                 size="small"
@@ -748,6 +853,16 @@ const availableVolume =
         )}
       </Card>
 
+      {/* Edit Container */}
+      <EditContainerModal
+        open={editDialogOpen}
+        onClose={() =>
+          setEditDialogOpen(false)
+        }
+        container={container}
+      />
+
+      {/* Delete Container */}
       <ConfirmDialog
         open={deleteDialogOpen}
         title="Delete Container"

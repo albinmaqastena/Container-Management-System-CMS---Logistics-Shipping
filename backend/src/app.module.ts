@@ -40,13 +40,14 @@ import { ScheduleModule } from '@nestjs/schedule';
 
 import authConfig from './config/auth.config';
 import fileConfig from './config/file.config';
+import redisConfig from './config/redis.config';
 
 @Module({
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
       cache: true,
-      load: [authConfig, fileConfig],
+      load: [authConfig, fileConfig, redisConfig],
       envFilePath: [`.env.${process.env.NODE_ENV || 'development'}`, '.env'],
       validationSchema: Joi.object({
         NODE_ENV: Joi.string().valid('development', 'production', 'test').default('development'),
@@ -90,6 +91,11 @@ import fileConfig from './config/file.config';
         FILE_URL_PREFIX: Joi.string().default('/uploads'),
 
         IMAGE_OPTIMIZATION_ENABLED: Joi.boolean().truthy('true').falsy('false').default(true),
+        MAIL_ENABLED:
+          Joi.boolean()
+            .truthy('true')
+            .falsy('false')
+            .default(false),
         IMAGE_MAX_WIDTH: Joi.number().integer().min(1).default(1200),
         IMAGE_MAX_HEIGHT: Joi.number().integer().min(1).default(1200),
         IMAGE_QUALITY: Joi.number().integer().min(1).max(100).default(80),

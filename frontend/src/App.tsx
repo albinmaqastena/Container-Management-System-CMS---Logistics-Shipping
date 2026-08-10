@@ -6,6 +6,7 @@ import { HelmetProvider } from 'react-helmet-async';
 import { AuthProvider } from './contexts/AuthContext';
 import { ContainerProvider } from './contexts/ContainerContext';
 import { ItemProvider } from './contexts/ItemContext';
+import { ReportsProvider } from './contexts/ReportsContext';
 import { ThemeProvider } from './contexts/ThemeContext';
 
 import { AppRoutes } from './routes';
@@ -20,13 +21,15 @@ const App = () => {
         <AuthProvider>
           <ContainerProvider>
             <ItemProvider>
-              <ThemeProvider>
-                <Layout>
-                  <AppRoutes />
-                </Layout>
+              <ReportsProvider>
+                <ThemeProvider>
+                  <Layout>
+                    <AppRoutes />
+                  </Layout>
 
-                <ToastNotifications />
-              </ThemeProvider>
+                  <ToastNotifications />
+                </ThemeProvider>
+              </ReportsProvider>
             </ItemProvider>
           </ContainerProvider>
         </AuthProvider>
