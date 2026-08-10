@@ -19,6 +19,7 @@ export const DashboardPage = () => {
 
   const isSuperAdmin =
     user?.role === ROLES.SUPER_ADMIN;
+    
 
   const firstName =
     user?.username?.split(' ')[0] ||
