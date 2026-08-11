@@ -43,15 +43,16 @@ async function bootstrap(): Promise<void> {
   const isProduction =
     nodeEnv === 'production';
 
-  /*
-   * Railway injecton PORT automatikisht.
-   * 3000 mbetet vetëm fallback për local development.
-   */
+  // Railway injects PORT automatically.
   const port =
     configService.get<number>(
       'PORT',
       3000,
     );
+
+  // ================================================================
+  // FRONTEND ORIGINS
+  // ================================================================
 
   const frontendUrls =
     configService
@@ -60,8 +61,16 @@ async function bootstrap(): Promise<void> {
         'http://localhost:3001',
       )
       .split(',')
-      .map((url) => url.trim())
+      .map((url) =>
+        url
+          .trim()
+          .replace(/\/$/, ''),
+      )
       .filter(Boolean);
+
+  // ================================================================
+  // BOOTSTRAP LOGGING
+  // ================================================================
 
   bootstrapLogger.log(
     'Starting Container Management System',
@@ -82,19 +91,34 @@ async function bootstrap(): Promise<void> {
     )}`,
   );
 
-  /*
-   * Mos konfiguro SSL këtu.
-   * Railway terminon HTTPS përpara aplikacionit.
-   */
+  bootstrapLogger.log(
+    `Allowed frontend origins: ${
+      frontendUrls.join(', ') ||
+      'none'
+    }`,
+  );
+
+  // ================================================================
+  // CREATE APPLICATION
+  //
+  // Railway terminates HTTPS before forwarding requests
+  // to the NestJS application.
+  // ================================================================
+
   const app =
     await NestFactory.create<NestExpressApplication>(
       AppModule,
     );
 
-  /*
-   * Railway përdor reverse proxy.
-   */
-  app.set('trust proxy', true);
+  // Railway runs behind a reverse proxy.
+  app.set(
+    'trust proxy',
+    true,
+  );
+
+  // ================================================================
+  // SECURITY HEADERS
+  // ================================================================
 
   app.use(
     helmet({
@@ -119,14 +143,18 @@ async function bootstrap(): Promise<void> {
             "'self'",
             "'unsafe-inline'",
           ],
+
+          connectSrc: [
+            "'self'",
+            'https:',
+          ],
         },
       },
 
       hsts: isProduction
         ? {
             maxAge: 31536000,
-            includeSubDomains:
-              true,
+            includeSubDomains: true,
             preload: true,
           }
         : false,
@@ -144,14 +172,84 @@ async function bootstrap(): Promise<void> {
     }),
   );
 
+  // ================================================================
+  // COMPRESSION
+  // ================================================================
+
   app.use(
     compression(),
   );
 
+  // ================================================================
+  // CORS
+  // ================================================================
+
   app.enableCors({
-    origin: isProduction
-      ? frontendUrls
-      : true,
+    origin: (
+      origin,
+      callback,
+    ) => {
+      /*
+       * Requests pa Origin mund të jenë:
+       * - Railway health checks
+       * - curl
+       * - server-to-server requests
+       * - tools lokale
+       */
+      if (!origin) {
+        callback(
+          null,
+          true,
+        );
+
+        return;
+      }
+
+      const normalizedOrigin =
+        origin
+          .trim()
+          .replace(/\/$/, '');
+
+      /*
+       * Në development lejojmë origin-et.
+       */
+      if (!isProduction) {
+        callback(
+          null,
+          true,
+        );
+
+        return;
+      }
+
+      /*
+       * Në production lejohen vetëm
+       * origin-et e FRONTEND_URLS.
+       */
+      if (
+        frontendUrls.includes(
+          normalizedOrigin,
+        )
+      ) {
+        callback(
+          null,
+          true,
+        );
+
+        return;
+      }
+
+      bootstrapLogger.warn(
+        `Blocked CORS origin: ${normalizedOrigin}`,
+      );
+
+      callback(
+        new Error(
+          `Origin ${normalizedOrigin} is not allowed by CORS`,
+        ),
+        false,
+      );
+    },
 
     credentials: true,
 
@@ -159,8 +257,8 @@ async function bootstrap(): Promise<void> {
       'GET',
       'POST',
       'PUT',
-      'DELETE',
       'PATCH',
+      'DELETE',
       'OPTIONS',
     ],
 
@@ -168,6 +266,8 @@ async function bootstrap(): Promise<void> {
       'Content-Type',
       'Authorization',
       'Accept',
+      'Origin',
+      'X-Requested-With',
     ],
 
     exposedHeaders: [
@@ -177,7 +277,13 @@ async function bootstrap(): Promise<void> {
     ],
 
     maxAge: 86400,
+
+    optionsSuccessStatus: 204,
   });
+
+  // ================================================================
+  // GLOBAL VALIDATION
+  // ================================================================
 
   app.useGlobalPipes(
     new ValidationPipe({
@@ -195,37 +301,73 @@ async function bootstrap(): Promise<void> {
     }),
   );
 
+  // ================================================================
+  // GLOBAL ERROR FILTER
+  // ================================================================
+
   app.useGlobalFilters(
     new HttpExceptionFilter(),
   );
+
+  // ================================================================
+  // API VERSIONING
+  //
+  // Endpoints:
+  // /v1/auth/login
+  // /v1/containers
+  // /v1/items
+  // ...
+  // ================================================================
 
   app.enableVersioning({
     type:
       VersioningType.URI,
 
-    defaultVersion: '1',
+    defaultVersion:
+      '1',
   });
 
-  /*
-   * Swagger vetëm në development.
-   */
-  if (!isProduction) {
+  // ================================================================
+  // SWAGGER
+  //
+  // Development:
+  // enabled automatically.
+  //
+  // Production:
+  // enable with:
+  // SWAGGER_ENABLED=true
+  // ================================================================
+
+  const swaggerEnabled =
+    !isProduction ||
+    configService.get<string>(
+      'SWAGGER_ENABLED',
+      'false',
+    ) === 'true';
+
+  if (swaggerEnabled) {
     configureSwagger(
       app,
       port,
+      isProduction,
     );
   }
 
+  // ================================================================
+  // SHUTDOWN
+  // ================================================================
+
   app.enableShutdownHooks();
 
-  /*
-   * Railway rekomandon të dëgjosh në të gjitha interfaces.
-   *
-   * :: mbulon IPv6 dhe IPv4 në environment-et e reja të Railway.
-   */
+  // ================================================================
+  // START SERVER
+  //
+  // Railway needs the application to listen on all interfaces.
+  // ================================================================
+
   await app.listen(
     port,
-    '::',
+    '0.0.0.0',
   );
 
   bootstrapLogger.log(
@@ -235,21 +377,34 @@ async function bootstrap(): Promise<void> {
   bootstrapLogger.log(
     `Environment: ${nodeEnv}`,
   );
+
+  if (swaggerEnabled) {
+    bootstrapLogger.log(
+      'Swagger is enabled',
+    );
+  }
 }
+
+// ==================================================================
+// SWAGGER
+// ==================================================================
 
 function configureSwagger(
   app: NestExpressApplication,
   port: number,
+  isProduction: boolean,
 ): void {
-  const config =
+  const builder =
     new DocumentBuilder()
       .setTitle(
         'Container Management System API',
       )
       .setDescription(
-        'API for authentication, containers, items, files and audit logs.',
+        'API for authentication, containers, items, files, reports and audit logs.',
       )
-      .setVersion('1.0')
+      .setVersion(
+        '1.0',
+      )
       .addBearerAuth(
         {
           type: 'http',
@@ -259,12 +414,14 @@ function configureSwagger(
           bearerFormat:
             'JWT',
 
-          name: 'JWT',
+          name:
+            'Authorization',
 
           description:
-            'Enter JWT token',
+            'Enter your JWT access token',
 
-          in: 'header',
+          in:
+            'header',
         },
 
         'JWT-auth',
@@ -286,18 +443,27 @@ function configureSwagger(
         'File upload operations',
       )
       .addTag(
+        'Reports',
+        'PDF and Excel report operations',
+      )
+      .addTag(
         'Audit Logs',
         'Audit log operations',
       )
       .addTag(
         'Health',
         'Health check endpoint',
-      )
-      .addServer(
-        `http://localhost:${port}`,
-        'Development Server',
-      )
-      .build();
+      );
+
+  if (!isProduction) {
+    builder.addServer(
+      `http://localhost:${port}`,
+      'Development Server',
+    );
+  }
+
+  const config =
+    builder.build();
 
   const document =
     SwaggerModule.createDocument(
@@ -317,7 +483,8 @@ function configureSwagger(
         displayRequestDuration:
           true,
 
-        filter: true,
+        filter:
+          true,
 
         tryItOutEnabled:
           true,
@@ -325,7 +492,8 @@ function configureSwagger(
         operationsSorter:
           'alpha',
 
-        tagsSorter: 'alpha',
+        tagsSorter:
+          'alpha',
 
         defaultModelsExpandDepth:
           3,
@@ -336,13 +504,25 @@ function configureSwagger(
     },
   );
 
-  bootstrapLogger.log(
-    `Swagger UI: http://localhost:${port}/api-docs`,
-  );
+  if (!isProduction) {
+    bootstrapLogger.log(
+      `Swagger UI: http://localhost:${port}/api-docs`,
+    );
+  } else {
+    bootstrapLogger.log(
+      'Swagger UI available at /api-docs',
+    );
+  }
 }
 
+// ==================================================================
+// START
+// ==================================================================
+
 void bootstrap().catch(
-  (error: unknown) => {
+  (
+    error: unknown,
+  ) => {
     const message =
       error instanceof Error
         ? error.stack ||
