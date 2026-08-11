@@ -1,6 +1,8 @@
 // src/pages/ContainerDetailPage.tsx
 
 import {
+    lazy,
+    Suspense,
   useCallback,
   useEffect,
   useMemo,
@@ -47,11 +49,17 @@ import { ROLES } from '../utilis/constants';
 import { ContainerStatus } from '../types';
 import type { Container } from '../types';
 
-import { CreateItemModal } from '../components/items/CreateItemModal';
 import { ItemList } from '../components/items/ItemList';
 import { SearchBar } from '../components/common/UI/SearchBar';
 import { ConfirmDialog } from '../components/common/Modals/ConfirmDialog';
 import { LoadingSpinner } from '../components/common/UI/LoadingSpinner';
+
+const CreateItemModal = lazy(
+  () =>
+    import(
+      '../components/items/CreateItemModal'
+    ),
+);
 
 const formatStatusLabel = (
   value: string,
@@ -225,31 +233,34 @@ export const ContainerDetailPage = () => {
 
   const loadContainerDetails =
     useCallback(async () => {
-      if (!id) return;
+        if (!id) {
+        return;
+        }
 
-      setError(null);
+        setError(null);
 
-      try {
-        const data =
-          await getContainer(id);
+        try {
+        const [data] =
+            await Promise.all([
+            getContainer(id),
+            fetchItems({
+                containerId: id,
+            }),
+            ]);
 
         setContainer(data);
-
-        await fetchItems({
-          containerId: id,
-        });
-      } catch (err: unknown) {
+        } catch (err: unknown) {
         const message =
-          err instanceof Error
+            err instanceof Error
             ? err.message
             : 'Failed to load container';
 
         setError(message);
-      }
+        }
     }, [
-      id,
-      getContainer,
-      fetchItems,
+        id,
+        getContainer,
+        fetchItems,
     ]);
 
   useEffect(() => {
@@ -1014,6 +1025,7 @@ export const ContainerDetailPage = () => {
             }}
           >
             <Typography
+              component="h1"
               variant="h4"
               gutterBottom
               sx={{
@@ -1219,31 +1231,28 @@ export const ContainerDetailPage = () => {
             </Box>
 
             <LinearProgress
-              variant="determinate"
-              value={usagePercentage}
-              color={
-                usagePercentage > 90
-                  ? 'error'
-                  : usagePercentage > 70
-                    ? 'warning'
-                    : 'primary'
-              }
-              sx={{
-                mt: 1.2,
-
-                height: 8,
-
-                borderRadius: 999,
-
-                backgroundColor:
-                  '#d5d5d9',
-
-                '& .MuiLinearProgress-bar':
-                  {
+                variant="determinate"
+                value={usagePercentage}
+                aria-label="Container volume usage"
+                aria-valuetext={`${usagePercentage.toFixed(1)}% of container volume used`}
+                color={
+                    usagePercentage > 90
+                    ? 'error'
+                    : usagePercentage > 70
+                        ? 'warning'
+                        : 'primary'
+                }
+                sx={{
+                    mt: 1.2,
+                    height: 8,
                     borderRadius: 999,
-                  },
-              }}
-            />
+                    backgroundColor: '#d5d5d9',
+
+                    '& .MuiLinearProgress-bar': {
+                    borderRadius: 999,
+                    },
+                }}
+                />
 
             <Typography
               variant="body2"
@@ -1315,6 +1324,7 @@ export const ContainerDetailPage = () => {
           }}
         >
           <Typography
+            component="h2"
             variant="h5"
             sx={{
               color: '#17171a',
@@ -1431,22 +1441,20 @@ export const ContainerDetailPage = () => {
         />
       </Paper>
 
-      <CreateItemModal
-        open={
-          isCreateItemModalOpen
-        }
-        onClose={() =>
-          setIsCreateItemModalOpen(
-            false,
-          )
-        }
-        containerId={
-          container.id
-        }
-        onItemCreated={
-          loadContainerDetails
-        }
-      />
+      {isCreateItemModalOpen && (
+        <Suspense fallback={null}>
+            <CreateItemModal
+            open={isCreateItemModalOpen}
+            onClose={() =>
+                setIsCreateItemModalOpen(false)
+            }
+            containerId={container.id}
+            onItemCreated={
+                loadContainerDetails
+            }
+            />
+        </Suspense>
+        )}
 
       <ConfirmDialog
         open={
