@@ -55,44 +55,54 @@ export const LoginForm = () => {
 
   const handleSubmit = async (
     event: FormEvent<HTMLFormElement>,
-  ): Promise<void> => {
+    ): Promise<void> => {
     event.preventDefault();
+
+    console.log('LOGIN SUBMIT FIRED');
+
     setError(null);
 
     const normalizedEmail = email.trim();
 
     if (!normalizedEmail || password.length === 0) {
-      setError('Email and password are required');
-      return;
+        setError('Email and password are required');
+        return;
     }
 
     setLoading(true);
 
     try {
-      await login({
+        console.log('CALLING LOGIN', normalizedEmail);
+
+        await login({
         email: normalizedEmail.toLowerCase(),
         password,
-      });
+        });
 
-      navigate(safeFrom, { replace: true });
+        console.log('LOGIN SUCCESS');
+
+        navigate(safeFrom, { replace: true });
     } catch (error: unknown) {
-      if (axios.isAxiosError(error)) {
+        console.error('LOGIN ERROR', error);
+
+        if (axios.isAxiosError(error)) {
         const message = error.response?.data?.message;
 
         setError(
-          Array.isArray(message)
+            Array.isArray(message)
             ? message.join(', ')
             : typeof message === 'string'
-              ? message
-              : 'Login failed',
+                ? message
+                : 'Login failed',
         );
-      } else {
+        } else {
         setError('Login failed');
-      }
+        }
     } finally {
-      setLoading(false);
+        console.log('LOGIN FINALLY');
+        setLoading(false);
     }
-  };
+    };
 
   const inputSx = {
     '& .MuiOutlinedInput-root': {
