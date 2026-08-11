@@ -141,43 +141,44 @@ export const LoginPage = () => {
       >
         {/* Logo */}
         <Box
-          component="img"
-          src="/logo.webp"
-          alt="JONI MIX"
-          sx={{
-            display: 'block',
+            component="img"
+            src="/logo.webp"
+            alt="JONI MIX"
+            width={1400}
+            height={280}
+            loading="eager"
+            fetchPriority="high"
+            decoding="async"
+            sx={{
+                display: 'block',
 
-            width: {
-              xs: '96%',
-              sm: 520,
-              md: 620,
-              lg: 700,
-            },
+                width: {
+                xs: '96%',
+                sm: 520,
+                md: 620,
+                lg: 700,
+                },
 
-            maxWidth: 700,
+                maxWidth: 700,
 
-            /*
-             * Kufizojmë vetëm lartësinë në mobile,
-             * që keyboard-i të mos humbasë formën.
-             */
-            maxHeight: {
-              xs: 150,
-              sm: 190,
-              md: 220,
-              lg: 240,
-            },
+                maxHeight: {
+                xs: 150,
+                sm: 190,
+                md: 220,
+                lg: 240,
+                },
 
-            height: 'auto',
-            objectFit: 'contain',
-            flexShrink: 0,
+                height: 'auto',
+                objectFit: 'contain',
+                flexShrink: 0,
 
-            mb: {
-              xs: 1,
-              sm: 2,
-              md: 2.5,
-            },
-          }}
-        />
+                mb: {
+                xs: 1,
+                sm: 2,
+                md: 2.5,
+                },
+            }}
+            />
 
         {/* Login card */}
         <Paper
