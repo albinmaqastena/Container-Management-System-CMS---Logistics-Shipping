@@ -338,47 +338,48 @@ export class FilesService {
     };
   }
 
-  async deleteFile(
-    filePath: string,
-  ): Promise<void> {
-    const normalizedPath =
-      this.normalizeRelativePath(
-        filePath,
-      );
+  private extractObjectKey(
+        filePathOrUrl: string,
+        ): string {
+        const input =
+            filePathOrUrl?.trim();
 
-    if (!normalizedPath) {
-      throw new BadRequestException(
-        'Invalid file path',
-      );
-    }
+        if (!input) {
+            throw new BadRequestException(
+            'Invalid file path',
+            );
+        }
 
-    try {
-      await this.s3Client.send(
-        new DeleteObjectCommand({
-          Bucket:
-            this.bucket,
+        // URL publike e file-it
+        if (
+            input.startsWith(
+            `${this.publicUrl}/`,
+            )
+        ) {
+            const relativePart =
+            input.slice(
+                this.publicUrl.length + 1,
+            );
 
-          Key:
-            normalizedPath,
-        }),
-      );
+            return this.normalizeRelativePath(
+            relativePart,
+            );
+        }
 
-      this.logger.log(
-        `File deleted from storage: ${normalizedPath}`,
-      );
-    } catch (error) {
-      this.logger.error(
-        `S3 delete failed for ${normalizedPath}`,
-        error instanceof Error
-          ? error.stack
-          : String(error),
-      );
+        // Refuzojmë URL nga domain-e të tjera.
+        if (
+            /^https?:\/\//i.test(input)
+        ) {
+            throw new BadRequestException(
+            'File URL does not belong to configured storage',
+            );
+        }
 
-      throw new BadRequestException(
-        'Unable to delete file',
-      );
-    }
-  }
+        // Object key normal
+        return this.normalizeRelativePath(
+            input,
+        );
+        }
 
   private async processFile(
     file: MulterFile,
@@ -707,4 +708,43 @@ export class FilesService {
       )
       .join('/');
   }
+
+  async deleteFile(
+  filePathOrUrl: string,
+): Promise<void> {
+  const objectKey =
+    this.extractObjectKey(
+      filePathOrUrl,
+    );
+
+  if (!objectKey) {
+    throw new BadRequestException(
+      'Invalid file path',
+    );
+  }
+
+  try {
+    await this.s3Client.send(
+      new DeleteObjectCommand({
+        Bucket: this.bucket,
+        Key: objectKey,
+      }),
+    );
+
+    this.logger.log(
+      `File deleted from storage: ${objectKey}`,
+    );
+  } catch (error) {
+    this.logger.error(
+      `S3 delete failed for ${objectKey}`,
+      error instanceof Error
+        ? error.stack
+        : String(error),
+    );
+
+    throw new BadRequestException(
+      'Unable to delete file',
+    );
+  }
+}
 }
