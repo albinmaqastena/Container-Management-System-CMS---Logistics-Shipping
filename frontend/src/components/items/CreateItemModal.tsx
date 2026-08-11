@@ -1,29 +1,46 @@
 // src/components/items/CreateItemModal.tsx
 
-import { useState, useRef, useEffect } from 'react';
-import type { ChangeEvent, FormEvent } from 'react';
-import type { DialogProps } from '@mui/material';
+import {
+  useEffect,
+  useRef,
+  useState,
+} from 'react';
+
+import type {
+  ChangeEvent,
+  FormEvent,
+} from 'react';
+
+import type {
+  DialogProps,
+} from '@mui/material';
 
 import {
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  Button,
-  TextField,
   Alert,
   Box,
-  IconButton,
+  Button,
   CircularProgress,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  IconButton,
+  TextField,
+  Typography,
 } from '@mui/material';
 
 import {
   CameraAlt as CameraIcon,
   Close as CloseIcon,
+  CloudUploadOutlined as UploadIcon,
 } from '@mui/icons-material';
 
 import { useItems } from '../../hooks/useItems';
 import { filesService } from '../../services/file.service';
+
+// ============================================================================
+// TYPES
+// ============================================================================
 
 interface CreateItemModalProps {
   open: boolean;
@@ -42,6 +59,10 @@ interface FormData {
   volume: string;
 }
 
+// ============================================================================
+// CONSTANTS
+// ============================================================================
+
 const initialFormData: FormData = {
   uniqueNumber: '',
   name: '',
@@ -52,6 +73,10 @@ const initialFormData: FormData = {
   volume: '',
 };
 
+// ============================================================================
+// COMPONENT
+// ============================================================================
+
 export const CreateItemModal = ({
   open,
   onClose,
@@ -60,274 +85,743 @@ export const CreateItemModal = ({
 }: CreateItemModalProps) => {
   const { createItem } = useItems();
 
+  // ==========================================================================
+  // FORM STATE
+  // ==========================================================================
+
   const [formData, setFormData] =
-    useState<FormData>(initialFormData);
+    useState<FormData>(
+      initialFormData,
+    );
 
   const [file, setFile] =
-    useState<File | null>(null);
+    useState<File | null>(
+      null,
+    );
 
   const [error, setError] =
-    useState<string | null>(null);
+    useState<string | null>(
+      null,
+    );
 
   const [loading, setLoading] =
     useState(false);
 
-  const [uploadLoading, setUploadLoading] =
-    useState(false);
+  const [
+    uploadLoading,
+    setUploadLoading,
+  ] = useState(false);
 
-  const [uploadedFilePath, setUploadedFilePath] =
-    useState<string | null>(null);
+  const [
+    uploadedFilePath,
+    setUploadedFilePath,
+  ] = useState<string | null>(
+    null,
+  );
 
-  // Kamera
-  const [cameraOpen, setCameraOpen] =
-    useState(false);
+  // ==========================================================================
+  // CAMERA STATE
+  // ==========================================================================
 
-  const [cameraStream, setCameraStream] =
-    useState<MediaStream | null>(null);
+  const [
+    cameraOpen,
+    setCameraOpen,
+  ] = useState(false);
+
+  const [
+    cameraStream,
+    setCameraStream,
+  ] = useState<MediaStream | null>(
+    null,
+  );
+
+  const [
+    cameraReady,
+    setCameraReady,
+  ] = useState(false);
+
+  const [
+    cameraLoading,
+    setCameraLoading,
+  ] = useState(false);
 
   const videoRef =
-    useRef<HTMLVideoElement>(null);
+    useRef<HTMLVideoElement>(
+      null,
+    );
 
   const canvasRef =
-    useRef<HTMLCanvasElement>(null);
+    useRef<HTMLCanvasElement>(
+      null,
+    );
 
   const isBusy =
-    loading || uploadLoading;
+    loading ||
+    uploadLoading;
 
-  // Sinkronizo cameraStream me video element
+  // ==========================================================================
+  // CAMERA PREVIEW
+  // ==========================================================================
+
   useEffect(() => {
-    const video = videoRef.current;
-
     if (
-      !video ||
-      !cameraStream ||
-      !cameraOpen
+      !cameraOpen ||
+      !cameraStream
     ) {
       return;
     }
 
-    video.srcObject = cameraStream;
+    const video =
+      videoRef.current;
+
+    if (!video) {
+      return;
+    }
+
+    let cancelled = false;
+
+    const startPreview =
+      async (): Promise<void> => {
+        try {
+          setCameraReady(false);
+
+          video.srcObject =
+            cameraStream;
+
+          video.muted = true;
+          video.playsInline =
+            true;
+
+          /*
+           * Nëse metadata ende nuk është ngarkuar,
+           * presim derisa browser-i të njohë dimensionet
+           * reale të stream-it.
+           */
+          if (
+            video.readyState < 1
+          ) {
+            await new Promise<void>(
+              (
+                resolve,
+                reject,
+              ) => {
+                const handleLoadedMetadata =
+                  (): void => {
+                    cleanup();
+                    resolve();
+                  };
+
+                const handleError =
+                  (): void => {
+                    cleanup();
+
+                    reject(
+                      new Error(
+                        'Video metadata could not be loaded',
+                      ),
+                    );
+                  };
+
+                const cleanup =
+                  (): void => {
+                    video.removeEventListener(
+                      'loadedmetadata',
+                      handleLoadedMetadata,
+                    );
+
+                    video.removeEventListener(
+                      'error',
+                      handleError,
+                    );
+                  };
+
+                video.addEventListener(
+                  'loadedmetadata',
+                  handleLoadedMetadata,
+                );
+
+                video.addEventListener(
+                  'error',
+                  handleError,
+                );
+              },
+            );
+          }
+
+          if (cancelled) {
+            return;
+          }
+
+          await video.play();
+
+          if (cancelled) {
+            return;
+          }
+
+          if (
+            video.videoWidth >
+              0 &&
+            video.videoHeight >
+              0
+          ) {
+            setCameraReady(
+              true,
+            );
+          }
+        } catch (
+          previewError: unknown
+        ) {
+          console.error(
+            'Camera preview error:',
+            previewError,
+          );
+
+          if (!cancelled) {
+            setCameraReady(
+              false,
+            );
+
+            setError(
+              'Camera is available, but the preview could not be started.',
+            );
+          }
+        }
+      };
+
+    void startPreview();
 
     return () => {
-      video.srcObject = null;
-    };
-  }, [cameraStream, cameraOpen]);
+      cancelled = true;
 
-  // Pastro stream-in kur komponenti çmontohet
+      try {
+        video.pause();
+      } catch {
+        // Ignore cleanup errors.
+      }
+
+      video.srcObject =
+        null;
+    };
+  }, [
+    cameraOpen,
+    cameraStream,
+  ]);
+
+  // ==========================================================================
+  // STOP CAMERA ON COMPONENT UNMOUNT
+  // ==========================================================================
+
   useEffect(() => {
     return () => {
       cameraStream
         ?.getTracks()
-        .forEach((track) => {
-          track.stop();
-        });
+        .forEach(
+          (track) => {
+            track.stop();
+          },
+        );
     };
   }, [cameraStream]);
 
-  const resetForm = (): void => {
-    setFormData(initialFormData);
-    setFile(null);
-    setError(null);
-  };
+  // ==========================================================================
+  // HELPERS
+  // ==========================================================================
+
+  const resetForm =
+    (): void => {
+      setFormData(
+        initialFormData,
+      );
+
+      setFile(null);
+      setError(null);
+    };
 
   const cleanupUploadedFile =
     async (): Promise<void> => {
-      if (!uploadedFilePath) return;
+      if (
+        !uploadedFilePath
+      ) {
+        return;
+      }
 
       try {
         await filesService.delete(
           uploadedFilePath,
         );
 
-        setUploadedFilePath(null);
-      } catch {
-        // Nëse cleanup dështon, mos e humb referencën e file-it orphan.
-        // UploadedFilePath mbetet i njëjtë për t'u përdorur në përpjekje të mëvonshme.
+        setUploadedFilePath(
+          null,
+        );
+      } catch (
+        cleanupError: unknown
+      ) {
+        console.error(
+          'Failed to remove uploaded file:',
+          cleanupError,
+        );
       }
     };
 
-  const closeModal = (): void => {
-    resetForm();
-    onClose();
-  };
+  // ==========================================================================
+  // CAMERA CLOSE
+  // ==========================================================================
+
+  const closeCamera =
+    (): void => {
+      const video =
+        videoRef.current;
+
+      if (video) {
+        try {
+          video.pause();
+        } catch {
+          // Ignore.
+        }
+
+        video.srcObject =
+          null;
+      }
+
+      if (cameraStream) {
+        cameraStream
+          .getTracks()
+          .forEach(
+            (track) => {
+              track.stop();
+            },
+          );
+      }
+
+      setCameraStream(null);
+      setCameraReady(false);
+      setCameraLoading(false);
+      setCameraOpen(false);
+    };
+
+  // ==========================================================================
+  // MODAL CLOSE
+  // ==========================================================================
+
+  const closeModal =
+    (): void => {
+      closeCamera();
+      resetForm();
+      onClose();
+    };
 
   const closeWithCleanup =
     async (): Promise<void> => {
       await cleanupUploadedFile();
+
       closeModal();
     };
 
-  const handleClose = (): void => {
-    if (isBusy) return;
-
-    void closeWithCleanup();
-  };
-
-  const handleDialogClose: NonNullable<
-    DialogProps['onClose']
-  > = (_, reason): void => {
-    if (
-      isBusy ||
-      reason === 'backdropClick'
-    ) {
-      return;
-    }
-
-    void closeWithCleanup();
-  };
-
-  const handleChange = (
-    event: ChangeEvent<HTMLInputElement>,
-  ): void => {
-    const { name, value } =
-      event.target;
-
-    setFormData((prev) => ({
-      ...prev,
-      [name]: value,
-    }));
-  };
-
-  // ============================================================
-  // UPLOAD NGA FILE
-  // ============================================================
-  const handleFileChange = async (
-    event: ChangeEvent<HTMLInputElement>,
-  ): Promise<void> => {
-    const selectedFile =
-      event.target.files?.[0];
-
-    if (!selectedFile) return;
-
-    setUploadLoading(true);
-    setError(null);
-
-    try {
-      // Pastro foton e vjetër para upload-it të ri
-      if (uploadedFilePath) {
-        await cleanupUploadedFile();
+  const handleClose =
+    (): void => {
+      if (isBusy) {
+        return;
       }
 
-      const uploaded =
-        await filesService.upload(
+      void closeWithCleanup();
+    };
+
+  const handleDialogClose:
+    NonNullable<
+      DialogProps['onClose']
+    > = (
+      _,
+      reason,
+    ): void => {
+      if (
+        isBusy ||
+        reason ===
+          'backdropClick'
+      ) {
+        return;
+      }
+
+      void closeWithCleanup();
+    };
+
+  // ==========================================================================
+  // INPUT CHANGE
+  // ==========================================================================
+
+  const handleChange = (
+    event:
+      ChangeEvent<HTMLInputElement>,
+  ): void => {
+    const {
+      name,
+      value,
+    } = event.target;
+
+    setFormData(
+      (previous) => ({
+        ...previous,
+        [name]: value,
+      }),
+    );
+  };
+
+  // ==========================================================================
+  // FILE UPLOAD
+  // ==========================================================================
+
+  const handleFileChange =
+    async (
+      event:
+        ChangeEvent<HTMLInputElement>,
+    ): Promise<void> => {
+      const selectedFile =
+        event.target
+          .files?.[0];
+
+      /*
+       * Lejojmë të zgjedhet përsëri
+       * i njëjti file më vonë.
+       */
+      event.target.value =
+        '';
+
+      if (!selectedFile) {
+        return;
+      }
+
+      setUploadLoading(
+        true,
+      );
+
+      setError(null);
+
+      try {
+        if (
+          uploadedFilePath
+        ) {
+          await cleanupUploadedFile();
+        }
+
+        const uploaded =
+          await filesService.upload(
+            selectedFile,
+          );
+
+        setFile(
           selectedFile,
         );
 
-      setFile(selectedFile);
-
-      setUploadedFilePath(
-        uploaded.path,
-      );
-
-      setFormData((prev) => ({
-        ...prev,
-        photo: uploaded.url,
-      }));
-    } catch (err: unknown) {
-      const message =
-        err instanceof Error
-          ? err.message
-          : 'Failed to upload file';
-
-      setError(message);
-      setFile(null);
-
-      setFormData((prev) => ({
-        ...prev,
-        photo: '',
-      }));
-    } finally {
-      setUploadLoading(false);
-    }
-  };
-
-  // ============================================================
-  // KAMERA
-  // ============================================================
-  const requestCameraPermission =
-    async (): Promise<boolean> => {
-      try {
-        const stream =
-          await navigator.mediaDevices.getUserMedia(
-            {
-              video: {
-                facingMode:
-                  'environment',
-              },
-              audio: false,
-            },
-          );
-
-        setCameraStream(stream);
-
-        return true;
-      } catch {
-        setError(
-          'Camera permission is required to take photos. Please allow camera access.',
+        setUploadedFilePath(
+          uploaded.path,
         );
 
-        return false;
+        setFormData(
+          (previous) => ({
+            ...previous,
+            photo:
+              uploaded.url,
+          }),
+        );
+      } catch (
+        uploadError: unknown
+      ) {
+        const message =
+          uploadError instanceof
+          Error
+            ? uploadError.message
+            : 'Failed to upload photo';
+
+        setError(
+          message,
+        );
+
+        setFile(null);
+
+        setFormData(
+          (previous) => ({
+            ...previous,
+            photo: '',
+          }),
+        );
+      } finally {
+        setUploadLoading(
+          false,
+        );
       }
     };
 
+  // ==========================================================================
+  // REQUEST CAMERA
+  // ==========================================================================
+
+  const requestCameraPermission =
+    async (): Promise<boolean> => {
+      setCameraLoading(
+        true,
+      );
+
+      setCameraReady(
+        false,
+      );
+
+      try {
+        if (
+          !navigator.mediaDevices ||
+          !navigator.mediaDevices
+            .getUserMedia
+        ) {
+          setError(
+            'Camera access is not supported by this browser.',
+          );
+
+          return false;
+        }
+
+        const stream =
+          await navigator
+            .mediaDevices
+            .getUserMedia({
+              video: {
+                facingMode: {
+                  ideal:
+                    'environment',
+                },
+
+                width: {
+                  ideal:
+                    1920,
+                },
+
+                height: {
+                  ideal:
+                    1080,
+                },
+              },
+
+              audio: false,
+            });
+
+        const videoTrack =
+          stream
+            .getVideoTracks()
+            .at(0);
+
+        if (!videoTrack) {
+          stream
+            .getTracks()
+            .forEach(
+              (track) => {
+                track.stop();
+              },
+            );
+
+          setError(
+            'No camera was found on this device.',
+          );
+
+          return false;
+        }
+
+        console.log(
+          'Camera track:',
+          {
+            label:
+              videoTrack.label,
+
+            enabled:
+              videoTrack.enabled,
+
+            muted:
+              videoTrack.muted,
+
+            readyState:
+              videoTrack.readyState,
+
+            settings:
+              videoTrack.getSettings(),
+          },
+        );
+
+        setCameraStream(
+          stream,
+        );
+
+        return true;
+      } catch (
+        cameraError: unknown
+      ) {
+        console.error(
+          'Camera access error:',
+          cameraError,
+        );
+
+        let message =
+          'Could not access the camera.';
+
+        if (
+          cameraError instanceof
+          DOMException
+        ) {
+          switch (
+            cameraError.name
+          ) {
+            case 'NotAllowedError':
+            case 'SecurityError':
+              message =
+                'Camera permission was denied. Allow camera access in your browser settings and try again.';
+              break;
+
+            case 'NotFoundError':
+              message =
+                'No camera was found on this device.';
+              break;
+
+            case 'NotReadableError':
+              message =
+                'The camera could not be started. It may already be used by another application.';
+              break;
+
+            case 'OverconstrainedError':
+              message =
+                'The requested camera configuration is not supported by this device.';
+              break;
+
+            case 'AbortError':
+              message =
+                'Camera startup was interrupted. Please try again.';
+              break;
+
+            default:
+              message =
+                cameraError.message ||
+                message;
+          }
+        }
+
+        setError(
+          message,
+        );
+
+        return false;
+      } finally {
+        setCameraLoading(
+          false,
+        );
+      }
+    };
+
+  // ==========================================================================
+  // OPEN CAMERA
+  // ==========================================================================
+
   const openCamera =
     async (): Promise<void> => {
-      setError(null);
+      if (
+        isBusy ||
+        cameraLoading
+      ) {
+        return;
+      }
 
-      if (cameraStream) {
-        setCameraOpen(true);
+      setError(null);
+      setCameraReady(
+        false,
+      );
+
+      /*
+       * Hap dialogun PARA se të kërkojmë kamerën.
+       * Kështu elementi <video> montohet në DOM
+       * përpara lidhjes së MediaStream.
+       */
+      setCameraOpen(
+        true,
+      );
+
+      if (
+        cameraStream
+      ) {
         return;
       }
 
       const hasPermission =
         await requestCameraPermission();
 
-      if (hasPermission) {
-        setCameraOpen(true);
+      if (!hasPermission) {
+        setCameraOpen(
+          false,
+        );
       }
     };
 
-  const closeCamera = (): void => {
-    if (cameraStream) {
-      cameraStream
-        .getTracks()
-        .forEach((track) =>
-          track.stop(),
-        );
-
-      setCameraStream(null);
-    }
-
-    setCameraOpen(false);
-  };
+  // ==========================================================================
+  // CAPTURE PHOTO
+  // ==========================================================================
 
   const capturePhoto =
     async (): Promise<void> => {
-      if (
-        !videoRef.current ||
-        !canvasRef.current
-      ) {
-        return;
-      }
-
       const video =
         videoRef.current;
 
       const canvas =
         canvasRef.current;
 
+      if (
+        !video ||
+        !canvas
+      ) {
+        setError(
+          'Camera preview is not available.',
+        );
+
+        return;
+      }
+
+      if (
+        !cameraStream ||
+        !cameraReady
+      ) {
+        setError(
+          'Camera is not ready yet. Please wait a moment.',
+        );
+
+        return;
+      }
+
+      if (
+        video.videoWidth <= 0 ||
+        video.videoHeight <= 0
+      ) {
+        setCameraReady(
+          false,
+        );
+
+        setError(
+          'Camera preview is not ready yet.',
+        );
+
+        return;
+      }
+
       canvas.width =
-        video.videoWidth || 640;
+        video.videoWidth;
 
       canvas.height =
-        video.videoHeight || 480;
+        video.videoHeight;
 
-      const ctx =
-        canvas.getContext('2d');
+      const context =
+        canvas.getContext(
+          '2d',
+        );
 
-      if (!ctx) return;
+      if (!context) {
+        setError(
+          'Could not prepare the captured image.',
+        );
 
-      ctx.drawImage(
+        return;
+      }
+
+      context.drawImage(
         video,
         0,
         0,
@@ -335,12 +829,11 @@ export const CreateItemModal = ({
         canvas.height,
       );
 
-      // Konverto në Blob
       const blob =
         await new Promise<Blob | null>(
           (resolve) => {
             canvas.toBlob(
-              (b) => resolve(b),
+              resolve,
               'image/jpeg',
               0.9,
             );
@@ -349,217 +842,291 @@ export const CreateItemModal = ({
 
       if (!blob) {
         setError(
-          'Failed to capture photo',
+          'Failed to capture photo.',
         );
 
         return;
       }
 
-      // Krijo File nga Blob
-      const file = new File(
-        [blob],
-        `camera-capture-${Date.now()}.jpg`,
-        {
-          type: 'image/jpeg',
-        },
+      const capturedFile =
+        new File(
+          [blob],
+          `camera-${Date.now()}.jpg`,
+          {
+            type:
+              'image/jpeg',
+          },
+        );
+
+      setUploadLoading(
+        true,
       );
 
-      // Ngarko foton
-      setUploadLoading(true);
       setError(null);
 
       try {
-        if (uploadedFilePath) {
+        if (
+          uploadedFilePath
+        ) {
           await cleanupUploadedFile();
         }
 
         const uploaded =
           await filesService.upload(
-            file,
+            capturedFile,
           );
 
-        setFile(file);
+        setFile(
+          capturedFile,
+        );
 
         setUploadedFilePath(
           uploaded.path,
         );
 
-        setFormData((prev) => ({
-          ...prev,
-          photo: uploaded.url,
-        }));
+        setFormData(
+          (previous) => ({
+            ...previous,
+            photo:
+              uploaded.url,
+          }),
+        );
 
-        // Mbyll kamerën pas suksesit
         closeCamera();
-      } catch (err: unknown) {
+      } catch (
+        uploadError: unknown
+      ) {
         const message =
-          err instanceof Error
-            ? err.message
+          uploadError instanceof
+          Error
+            ? uploadError.message
             : 'Failed to upload photo';
 
-        setError(message);
+        setError(
+          message,
+        );
+
         setFile(null);
 
-        setFormData((prev) => ({
-          ...prev,
-          photo: '',
-        }));
+        setFormData(
+          (previous) => ({
+            ...previous,
+            photo: '',
+          }),
+        );
       } finally {
-        setUploadLoading(false);
+        setUploadLoading(
+          false,
+        );
       }
     };
 
-  // ============================================================
-  // SUBMIT
-  // ============================================================
-  const handleSubmit = async (
-    event: FormEvent<HTMLFormElement>,
-  ): Promise<void> => {
-    event.preventDefault();
+  // ==========================================================================
+  // REMOVE PHOTO
+  // ==========================================================================
 
-    setError(null);
+  const removePhoto =
+    async (): Promise<void> => {
+      if (isBusy) {
+        return;
+      }
 
-    if (!containerId?.trim()) {
-      setError(
-        'Container is required',
-      );
-
-      return;
-    }
-
-    const uniqueNumber =
-      formData.uniqueNumber.trim();
-
-    const name =
-      formData.name.trim();
-
-    const packageQuantity =
-      Number(
-        formData.packageQuantity,
-      );
-
-    const productsPerPackage =
-      Number(
-        formData.productsPerPackage,
-      );
-
-    const packagePrice =
-      Number(
-        formData.packagePrice,
-      );
-
-    const volume =
-      Number(formData.volume);
-
-    if (!uniqueNumber || !name) {
-      setError(
-        'Unique number and name are required',
-      );
-
-      return;
-    }
-
-    if (
-      !Number.isInteger(
-        packageQuantity,
-      ) ||
-      packageQuantity <= 0
-    ) {
-      setError(
-        'Package quantity must be a positive integer',
-      );
-
-      return;
-    }
-
-    if (
-      !Number.isInteger(
-        productsPerPackage,
-      ) ||
-      productsPerPackage <= 0
-    ) {
-      setError(
-        'Products per package must be a positive integer',
-      );
-
-      return;
-    }
-
-    if (
-      !Number.isFinite(
-        packagePrice,
-      ) ||
-      packagePrice < 0
-    ) {
-      setError(
-        'Package price is invalid',
-      );
-
-      return;
-    }
-
-    if (
-      !Number.isFinite(volume) ||
-      volume <= 0
-    ) {
-      setError(
-        'Volume must be greater than 0',
-      );
-
-      return;
-    }
-
-    setLoading(true);
-
-    try {
-      await createItem({
-        uniqueNumber,
-        name,
-        photo:
-          formData.photo ||
-          undefined,
-        packageQuantity,
-        productsPerPackage,
-        packagePrice,
-        volume,
-        containerId:
-          containerId.trim(),
-      });
-
-      // Fotoja tani i përket item-it — mos e fshi.
-      setUploadedFilePath(null);
-
-      // Mbyll kamerën nëse është e hapur
-      closeCamera();
-
-      closeModal();
-
-      onItemCreated?.();
-    } catch (err: unknown) {
-      const message =
-        err instanceof Error
-          ? err.message
-          : 'Failed to create item';
-
-      setError(message);
-
-      // Fshi foton orphan nëse krijimi dështon
       await cleanupUploadedFile();
 
-      setFormData((prev) => ({
-        ...prev,
-        photo: '',
-      }));
-
       setFile(null);
-    } finally {
-      setLoading(false);
-    }
-  };
 
-  // ============================================================
-  // RENDER
-  // ============================================================
+      setFormData(
+        (previous) => ({
+          ...previous,
+          photo: '',
+        }),
+      );
+    };
+
+  // ==========================================================================
+  // SUBMIT
+  // ==========================================================================
+
+  const handleSubmit =
+    async (
+      event:
+        FormEvent<HTMLFormElement>,
+    ): Promise<void> => {
+      event.preventDefault();
+
+      setError(null);
+
+      if (
+        !containerId?.trim()
+      ) {
+        setError(
+          'Container is required.',
+        );
+
+        return;
+      }
+
+      const uniqueNumber =
+        formData
+          .uniqueNumber
+          .trim();
+
+      const name =
+        formData.name.trim();
+
+      const packageQuantity =
+        Number(
+          formData.packageQuantity,
+        );
+
+      const productsPerPackage =
+        Number(
+          formData.productsPerPackage,
+        );
+
+      const packagePrice =
+        Number(
+          formData.packagePrice,
+        );
+
+      const volume =
+        Number(
+          formData.volume,
+        );
+
+      if (
+        !uniqueNumber ||
+        !name
+      ) {
+        setError(
+          'Unique number and item name are required.',
+        );
+
+        return;
+      }
+
+      if (
+        !Number.isInteger(
+          packageQuantity,
+        ) ||
+        packageQuantity <= 0
+      ) {
+        setError(
+          'Package quantity must be a positive integer.',
+        );
+
+        return;
+      }
+
+      if (
+        !Number.isInteger(
+          productsPerPackage,
+        ) ||
+        productsPerPackage <= 0
+      ) {
+        setError(
+          'Products per package must be a positive integer.',
+        );
+
+        return;
+      }
+
+      if (
+        !Number.isFinite(
+          packagePrice,
+        ) ||
+        packagePrice < 0
+      ) {
+        setError(
+          'Package price is invalid.',
+        );
+
+        return;
+      }
+
+      if (
+        !Number.isFinite(
+          volume,
+        ) ||
+        volume <= 0
+      ) {
+        setError(
+          'Volume must be greater than 0.',
+        );
+
+        return;
+      }
+
+      setLoading(
+        true,
+      );
+
+      try {
+        await createItem({
+          uniqueNumber,
+          name,
+
+          photo:
+            formData.photo ||
+            undefined,
+
+          packageQuantity,
+          productsPerPackage,
+          packagePrice,
+          volume,
+
+          containerId:
+            containerId.trim(),
+        });
+
+        /*
+         * Upload-i tani është pjesë e item-it,
+         * prandaj nuk duhet fshirë gjatë close.
+         */
+        setUploadedFilePath(
+          null,
+        );
+
+        closeCamera();
+
+        resetForm();
+
+        onClose();
+
+        onItemCreated?.();
+      } catch (
+        createError: unknown
+      ) {
+        const message =
+          createError instanceof
+          Error
+            ? createError.message
+            : 'Failed to create item';
+
+        setError(
+          message,
+        );
+
+        await cleanupUploadedFile();
+
+        setFormData(
+          (previous) => ({
+            ...previous,
+            photo: '',
+          }),
+        );
+
+        setFile(null);
+      } finally {
+        setLoading(
+          false,
+        );
+      }
+    };
+
+  // ==========================================================================
+  // INPUT STYLE
+  // ==========================================================================
 
   const inputSx = {
     '& .MuiInputLabel-root': {
@@ -578,46 +1145,56 @@ export const CreateItemModal = ({
       },
 
     '& .MuiOutlinedInput-root': {
+      minHeight: 52,
+
       borderRadius: 2,
 
-      backgroundColor: '#ffffff',
+      backgroundColor:
+        '#ffffff',
 
       color: '#18181b',
 
       '& fieldset': {
-        borderColor: '#c9c9ce',
+        borderColor:
+          '#c9c9ce',
       },
 
       '&:hover fieldset': {
-        borderColor: '#99999f',
+        borderColor:
+          '#99999f',
       },
 
-      '&.Mui-focused fieldset': {
-        borderColor: '#202024',
-        borderWidth: 1.5,
-      },
+      '&.Mui-focused fieldset':
+        {
+          borderColor:
+            '#202024',
+
+          borderWidth: 1.5,
+        },
 
       '&.Mui-disabled': {
-        backgroundColor: '#f2f2f4',
+        backgroundColor:
+          '#f2f2f4',
       },
     },
 
-    '& .MuiOutlinedInput-input': {
-      color: '#18181b',
+    '& .MuiOutlinedInput-input':
+      {
+        color: '#18181b',
 
-      WebkitTextFillColor:
-        '#18181b',
+        WebkitTextFillColor:
+          '#18181b',
 
-      fontSize: {
-        xs: '16px',
-        sm: '0.9rem',
+        fontSize: {
+          xs: '16px',
+          sm: '0.9rem',
+        },
+
+        '&::placeholder': {
+          color: '#929297',
+          opacity: 1,
+        },
       },
-
-      '&::placeholder': {
-        color: '#929297',
-        opacity: 1,
-      },
-    },
 
     '& .MuiOutlinedInput-input.Mui-disabled':
       {
@@ -628,730 +1205,1187 @@ export const CreateItemModal = ({
       },
   } as const;
 
+  // ==========================================================================
+  // RENDER
+  // ==========================================================================
+
   return (
-    <Dialog
-      open={open}
-      onClose={handleDialogClose}
-      maxWidth="sm"
-      fullWidth
-      slotProps={{
-        backdrop: {
-          sx: {
-            backgroundColor:
-              'rgba(17,17,20,0.52)',
-          },
-        },
+    <>
+      {/* ==================================================================== */}
+      {/* CREATE ITEM DIALOG */}
+      {/* ==================================================================== */}
 
-        paper: {
-          sx: {
-            mx: {
-              xs: 1.25,
-              sm: 2.5,
-            },
-
-            width: '100%',
-
-            maxWidth: 620,
-
-            maxHeight: {
-              xs: 'calc(100dvh - 24px)',
-              sm: 'calc(100dvh - 48px)',
-            },
-
-            borderRadius: {
-              xs: 2,
-              sm: 2.5,
-            },
-
-            backgroundColor:
-              '#ffffff',
-
-            border:
-              '1px solid #cfcfd4',
-
-            boxShadow:
-              '0 16px 36px rgba(0,0,0,0.18)',
-
-            overflow: 'hidden',
-          },
-        },
-      }}
-    >
-      <Box
-        component="form"
-        onSubmit={handleSubmit}
-        aria-busy={isBusy}
-      >
-        <DialogTitle
-          sx={{
-            px: {
-              xs: 2.25,
-              sm: 3,
-            },
-
-            py: {
-              xs: 2,
-              sm: 2.4,
-            },
-
-            color: '#151518',
-
-            fontSize: {
-              xs: '1.2rem',
-              sm: '1.4rem',
-            },
-
-            fontWeight: 800,
-
-            lineHeight: 1.25,
-
-            letterSpacing:
-              '-0.025em',
-
-            backgroundColor:
-              '#f3f3f5',
-
-            borderBottom:
-              '1px solid #d8d8dc',
-          }}
-        >
-          Add Item to Container
-        </DialogTitle>
-
-        <DialogContent
-          sx={{
-            px: {
-              xs: 2.25,
-              sm: 3,
-            },
-
-            py: {
-              xs: 2.25,
-              sm: 2.75,
-            },
-
-            backgroundColor:
-              '#ffffff',
-          }}
-        >
-          {error && (
-            <Alert
-              severity="error"
-              sx={{
-                mb: 2,
-                mt: 0,
-
-                borderRadius: 2,
-
-                color: '#8b1f27',
-
-                backgroundColor:
-                  '#fff2f3',
-
-                border:
-                  '1px solid #efc9cc',
-
-                boxShadow: 'none',
-              }}
-            >
-              {error}
-            </Alert>
-          )}
-
-          <Box
-            sx={{
-              display: 'flex',
-
-              flexDirection:
-                'column',
-
-              gap: {
-                xs: 1.75,
-                sm: 2,
-              },
-
-              mt: 0.5,
-            }}
-          >
-            <TextField
-              name="uniqueNumber"
-              label="Unique Number"
-              fullWidth
-              required
-              value={
-                formData.uniqueNumber
-              }
-              onChange={handleChange}
-              disabled={isBusy}
-              placeholder="e.g., ITEM-001"
-              sx={inputSx}
-            />
-
-            <TextField
-              name="name"
-              label="Item Name"
-              fullWidth
-              required
-              value={formData.name}
-              onChange={handleChange}
-              disabled={isBusy}
-              placeholder="e.g., Electronic Components"
-              sx={inputSx}
-            />
-
-            {/* Upload Photo / Camera */}
-            <Box
-              sx={{
-                display: 'flex',
-
-                flexDirection: {
-                  xs: 'column',
-                  sm: 'row',
-                },
-
-                gap: 1,
-              }}
-            >
-              <Button
-                variant="outlined"
-                component="label"
-                fullWidth
-                disabled={isBusy}
-                sx={{
-                  minHeight: 48,
-
-                  px: 2,
-
-                  borderRadius: 2,
-
-                  color: '#3f3f44',
-
-                  borderColor:
-                    '#c6c6cb',
-
-                  backgroundColor:
-                    '#ffffff',
-
-                  fontSize: '0.82rem',
-
-                  fontWeight: 700,
-
-                  textTransform:
-                    'none',
-
-                  overflow: 'hidden',
-
-                  whiteSpace: 'nowrap',
-
-                  textOverflow:
-                    'ellipsis',
-
-                  '&:hover': {
-                    color: '#202024',
-
-                    borderColor:
-                      '#9f9fa5',
-
-                    backgroundColor:
-                      '#f3f3f5',
-                  },
-
-                  '&.Mui-disabled': {
-                    color: '#77777c',
-
-                    backgroundColor:
-                      '#eeeeF0',
-
-                    borderColor:
-                      '#ceced2',
-
-                    opacity: 1,
-                  },
-                }}
-              >
-                {file
-                  ? file.name
-                  : 'Upload Photo'}
-
-                <input
-                  type="file"
-                  hidden
-                  accept="image/*"
-                  onChange={
-                    handleFileChange
-                  }
-                  disabled={isBusy}
-                />
-              </Button>
-
-              <IconButton
-                color="primary"
-                onClick={openCamera}
-                disabled={isBusy}
-                aria-label="Open camera"
-                sx={{
-                  width: {
-                    xs: '100%',
-                    sm: 48,
-                  },
-
-                  height: 48,
-
-                  flexShrink: 0,
-
-                  borderRadius: 2,
-
-                  color: '#444449',
-
-                  border:
-                    '1px solid #c6c6cb',
-
-                  backgroundColor:
-                    '#ffffff',
-
-                  '&:hover': {
-                    color: '#18181b',
-
-                    backgroundColor:
-                      '#f3f3f5',
-
-                    borderColor:
-                      '#9f9fa5',
-                  },
-
-                  '&.Mui-disabled': {
-                    color: '#77777c',
-
-                    backgroundColor:
-                      '#eeeeF0',
-
-                    borderColor:
-                      '#ceced2',
-
-                    opacity: 1,
-                  },
-                }}
-              >
-                <CameraIcon />
-              </IconButton>
-            </Box>
-
-            {formData.photo && (
-              <Box
-                sx={{
-                  position:
-                    'relative',
-
-                  display:
-                    'inline-flex',
-
-                  maxWidth: '100%',
-
-                  alignSelf:
-                    'center',
-
-                  p: 1,
-
-                  borderRadius: 2,
-
-                  border:
-                    '1px solid #d3d3d7',
-
-                  backgroundColor:
-                    '#f5f5f6',
-                }}
-              >
-                <Box
-                  component="img"
-                  src={formData.photo}
-                  alt={`Preview of ${
-                    formData.name ||
-                    'selected item'
-                  }`}
-                  sx={{
-                    display: 'block',
-
-                    maxHeight: {
-                      xs: 150,
-                      sm: 180,
-                    },
-
-                    maxWidth:
-                      '100%',
-
-                    objectFit:
-                      'contain',
-
-                    borderRadius:
-                      1.5,
-
-                    border:
-                      '1px solid #d0d0d4',
-
-                    backgroundColor:
-                      '#ffffff',
-                  }}
-                />
-
-                <IconButton
-                  size="small"
-                  aria-label="Remove photo"
-                  sx={{
-                    position:
-                      'absolute',
-
-                    top: -9,
-                    right: -9,
-
-                    width: 30,
-                    height: 30,
-
-                    color: '#444449',
-
-                    backgroundColor:
-                      '#ffffff',
-
-                    border:
-                      '1px solid #d0d0d4',
-
-                    boxShadow:
-                      '0 3px 8px rgba(0,0,0,0.12)',
-
-                    '&:hover': {
-                      color: '#b52f38',
-
-                      backgroundColor:
-                        '#fff2f3',
-                    },
-                  }}
-                  onClick={() => {
-                    setFormData(
-                      (prev) => ({
-                        ...prev,
-                        photo: '',
-                      }),
-                    );
-
-                    setFile(null);
-
-                    void cleanupUploadedFile();
-                  }}
-                  disabled={isBusy}
-                >
-                  <CloseIcon fontSize="small" />
-                </IconButton>
-              </Box>
-            )}
-
-            <Box
-              sx={{
-                display: 'grid',
-
-                gridTemplateColumns: {
-                  xs: '1fr',
-                  sm: 'repeat(2, minmax(0, 1fr))',
-                },
-
-                gap: {
-                  xs: 1.75,
-                  sm: 2,
-                },
-              }}
-            >
-              <TextField
-                name="packageQuantity"
-                label="Package Quantity"
-                type="number"
-                fullWidth
-                required
-                value={
-                  formData.packageQuantity
-                }
-                onChange={handleChange}
-                disabled={isBusy}
-                slotProps={{
-                  htmlInput: {
-                    min: 1,
-                    step: 1,
-                  },
-                }}
-                sx={inputSx}
-              />
-
-              <TextField
-                name="productsPerPackage"
-                label="Products/Package"
-                type="number"
-                fullWidth
-                required
-                value={
-                  formData.productsPerPackage
-                }
-                onChange={handleChange}
-                disabled={isBusy}
-                slotProps={{
-                  htmlInput: {
-                    min: 1,
-                    step: 1,
-                  },
-                }}
-                sx={inputSx}
-              />
-
-              <TextField
-                name="packagePrice"
-                label="Package Price ($)"
-                type="number"
-                fullWidth
-                required
-                value={
-                  formData.packagePrice
-                }
-                onChange={handleChange}
-                disabled={isBusy}
-                slotProps={{
-                  htmlInput: {
-                    min: 0,
-                    step: 0.01,
-                  },
-                }}
-                sx={inputSx}
-              />
-
-              <TextField
-                name="volume"
-                label="Volume per Package (m³)"
-                type="number"
-                fullWidth
-                required
-                value={
-                  formData.volume
-                }
-                onChange={handleChange}
-                disabled={isBusy}
-                slotProps={{
-                  htmlInput: {
-                    min: 0.01,
-                    step: 0.01,
-                  },
-                }}
-                sx={inputSx}
-              />
-            </Box>
-          </Box>
-        </DialogContent>
-
-        <DialogActions
-          sx={{
-            px: {
-              xs: 2.25,
-              sm: 3,
-            },
-
-            py: {
-              xs: 1.5,
-              sm: 1.75,
-            },
-
-            gap: 1,
-
-            flexDirection: {
-              xs: 'column-reverse',
-              sm: 'row',
-            },
-
-            borderTop:
-              '1px solid #d8d8dc',
-
-            backgroundColor:
-              '#f3f3f5',
-          }}
-        >
-          <Button
-            type="button"
-            onClick={handleClose}
-            disabled={isBusy}
-            sx={{
-              minWidth: 100,
-
-              minHeight: 44,
-
-              width: {
-                xs: '100%',
-                sm: 'auto',
-              },
-
-              px: 2.25,
-
-              borderRadius: 2,
-
-              color: '#3d3d42',
-
-              border:
-                '1px solid #c4c4c9',
-
-              backgroundColor:
-                '#ffffff',
-
-              fontSize:
-                '0.84rem',
-
-              fontWeight: 700,
-
-              textTransform:
-                'none',
-
-              '&:hover': {
-                color: '#202024',
-
-                backgroundColor:
-                  '#eeeeF0',
-
-                borderColor:
-                  '#9f9fa5',
-              },
-
-              '&.Mui-disabled': {
-                color: '#77777c',
-
-                backgroundColor:
-                  '#eeeeF0',
-
-                borderColor:
-                  '#ceced2',
-
-                opacity: 1,
-              },
-            }}
-          >
-            Cancel
-          </Button>
-
-          <Button
-            type="submit"
-            variant="contained"
-            disabled={isBusy}
-            sx={{
-              minWidth: 130,
-
-              minHeight: 44,
-
-              width: {
-                xs: '100%',
-                sm: 'auto',
-              },
-
-              px: 2.5,
-
-              borderRadius: 2,
-
-              backgroundColor:
-                '#202024',
-
-              color: '#ffffff',
-
-              fontSize:
-                '0.84rem',
-
-              fontWeight: 700,
-
-              textTransform:
-                'none',
-
-              boxShadow: 'none',
-
-              '&:hover': {
-                backgroundColor:
-                  '#111114',
-
-                color: '#ffffff',
-
-                boxShadow: 'none',
-              },
-
-              '&.Mui-disabled': {
-                backgroundColor:
-                  '#515156',
-
-                color: '#eeeeF0',
-
-                opacity: 1,
-              },
-            }}
-          >
-            {loading
-              ? 'Adding...'
-              : 'Add Item'}
-          </Button>
-        </DialogActions>
-      </Box>
-
-      {/* Camera overlay */}
       <Dialog
-        open={cameraOpen}
-        onClose={() => {
-          if (!isBusy) {
-            closeCamera();
-          }
-        }}
-        maxWidth="sm"
+        open={open}
+        onClose={handleDialogClose}
         fullWidth
+        maxWidth="md"
         slotProps={{
           backdrop: {
             sx: {
               backgroundColor:
-                'rgba(10,10,12,0.65)',
+                'rgba(17,17,20,0.56)',
+
+              backdropFilter:
+                'blur(2px)',
             },
           },
 
           paper: {
             sx: {
-              mx: {
-                xs: 1.25,
-                sm: 2.5,
+              m: {
+                xs: 0,
+                sm: 2,
+                md: 3,
+              },
+
+              width: {
+                xs: '100%',
+                sm:
+                  'calc(100% - 32px)',
+                md:
+                  'calc(100% - 48px)',
+              },
+
+              maxWidth: {
+                xs: '100%',
+                sm: 720,
+                md: 860,
+              },
+
+              height: {
+                xs: '100dvh',
+                sm: 'auto',
+              },
+
+              maxHeight: {
+                xs: '100dvh',
+                sm:
+                  'calc(100dvh - 32px)',
+                md:
+                  'calc(100dvh - 48px)',
               },
 
               borderRadius: {
-                xs: 2,
+                xs: 0,
                 sm: 2.5,
+                md: 3,
               },
+
+              overflow:
+                'hidden',
 
               backgroundColor:
                 '#ffffff',
 
-              border:
-                '1px solid #cfcfd4',
+              border: {
+                xs: 'none',
+                sm:
+                  '1px solid #cfcfd4',
+              },
 
               boxShadow:
-                '0 16px 36px rgba(0,0,0,0.20)',
-
-              overflow: 'hidden',
+                '0 20px 50px rgba(0,0,0,0.22)',
             },
           },
         }}
       >
+        <Box
+          component="form"
+          onSubmit={
+            handleSubmit
+          }
+          aria-busy={
+            isBusy
+          }
+          sx={{
+            display: 'flex',
+            flexDirection:
+              'column',
+
+            height: '100%',
+            minHeight: 0,
+          }}
+        >
+          {/* ================================================================ */}
+          {/* HEADER */}
+          {/* ================================================================ */}
+
+          <DialogTitle
+            sx={{
+              position:
+                'relative',
+
+              flexShrink: 0,
+
+              px: {
+                xs: 2,
+                sm: 3,
+              },
+
+              pr: {
+                xs: 6,
+                sm: 7,
+              },
+
+              py: {
+                xs: 1.75,
+                sm: 2.25,
+              },
+
+              color:
+                '#151518',
+
+              fontSize: {
+                xs: '1.15rem',
+                sm: '1.4rem',
+              },
+
+              fontWeight: 800,
+
+              lineHeight: 1.25,
+
+              letterSpacing:
+                '-0.025em',
+
+              backgroundColor:
+                '#f3f3f5',
+
+              borderBottom:
+                '1px solid #d8d8dc',
+            }}
+          >
+            Add Item
+
+            <Typography
+              component="div"
+              sx={{
+                mt: 0.35,
+
+                color:
+                  '#717177',
+
+                fontSize: {
+                  xs: '0.72rem',
+                  sm: '0.8rem',
+                },
+
+                fontWeight: 500,
+
+                letterSpacing:
+                  'normal',
+              }}
+            >
+              Enter item information and optionally attach a photo.
+            </Typography>
+
+            <IconButton
+              type="button"
+              aria-label="Close"
+              disabled={
+                isBusy
+              }
+              onClick={
+                handleClose
+              }
+              sx={{
+                position:
+                  'absolute',
+
+                top: '50%',
+                right: {
+                  xs: 10,
+                  sm: 14,
+                },
+
+                transform:
+                  'translateY(-50%)',
+
+                width: 38,
+                height: 38,
+
+                color:
+                  '#49494e',
+
+                '&:hover': {
+                  backgroundColor:
+                    '#e6e6e9',
+
+                  color:
+                    '#18181b',
+                },
+              }}
+            >
+              <CloseIcon />
+            </IconButton>
+          </DialogTitle>
+
+          {/* ================================================================ */}
+          {/* CONTENT */}
+          {/* ================================================================ */}
+
+          <DialogContent
+            sx={{
+              flex: 1,
+
+              minHeight: 0,
+
+              overflowY:
+                'auto',
+
+              px: {
+                xs: 2,
+                sm: 3,
+              },
+
+              py: {
+                xs: 2,
+                sm: 2.75,
+              },
+
+              backgroundColor:
+                '#ffffff',
+            }}
+          >
+            {error && (
+              <Alert
+                severity="error"
+                sx={{
+                  mb: 2.25,
+
+                  borderRadius: 2,
+
+                  color:
+                    '#8b1f27',
+
+                  backgroundColor:
+                    '#fff2f3',
+
+                  border:
+                    '1px solid #efc9cc',
+
+                  boxShadow:
+                    'none',
+                }}
+              >
+                {error}
+              </Alert>
+            )}
+
+            <Box
+              sx={{
+                display:
+                  'flex',
+
+                flexDirection:
+                  'column',
+
+                gap: {
+                  xs: 2,
+                  sm: 2.25,
+                },
+              }}
+            >
+              {/* ============================================================ */}
+              {/* GENERAL INFORMATION */}
+              {/* ============================================================ */}
+
+              <Box>
+                <Typography
+                  sx={{
+                    mb: 1.25,
+
+                    color:
+                      '#333338',
+
+                    fontSize:
+                      '0.78rem',
+
+                    fontWeight:
+                      800,
+
+                    textTransform:
+                      'uppercase',
+
+                    letterSpacing:
+                      '0.05em',
+                  }}
+                >
+                  General information
+                </Typography>
+
+                <Box
+                  sx={{
+                    display:
+                      'grid',
+
+                    gridTemplateColumns:
+                      {
+                        xs: '1fr',
+
+                        md:
+                          'repeat(2, minmax(0, 1fr))',
+                      },
+
+                    gap: {
+                      xs: 1.75,
+                      sm: 2,
+                    },
+                  }}
+                >
+                  <TextField
+                    name="uniqueNumber"
+                    label="Unique Number"
+                    fullWidth
+                    required
+                    value={
+                      formData.uniqueNumber
+                    }
+                    onChange={
+                      handleChange
+                    }
+                    disabled={
+                      isBusy
+                    }
+                    placeholder="e.g. ITEM-001"
+                    sx={
+                      inputSx
+                    }
+                  />
+
+                  <TextField
+                    name="name"
+                    label="Item Name"
+                    fullWidth
+                    required
+                    value={
+                      formData.name
+                    }
+                    onChange={
+                      handleChange
+                    }
+                    disabled={
+                      isBusy
+                    }
+                    placeholder="e.g. Electronic Components"
+                    sx={
+                      inputSx
+                    }
+                  />
+                </Box>
+              </Box>
+
+              {/* ============================================================ */}
+              {/* PHOTO */}
+              {/* ============================================================ */}
+
+              <Box>
+                <Typography
+                  sx={{
+                    mb: 1.25,
+
+                    color:
+                      '#333338',
+
+                    fontSize:
+                      '0.78rem',
+
+                    fontWeight:
+                      800,
+
+                    textTransform:
+                      'uppercase',
+
+                    letterSpacing:
+                      '0.05em',
+                  }}
+                >
+                  Item photo
+                </Typography>
+
+                <Box
+                  sx={{
+                    p: {
+                      xs: 1.5,
+                      sm: 2,
+                    },
+
+                    border:
+                      '1px solid #ddddE1',
+
+                    borderRadius:
+                      2.5,
+
+                    backgroundColor:
+                      '#f8f8f9',
+                  }}
+                >
+                  <Box
+                    sx={{
+                      display:
+                        'flex',
+
+                      flexDirection:
+                        {
+                          xs: 'column',
+                          sm: 'row',
+                        },
+
+                      alignItems:
+                        {
+                          xs: 'stretch',
+                          sm: 'center',
+                        },
+
+                      gap: 1.25,
+                    }}
+                  >
+                    <Button
+                      variant="outlined"
+                      component="label"
+                      disabled={
+                        isBusy
+                      }
+                      startIcon={
+                        uploadLoading
+                          ? (
+                              <CircularProgress
+                                size={
+                                  18
+                                }
+                                color="inherit"
+                              />
+                            )
+                          : (
+                              <UploadIcon />
+                            )
+                      }
+                      sx={{
+                        flex: 1,
+
+                        minHeight:
+                          48,
+
+                        justifyContent:
+                          'center',
+
+                        minWidth: 0,
+
+                        borderRadius:
+                          2,
+
+                        color:
+                          '#3f3f44',
+
+                        borderColor:
+                          '#c6c6cb',
+
+                        backgroundColor:
+                          '#ffffff',
+
+                        fontSize:
+                          '0.82rem',
+
+                        fontWeight:
+                          700,
+
+                        textTransform:
+                          'none',
+
+                        overflow:
+                          'hidden',
+
+                        whiteSpace:
+                          'nowrap',
+
+                        textOverflow:
+                          'ellipsis',
+
+                        '&:hover':
+                          {
+                            color:
+                              '#202024',
+
+                            borderColor:
+                              '#9f9fa5',
+
+                            backgroundColor:
+                              '#f3f3f5',
+                          },
+                      }}
+                    >
+                      <Box
+                        component="span"
+                        sx={{
+                          minWidth:
+                            0,
+
+                          overflow:
+                            'hidden',
+
+                          textOverflow:
+                            'ellipsis',
+
+                          whiteSpace:
+                            'nowrap',
+                        }}
+                      >
+                        {uploadLoading
+                          ? 'Uploading...'
+                          : file
+                            ? file.name
+                            : 'Choose Photo'}
+                      </Box>
+
+                      <input
+                        type="file"
+                        hidden
+                        accept="image/jpeg,image/png,image/webp"
+                        onChange={
+                          handleFileChange
+                        }
+                        disabled={
+                          isBusy
+                        }
+                      />
+                    </Button>
+
+                    <Button
+                      type="button"
+                      variant="outlined"
+                      onClick={() => {
+                        void openCamera();
+                      }}
+                      disabled={
+                        isBusy ||
+                        cameraLoading
+                      }
+                      startIcon={
+                        cameraLoading
+                          ? (
+                              <CircularProgress
+                                size={
+                                  18
+                                }
+                                color="inherit"
+                              />
+                            )
+                          : (
+                              <CameraIcon />
+                            )
+                      }
+                      sx={{
+                        minHeight:
+                          48,
+
+                        width: {
+                          xs: '100%',
+                          sm: 'auto',
+                        },
+
+                        minWidth: {
+                          sm: 160,
+                        },
+
+                        px: 2,
+
+                        borderRadius:
+                          2,
+
+                        color:
+                          '#3f3f44',
+
+                        borderColor:
+                          '#c6c6cb',
+
+                        backgroundColor:
+                          '#ffffff',
+
+                        fontSize:
+                          '0.82rem',
+
+                        fontWeight:
+                          700,
+
+                        textTransform:
+                          'none',
+
+                        '&:hover':
+                          {
+                            color:
+                              '#202024',
+
+                            borderColor:
+                              '#9f9fa5',
+
+                            backgroundColor:
+                              '#f3f3f5',
+                          },
+                      }}
+                    >
+                      {cameraLoading
+                        ? 'Opening...'
+                        : 'Take Photo'}
+                    </Button>
+                  </Box>
+
+                  {/* ======================================================== */}
+                  {/* PHOTO PREVIEW */}
+                  {/* ======================================================== */}
+
+                  {formData.photo && (
+                    <Box
+                      sx={{
+                        position:
+                          'relative',
+
+                        mt: 2,
+
+                        width:
+                          '100%',
+
+                        maxWidth:
+                          420,
+
+                        mx: 'auto',
+
+                        p: 1,
+
+                        borderRadius:
+                          2,
+
+                        border:
+                          '1px solid #d3d3d7',
+
+                        backgroundColor:
+                          '#ffffff',
+                      }}
+                    >
+                      <Box
+                        component="img"
+                        src={
+                          formData.photo
+                        }
+                        alt={`Preview of ${
+                          formData.name ||
+                          'selected item'
+                        }`}
+                        sx={{
+                          display:
+                            'block',
+
+                          width:
+                            '100%',
+
+                          maxHeight:
+                            {
+                              xs: 220,
+                              sm: 280,
+                            },
+
+                          objectFit:
+                            'contain',
+
+                          borderRadius:
+                            1.5,
+
+                          backgroundColor:
+                            '#ffffff',
+                        }}
+                      />
+
+                      <IconButton
+                        size="small"
+                        aria-label="Remove photo"
+                        onClick={() => {
+                          void removePhoto();
+                        }}
+                        disabled={
+                          isBusy
+                        }
+                        sx={{
+                          position:
+                            'absolute',
+
+                          top: -10,
+                          right:
+                            -10,
+
+                          width: 32,
+                          height:
+                            32,
+
+                          color:
+                            '#444449',
+
+                          backgroundColor:
+                            '#ffffff',
+
+                          border:
+                            '1px solid #d0d0d4',
+
+                          boxShadow:
+                            '0 3px 8px rgba(0,0,0,0.14)',
+
+                          '&:hover':
+                            {
+                              color:
+                                '#b52f38',
+
+                              backgroundColor:
+                                '#fff2f3',
+                            },
+                        }}
+                      >
+                        <CloseIcon
+                          fontSize="small"
+                        />
+                      </IconButton>
+                    </Box>
+                  )}
+                </Box>
+              </Box>
+
+              {/* ============================================================ */}
+              {/* QUANTITY & PRICE */}
+              {/* ============================================================ */}
+
+              <Box>
+                <Typography
+                  sx={{
+                    mb: 1.25,
+
+                    color:
+                      '#333338',
+
+                    fontSize:
+                      '0.78rem',
+
+                    fontWeight:
+                      800,
+
+                    textTransform:
+                      'uppercase',
+
+                    letterSpacing:
+                      '0.05em',
+                  }}
+                >
+                  Quantity & pricing
+                </Typography>
+
+                <Box
+                  sx={{
+                    display:
+                      'grid',
+
+                    gridTemplateColumns:
+                      {
+                        xs: '1fr',
+
+                        sm:
+                          'repeat(2, minmax(0, 1fr))',
+
+                        lg:
+                          'repeat(4, minmax(0, 1fr))',
+                      },
+
+                    gap: {
+                      xs: 1.5,
+                      sm: 2,
+                    },
+                  }}
+                >
+                  <TextField
+                    name="packageQuantity"
+                    label="Package Quantity"
+                    type="number"
+                    fullWidth
+                    required
+                    value={
+                      formData.packageQuantity
+                    }
+                    onChange={
+                      handleChange
+                    }
+                    disabled={
+                      isBusy
+                    }
+                    slotProps={{
+                      htmlInput:
+                        {
+                          min: 1,
+                          step: 1,
+                        },
+                    }}
+                    sx={
+                      inputSx
+                    }
+                  />
+
+                  <TextField
+                    name="productsPerPackage"
+                    label="Products / Package"
+                    type="number"
+                    fullWidth
+                    required
+                    value={
+                      formData.productsPerPackage
+                    }
+                    onChange={
+                      handleChange
+                    }
+                    disabled={
+                      isBusy
+                    }
+                    slotProps={{
+                      htmlInput:
+                        {
+                          min: 1,
+                          step: 1,
+                        },
+                    }}
+                    sx={
+                      inputSx
+                    }
+                  />
+
+                  <TextField
+                    name="packagePrice"
+                    label="Package Price ($)"
+                    type="number"
+                    fullWidth
+                    required
+                    value={
+                      formData.packagePrice
+                    }
+                    onChange={
+                      handleChange
+                    }
+                    disabled={
+                      isBusy
+                    }
+                    slotProps={{
+                      htmlInput:
+                        {
+                          min: 0,
+                          step:
+                            0.01,
+                        },
+                    }}
+                    sx={
+                      inputSx
+                    }
+                  />
+
+                  <TextField
+                    name="volume"
+                    label="Volume (m³)"
+                    type="number"
+                    fullWidth
+                    required
+                    value={
+                      formData.volume
+                    }
+                    onChange={
+                      handleChange
+                    }
+                    disabled={
+                      isBusy
+                    }
+                    slotProps={{
+                      htmlInput:
+                        {
+                          min:
+                            0.01,
+
+                          step:
+                            0.01,
+                        },
+                    }}
+                    sx={
+                      inputSx
+                    }
+                  />
+                </Box>
+              </Box>
+            </Box>
+          </DialogContent>
+
+          {/* ================================================================ */}
+          {/* ACTIONS */}
+          {/* ================================================================ */}
+
+          <DialogActions
+            sx={{
+              flexShrink: 0,
+
+              px: {
+                xs: 2,
+                sm: 3,
+              },
+
+              py: {
+                xs: 1.5,
+                sm: 1.75,
+              },
+
+              gap: 1,
+
+              flexDirection:
+                {
+                  xs:
+                    'column-reverse',
+
+                  sm: 'row',
+                },
+
+              borderTop:
+                '1px solid #d8d8dc',
+
+              backgroundColor:
+                '#f3f3f5',
+            }}
+          >
+            <Button
+              type="button"
+              onClick={
+                handleClose
+              }
+              disabled={
+                isBusy
+              }
+              sx={{
+                minWidth:
+                  110,
+
+                minHeight:
+                  46,
+
+                width: {
+                  xs: '100%',
+                  sm: 'auto',
+                },
+
+                px: 2.25,
+
+                borderRadius:
+                  2,
+
+                color:
+                  '#3d3d42',
+
+                border:
+                  '1px solid #c4c4c9',
+
+                backgroundColor:
+                  '#ffffff',
+
+                fontSize:
+                  '0.84rem',
+
+                fontWeight:
+                  700,
+
+                textTransform:
+                  'none',
+
+                '&:hover': {
+                  color:
+                    '#202024',
+
+                  backgroundColor:
+                    '#eeeeF0',
+
+                  borderColor:
+                    '#9f9fa5',
+                },
+              }}
+            >
+              Cancel
+            </Button>
+
+            <Button
+              type="submit"
+              variant="contained"
+              disabled={
+                isBusy
+              }
+              startIcon={
+                loading
+                  ? (
+                      <CircularProgress
+                        size={
+                          18
+                        }
+                        color="inherit"
+                      />
+                    )
+                  : undefined
+              }
+              sx={{
+                minWidth:
+                  140,
+
+                minHeight:
+                  46,
+
+                width: {
+                  xs: '100%',
+                  sm: 'auto',
+                },
+
+                px: 2.5,
+
+                borderRadius:
+                  2,
+
+                backgroundColor:
+                  '#202024',
+
+                color:
+                  '#ffffff',
+
+                fontSize:
+                  '0.84rem',
+
+                fontWeight:
+                  700,
+
+                textTransform:
+                  'none',
+
+                boxShadow:
+                  'none',
+
+                '&:hover': {
+                  backgroundColor:
+                    '#111114',
+
+                  boxShadow:
+                    'none',
+                },
+
+                '&.Mui-disabled':
+                  {
+                    backgroundColor:
+                      '#515156',
+
+                    color:
+                      '#eeeeF0',
+                  },
+              }}
+            >
+              {loading
+                ? 'Adding...'
+                : 'Add Item'}
+            </Button>
+          </DialogActions>
+        </Box>
+      </Dialog>
+
+      {/* ==================================================================== */}
+      {/* CAMERA DIALOG */}
+      {/* ==================================================================== */}
+
+      <Dialog
+        open={
+          cameraOpen
+        }
+        onClose={() => {
+          if (!isBusy) {
+            closeCamera();
+          }
+        }}
+        fullWidth
+        maxWidth="md"
+        slotProps={{
+          backdrop: {
+            sx: {
+              backgroundColor:
+                'rgba(5,5,7,0.78)',
+
+              backdropFilter:
+                'blur(3px)',
+            },
+          },
+
+          paper: {
+            sx: {
+              m: {
+                xs: 0,
+                sm: 2,
+              },
+
+              width: {
+                xs: '100%',
+                sm:
+                  'calc(100% - 32px)',
+              },
+
+              maxWidth:
+                820,
+
+              height: {
+                xs: '100dvh',
+                sm: 'auto',
+              },
+
+              maxHeight: {
+                xs: '100dvh',
+                sm:
+                  'calc(100dvh - 32px)',
+              },
+
+              borderRadius:
+                {
+                  xs: 0,
+                  sm: 3,
+                },
+
+              backgroundColor:
+                '#ffffff',
+
+              overflow:
+                'hidden',
+            },
+          },
+        }}
+      >
+        {/* ================================================================ */}
+        {/* CAMERA HEADER */}
+        {/* ================================================================ */}
+
         <DialogTitle
           sx={{
-            position: 'relative',
+            position:
+              'relative',
 
             px: {
-              xs: 2.25,
+              xs: 2,
               sm: 3,
             },
 
-            py: {
-              xs: 1.75,
-              sm: 2,
+            pr: {
+              xs: 7,
+              sm: 7,
             },
 
-            color: '#17171a',
+            py: {
+              xs: 1.5,
+              sm: 1.9,
+            },
+
+            color:
+              '#17171a',
 
             fontSize: {
-              xs: '1.1rem',
+              xs: '1.05rem',
               sm: '1.2rem',
             },
 
-            fontWeight: 800,
+            fontWeight:
+              800,
 
             backgroundColor:
               '#f3f3f5',
@@ -1362,8 +2396,32 @@ export const CreateItemModal = ({
         >
           Take Photo
 
+          <Typography
+            component="div"
+            sx={{
+              mt: 0.25,
+
+              color:
+                '#717177',
+
+              fontSize:
+                '0.75rem',
+
+              fontWeight:
+                500,
+            }}
+          >
+            Position the item inside the camera frame.
+          </Typography>
+
           <IconButton
             aria-label="Close camera"
+            onClick={
+              closeCamera
+            }
+            disabled={
+              isBusy
+            }
             sx={{
               position:
                 'absolute',
@@ -1374,99 +2432,227 @@ export const CreateItemModal = ({
               transform:
                 'translateY(-50%)',
 
-              width: 36,
-              height: 36,
+              width: 38,
+              height: 38,
 
-              color: '#444449',
-
-              borderRadius: 2,
+              color:
+                '#444449',
 
               '&:hover': {
-                color: '#18181b',
+                color:
+                  '#18181b',
 
                 backgroundColor:
                   '#e7e7ea',
               },
-
-              '&.Mui-disabled': {
-                color: '#99999e',
-
-                opacity: 1,
-              },
             }}
-            onClick={closeCamera}
-            disabled={isBusy}
           >
             <CloseIcon />
           </IconButton>
         </DialogTitle>
 
+        {/* ================================================================ */}
+        {/* CAMERA CONTENT */}
+        {/* ================================================================ */}
+
         <DialogContent
           sx={{
+            display:
+              'flex',
+
+            flexDirection:
+              'column',
+
             p: {
-              xs: 1.5,
+              xs: 1,
               sm: 2,
             },
 
             backgroundColor:
               '#ffffff',
+
+            overflowY:
+              'auto',
           }}
         >
           <Box
             sx={{
-              position: 'relative',
+              position:
+                'relative',
 
               width: '100%',
 
-              aspectRatio: '4/3',
+              aspectRatio:
+                {
+                  xs: '3 / 4',
+                  sm: '4 / 3',
+                  md: '16 / 9',
+                },
 
-              overflow: 'hidden',
+              maxHeight: {
+                xs: '68dvh',
+                sm: 540,
+              },
 
-              borderRadius: 2,
+              mx: 'auto',
+
+              overflow:
+                'hidden',
+
+              borderRadius:
+                {
+                  xs: 1.5,
+                  sm: 2.5,
+                },
 
               border:
                 '1px solid #2d2d31',
 
               backgroundColor:
-                '#000000',
-
-              boxShadow:
-                '0 6px 18px rgba(0,0,0,0.15)',
+                '#09090b',
             }}
           >
             <video
-              ref={videoRef}
+              ref={
+                videoRef
+              }
               autoPlay
-              playsInline
               muted
+              playsInline
+              onLoadedMetadata={(
+                event,
+              ) => {
+                const video =
+                  event.currentTarget;
+
+                if (
+                  video.videoWidth >
+                    0 &&
+                  video.videoHeight >
+                    0
+                ) {
+                  setCameraReady(
+                    true,
+                  );
+                }
+              }}
+              onCanPlay={() => {
+                setCameraReady(
+                  true,
+                );
+              }}
+              onPlaying={() => {
+                setCameraReady(
+                  true,
+                );
+              }}
               style={{
-                width: '100%',
-                height: '100%',
-                objectFit: 'cover',
-                borderRadius: 8,
-                background: '#000',
+                display:
+                  'block',
+
+                width:
+                  '100%',
+
+                height:
+                  '100%',
+
+                objectFit:
+                  'cover',
+
+                backgroundColor:
+                  '#09090b',
               }}
             />
 
+            {!cameraReady && (
+              <Box
+                sx={{
+                  position:
+                    'absolute',
+
+                  inset: 0,
+
+                  zIndex: 2,
+
+                  display:
+                    'flex',
+
+                  flexDirection:
+                    'column',
+
+                  alignItems:
+                    'center',
+
+                  justifyContent:
+                    'center',
+
+                  gap: 1.5,
+
+                  px: 3,
+
+                  textAlign:
+                    'center',
+
+                  color:
+                    '#ffffff',
+
+                  backgroundColor:
+                    '#09090b',
+                }}
+              >
+                <CircularProgress
+                  size={36}
+                  color="inherit"
+                />
+
+                <Typography
+                  sx={{
+                    color:
+                      '#eeeeF0',
+
+                    fontSize:
+                      '0.82rem',
+
+                    fontWeight:
+                      600,
+                  }}
+                >
+                  Starting camera...
+                </Typography>
+              </Box>
+            )}
+
             <canvas
-              ref={canvasRef}
+              ref={
+                canvasRef
+              }
               style={{
-                display: 'none',
+                display:
+                  'none',
               }}
             />
           </Box>
 
+          {/* ================================================================ */}
+          {/* CAMERA ACTIONS */}
+          {/* ================================================================ */}
+
           <Box
             sx={{
-              display: 'flex',
+              display:
+                'flex',
 
-              flexDirection: {
-                xs: 'column',
-                sm: 'row',
-              },
+              flexDirection:
+                {
+                  xs: 'column',
+                  sm: 'row',
+                },
 
               justifyContent:
                 'center',
+
+              alignItems:
+                'stretch',
 
               mt: 2,
 
@@ -1476,77 +2662,97 @@ export const CreateItemModal = ({
             <Button
               type="button"
               variant="contained"
-              onClick={capturePhoto}
+              onClick={() => {
+                void capturePhoto();
+              }}
               disabled={
                 isBusy ||
-                !cameraStream
+                !cameraStream ||
+                !cameraReady
               }
               startIcon={
-                isBusy ? (
-                  <CircularProgress
-                    size={18}
-                    color="inherit"
-                  />
-                ) : undefined
+                uploadLoading
+                  ? (
+                      <CircularProgress
+                        size={
+                          18
+                        }
+                        color="inherit"
+                      />
+                    )
+                  : (
+                      <CameraIcon />
+                    )
               }
               sx={{
-                minHeight: 44,
+                minHeight:
+                  48,
+
+                minWidth: {
+                  sm: 180,
+                },
 
                 px: 2.5,
 
-                borderRadius: 2,
+                borderRadius:
+                  2,
 
                 backgroundColor:
                   '#202024',
 
-                color: '#ffffff',
+                color:
+                  '#ffffff',
 
                 fontSize:
                   '0.84rem',
 
-                fontWeight: 700,
+                fontWeight:
+                  700,
 
                 textTransform:
                   'none',
 
-                boxShadow: 'none',
+                boxShadow:
+                  'none',
 
                 '&:hover': {
                   backgroundColor:
                     '#111114',
 
-                  color: '#ffffff',
-
                   boxShadow:
                     'none',
                 },
-
-                '&.Mui-disabled': {
-                  backgroundColor:
-                    '#515156',
-
-                  color: '#eeeeF0',
-
-                  opacity: 1,
-                },
               }}
             >
-              Capture
+              {uploadLoading
+                ? 'Saving...'
+                : 'Capture Photo'}
             </Button>
 
             <Button
               type="button"
               variant="outlined"
-              onClick={closeCamera}
-              disabled={isBusy}
+              onClick={
+                closeCamera
+              }
+              disabled={
+                isBusy
+              }
               sx={{
-                minHeight: 44,
+                minHeight:
+                  48,
+
+                minWidth: {
+                  sm: 130,
+                },
 
                 px: 2.25,
 
-                borderRadius: 2,
+                borderRadius:
+                  2,
 
-                color: '#3d3d42',
+                color:
+                  '#3d3d42',
 
                 borderColor:
                   '#c4c4c9',
@@ -1557,31 +2763,21 @@ export const CreateItemModal = ({
                 fontSize:
                   '0.84rem',
 
-                fontWeight: 700,
+                fontWeight:
+                  700,
 
                 textTransform:
                   'none',
 
                 '&:hover': {
-                  color: '#202024',
+                  color:
+                    '#202024',
 
                   backgroundColor:
                     '#eeeeF0',
 
                   borderColor:
                     '#9f9fa5',
-                },
-
-                '&.Mui-disabled': {
-                  color: '#77777c',
-
-                  backgroundColor:
-                    '#eeeeF0',
-
-                  borderColor:
-                    '#ceced2',
-
-                  opacity: 1,
                 },
               }}
             >
@@ -1590,6 +2786,8 @@ export const CreateItemModal = ({
           </Box>
         </DialogContent>
       </Dialog>
-    </Dialog>
+    </>
   );
 };
+
+export default CreateItemModal;
