@@ -719,15 +719,29 @@ export const EditItemModal = ({
         return;
       }
 
-      if (
+      const volumeDecimalPlaces =
+        formData.volume.includes('.')
+            ? formData.volume.split('.')[1]?.length ?? 0
+            : 0;
+
+        if (
         !Number.isFinite(volume) ||
-        volume <= 0
-      ) {
+        volume < 0.0000000001
+        ) {
         setError(
-          'Volume must be greater than 0.',
+            'Volume must be at least 0.0000000001.',
         );
+
         return;
-      }
+        }
+
+        if (volumeDecimalPlaces > 10) {
+        setError(
+            'Volume must have at most 10 decimal places.',
+        );
+
+        return;
+        }
 
       setLoading(true);
 
@@ -775,49 +789,89 @@ export const EditItemModal = ({
 } as const;
 
   const inputSx = {
-    '& .MuiInputLabel-root': {
-      color: '#55555a',
-      fontWeight: 600,
+  // LABEL NORMAL
+  '& .MuiInputLabel-root': {
+    color: '#4b5563',
+    fontWeight: 600,
+  },
+
+  // LABEL FOCUSED
+  '& .MuiInputLabel-root.Mui-focused': {
+    color: '#111827',
+  },
+
+  // LABEL DISABLED
+  '& .MuiInputLabel-root.Mui-disabled': {
+    color: '#4b5563',
+    opacity: 1,
+  },
+
+  // INPUT CONTAINER
+  '& .MuiOutlinedInput-root': {
+    minHeight: 52,
+    borderRadius: 2,
+    backgroundColor: '#ffffff',
+    color: '#111827',
+
+    '& fieldset': {
+      borderColor: '#c9c9ce',
     },
-    '& .MuiInputLabel-root.Mui-focused':
-      {
-        color: '#18181b',
-      },
-    '& .MuiOutlinedInput-root': {
-      minHeight: 52,
-      borderRadius: 2,
-      backgroundColor:
-        '#ffffff',
+
+    '&:hover fieldset': {
+      borderColor: '#99999f',
+    },
+
+    '&.Mui-focused fieldset': {
+      borderColor: '#202024',
+      borderWidth: 1.5,
+    },
+
+    // DISABLED INPUT CONTAINER
+    '&.Mui-disabled': {
+      backgroundColor: '#f3f4f6',
+      opacity: 1,
+
       '& fieldset': {
-        borderColor:
-          '#c9c9ce',
-      },
-      '&:hover fieldset': {
-        borderColor:
-          '#99999f',
-      },
-      '&.Mui-focused fieldset':
-        {
-          borderColor:
-            '#202024',
-          borderWidth: 1.5,
-        },
-      '&.Mui-disabled': {
-        backgroundColor:
-          '#f2f2f4',
+        borderColor: '#d1d5db',
       },
     },
-    '& .MuiOutlinedInput-input':
-      {
-        color: '#18181b',
-        WebkitTextFillColor:
-          '#18181b',
-        fontSize: {
-          xs: '16px',
-          sm: '0.9rem',
-        },
-      },
-  } as const;
+  },
+
+  // NORMAL INPUT TEXT
+  '& .MuiOutlinedInput-input': {
+    color: '#111827',
+    WebkitTextFillColor: '#111827',
+
+    fontSize: {
+      xs: '16px',
+      sm: '0.9rem',
+    },
+
+    fontWeight: 500,
+  },
+
+  // DISABLED INPUT TEXT
+  '& .MuiOutlinedInput-input.Mui-disabled': {
+    color: '#374151',
+    WebkitTextFillColor: '#374151',
+    opacity: 1,
+    fontWeight: 600,
+  },
+
+  // HELPER TEXT
+  '& .MuiFormHelperText-root': {
+    color: '#6b7280',
+    marginLeft: 0.5,
+    marginTop: 0.75,
+    fontSize: '0.75rem',
+  },
+
+  // HELPER TEXT DISABLED
+  '& .MuiFormHelperText-root.Mui-disabled': {
+    color: '#6b7280',
+    opacity: 1,
+  },
+} as const;
 
   return (
     <>

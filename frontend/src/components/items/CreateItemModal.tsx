@@ -1080,6 +1080,19 @@ export const CreateItemModal = ({
         return;
       }
 
+      const volumeDecimalPlaces =
+      formData.volume.includes('.')
+        ? formData.volume.split('.')[1]?.length ?? 0
+        : 0;
+
+      if (volumeDecimalPlaces > 10) {
+        setError(
+          'Volume must have at most 10 decimal places.',
+        );
+
+        return;
+      }
+
       setLoading(
         true,
       );
@@ -2121,10 +2134,10 @@ export const CreateItemModal = ({
                       htmlInput:
                         {
                           min:
-                            0.01,
+                            0.0000000001,
 
                           step:
-                            0.01,
+                            0.0000000001,
                         },
                     }}
                     sx={
