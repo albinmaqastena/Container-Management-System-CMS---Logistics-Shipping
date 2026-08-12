@@ -34,7 +34,7 @@ const MAX_RETENTION_DAYS = 3650;
 const DEFAULT_PAGINATION_LIMIT = 10;
 const MIN_RETENTION_DAYS = 1;
 const MAX_SEARCH_QUERY_LENGTH = 200;
-const DEFAULT_DECIMAL_SCALE = 2;
+const DEFAULT_DECIMAL_SCALE = 10;
 
 export type ItemWithPhotoUrl = Item & {
   /**

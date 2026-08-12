@@ -78,7 +78,7 @@ export class Item {
   @Column({
     type: 'decimal',
     precision: 12,
-    scale: 2,
+    scale: 10,
     transformer: decimalTransformer,
   })
   volume!: number;
@@ -87,7 +87,7 @@ export class Item {
   @Column({
     type: 'decimal',
     precision: 14,
-    scale: 2,
+    scale: 10,
     transformer: decimalTransformer,
   })
   totalVolume!: number;
@@ -139,7 +139,7 @@ export class Item {
   @BeforeInsert()
   @BeforeUpdate()
   calculateTotalVolume(): void {
-    this.totalVolume = Number((this.packageQuantity * this.volume).toFixed(2));
+    this.totalVolume = Number((this.packageQuantity * this.volume).toFixed(10));
   }
 
   constructor(partial?: Partial<Item>) {

@@ -48,9 +48,8 @@ const normalizeUpdatePhoto = (
 
 export class UpdateItemDto {
   @ApiPropertyOptional({
-    example: 'ITEM-001',
-    description:
-      'Unique item identifier',
+    example: 'RD-1000',
+    description: 'Unique item identifier',
   })
   @Transform(
     ({
@@ -205,16 +204,15 @@ export class UpdateItemDto {
     {
       allowNaN: false,
       allowInfinity: false,
-      maxDecimalPlaces: 2,
+      maxDecimalPlaces: 10,
     },
     {
       message:
         'Volume must be a valid number with at most 2 decimal places',
     },
   )
-  @Min(0.01, {
-    message:
-      'Volume must be greater than 0',
+  @Min(0.0000000000001, {
+    message: 'Volume must be greater than 0',
   })
   @Max(10000, {
     message:
