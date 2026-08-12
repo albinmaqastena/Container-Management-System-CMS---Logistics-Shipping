@@ -78,7 +78,7 @@ export class Item {
   @Column({
     type: 'decimal',
     precision: 12,
-    scale: 2,
+    scale: 10,
     transformer: decimalTransformer,
   })
   volume!: number;
@@ -87,7 +87,7 @@ export class Item {
   @Column({
     type: 'decimal',
     precision: 14,
-    scale: 2,
+    scale: 10,
     transformer: decimalTransformer,
   })
   totalVolume!: number;
