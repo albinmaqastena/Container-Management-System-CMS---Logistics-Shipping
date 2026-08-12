@@ -762,15 +762,17 @@ export const EditItemModal = ({
     };
 
   const sectionTitleSx = {
-    mb: 1.25,
-    color: '#333338',
-    fontSize: '0.78rem',
-    fontWeight: 800,
-    textTransform:
-      'uppercase',
-    letterSpacing:
-      '0.05em',
-  } as const;
+  mb: 1.5,
+  color: '#111827',
+  fontSize: {
+    xs: '0.9rem',
+    sm: '0.95rem',
+  },
+  fontWeight: 800,
+  lineHeight: 1.4,
+  textTransform: 'uppercase',
+  letterSpacing: '0.04em',
+} as const;
 
   const inputSx = {
     '& .MuiInputLabel-root': {
