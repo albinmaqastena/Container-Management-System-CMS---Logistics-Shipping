@@ -36,6 +36,14 @@ const MIN_RETENTION_DAYS = 1;
 const MAX_SEARCH_QUERY_LENGTH = 200;
 const DEFAULT_DECIMAL_SCALE = 2;
 
+export type ItemWithPhotoUrl = Item & {
+  /**
+   * Temporary presigned S3 URL used only by the frontend.
+   * Never store this value in the database.
+   */
+  photoUrl: string | null;
+};
+
 @Injectable()
 export class ItemsService {
   private readonly logger = new Logger(ItemsService.name);
@@ -48,6 +56,32 @@ export class ItemsService {
     private readonly dataSource: DataSource,
     private readonly filesService: FilesService,
   ) {}
+
+  /**
+   * Convert the permanent value stored in item.photo into a temporary
+   * presigned URL for API responses.
+   *
+   * item.photo    -> permanent S3 object key stored in PostgreSQL
+   * item.photoUrl -> temporary presigned URL returned to the frontend
+   */
+  private async withSignedPhotoUrl(item: Item): Promise<ItemWithPhotoUrl> {
+    const photoUrl = item.photo
+      ? await this.filesService.getSignedFileUrl(item.photo)
+      : null;
+
+    return Object.assign(item, {
+      photoUrl,
+    });
+  }
+
+  /**
+   * Sign photos for list/search responses.
+   */
+  private async withSignedPhotoUrls(items: Item[]): Promise<ItemWithPhotoUrl[]> {
+    return Promise.all(
+      items.map((item) => this.withSignedPhotoUrl(item)),
+    );
+  }
 
   private roundDecimal(value: number, scale = DEFAULT_DECIMAL_SCALE): number {
     const factor = 10 ** scale;
@@ -227,7 +261,7 @@ export class ItemsService {
     return item;
   }
 
-  async create(createItemDto: CreateItemDto): Promise<Item> {
+  async create(createItemDto: CreateItemDto): Promise<ItemWithPhotoUrl> {
     let createdItemId!: string;
     let containerId!: string;
 
@@ -266,6 +300,9 @@ export class ItemsService {
       const item = itemRepo.create({
         uniqueNumber: createItemDto.uniqueNumber,
         name: createItemDto.name,
+        // Store ONLY the permanent S3 object key in the database.
+        // Example: items/photo-123.png
+        // Never store a presigned URL here.
         photo: createItemDto.photo,
         packageQuantity: createItemDto.packageQuantity,
         productsPerPackage: createItemDto.productsPerPackage,
@@ -308,7 +345,7 @@ export class ItemsService {
     paginationDto: PaginationDto,
     containerId?: string,
     includeDeleted = false,
-  ): Promise<PaginatedResponseDto<Item>> {
+  ): Promise<PaginatedResponseDto<ItemWithPhotoUrl>> {
     const limit = paginationDto.limit ?? DEFAULT_PAGINATION_LIMIT;
     const offset = paginationDto.offset ?? 0;
 
@@ -333,14 +370,22 @@ export class ItemsService {
 
     const [data, total] = await queryBuilder.getManyAndCount();
 
-    return new PaginatedResponseDto(data, total, limit, offset);
+    const dataWithPhotoUrls =
+      await this.withSignedPhotoUrls(data);
+
+    return new PaginatedResponseDto(
+      dataWithPhotoUrls,
+      total,
+      limit,
+      offset,
+    );
   }
 
   async searchItems(
     query: string,
     paginationDto: PaginationDto,
     containerId?: string,
-  ): Promise<PaginatedResponseDto<Item>> {
+  ): Promise<PaginatedResponseDto<ItemWithPhotoUrl>> {
     const normalizedQuery = query.trim();
 
     if (!normalizedQuery) {
@@ -375,10 +420,18 @@ export class ItemsService {
 
     const [data, total] = await queryBuilder.getManyAndCount();
 
-    return new PaginatedResponseDto(data, total, limit, offset);
+    const dataWithPhotoUrls =
+      await this.withSignedPhotoUrls(data);
+
+    return new PaginatedResponseDto(
+      dataWithPhotoUrls,
+      total,
+      limit,
+      offset,
+    );
   }
 
-  async findOne(id: string, includeDeleted = false): Promise<Item> {
+  async findOne(id: string, includeDeleted = false): Promise<ItemWithPhotoUrl> {
     const item = await this.itemRepository.findOne({
       where: includeDeleted ? { id } : { id, deletedAt: IsNull() },
       relations: {
@@ -391,10 +444,12 @@ export class ItemsService {
       throw new NotFoundException('Item not found');
     }
 
-    return item;
+    return this.withSignedPhotoUrl(item);
   }
 
-  async findDeleted(paginationDto: PaginationDto): Promise<PaginatedResponseDto<Item>> {
+  async findDeleted(
+    paginationDto: PaginationDto,
+  ): Promise<PaginatedResponseDto<ItemWithPhotoUrl>> {
     const limit = paginationDto.limit ?? DEFAULT_PAGINATION_LIMIT;
     const offset = paginationDto.offset ?? 0;
 
@@ -409,10 +464,18 @@ export class ItemsService {
 
     const [data, total] = await queryBuilder.getManyAndCount();
 
-    return new PaginatedResponseDto(data, total, limit, offset);
+    const dataWithPhotoUrls =
+      await this.withSignedPhotoUrls(data);
+
+    return new PaginatedResponseDto(
+      dataWithPhotoUrls,
+      total,
+      limit,
+      offset,
+    );
   }
 
-  async update(id: string, updateItemDto: UpdateItemDto): Promise<Item> {
+  async update(id: string, updateItemDto: UpdateItemDto): Promise<ItemWithPhotoUrl> {
     let updatedItemId!: string;
     let containerId!: string;
     let oldPhotoPath: string | null = null;
@@ -450,6 +513,9 @@ export class ItemsService {
 
       if (updateItemDto.photo !== undefined && updateItemDto.photo !== item.photo) {
         oldPhotoPath = item.photo;
+        // updateItemDto.photo must contain the permanent S3 object key
+        // returned as savedFile.path by FilesService.
+        // Never persist savedFile.url / a presigned URL.
         item.photo = updateItemDto.photo;
       }
 
@@ -543,7 +609,7 @@ export class ItemsService {
     await this.clearItemCaches(containerId);
   }
 
-  async restore(id: string): Promise<Item> {
+  async restore(id: string): Promise<ItemWithPhotoUrl> {
     let restoredItemId!: string;
     let containerId!: string;
 

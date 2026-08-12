@@ -5,7 +5,8 @@ export interface Item {
   id: string;
   uniqueNumber: string;
   name: string;
-  photo?: string;
+  photo?: string | null;
+  photoUrl?: string | null;
   packageQuantity: number;
   productsPerPackage: number;
   packagePrice: number;
@@ -20,7 +21,7 @@ export interface Item {
 export interface CreateItemData {
   uniqueNumber: string;
   name: string;
-  photo?: string;
+  photo?: string | null;
   packageQuantity: number;
   productsPerPackage: number;
   packagePrice: number;
@@ -31,7 +32,7 @@ export interface CreateItemData {
 export interface UpdateItemData {
   uniqueNumber?: string;
   name?: string;
-  photo?: string;
+  photo?: string | null;
   packageQuantity?: number;
   productsPerPackage?: number;
   packagePrice?: number;

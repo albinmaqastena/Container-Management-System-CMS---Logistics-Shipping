@@ -19,7 +19,9 @@ describe('ItemsService', () => {
   let dataSource: {
     transaction: jest.Mock;
   };
-  let filesService: jest.Mocked<Pick<FilesService, 'deleteFile'>>;
+  let filesService: jest.Mocked<
+    Pick<FilesService, 'deleteFile' | 'getSignedFileUrl'>
+  >;
 
   const mockUser = {
     id: 'user-1',
@@ -189,6 +191,11 @@ describe('ItemsService', () => {
 
     filesService = {
       deleteFile: jest.fn().mockResolvedValue(undefined),
+
+      getSignedFileUrl: jest.fn().mockImplementation(
+        async (filePathOrUrl: string) =>
+          `https://signed.example.com/${filePathOrUrl}`,
+      ),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -400,6 +407,30 @@ describe('ItemsService', () => {
       expect(result.hasMore).toBe(false);
     });
 
+    it('should attach presigned photoUrl values to list items', async () => {
+      const itemWithPhoto = createMockItem({
+        photo: 'items/list-photo.jpg',
+      });
+
+      const qb = createListQueryBuilder();
+      qb.getManyAndCount.mockResolvedValue([[itemWithPhoto], 1]);
+      itemRepository.createQueryBuilder.mockReturnValue(qb);
+
+      const result = await service.findAll({
+        limit: 10,
+        offset: 0,
+      });
+
+      expect(result.data[0]?.photo).toBe('items/list-photo.jpg');
+      expect(result.data[0]?.photoUrl).toBe(
+        'https://signed.example.com/items/list-photo.jpg',
+      );
+
+      expect(filesService.getSignedFileUrl).toHaveBeenCalledWith(
+        'items/list-photo.jpg',
+      );
+    });
+
     it('should sort deletedAt DESC with NULLS LAST', async () => {
       const qb = createListQueryBuilder();
 
@@ -541,6 +572,38 @@ describe('ItemsService', () => {
           withDeleted: false,
         }),
       );
+    });
+
+    it('should generate a presigned photoUrl when the item has a photo', async () => {
+      const itemWithPhoto = createMockItem({
+        photo: 'items/photo.jpg',
+      });
+
+      itemRepository.findOne.mockResolvedValue(itemWithPhoto);
+
+      const result = await service.findOne('item-1');
+
+      expect(result.photo).toBe('items/photo.jpg');
+      expect(result.photoUrl).toBe(
+        'https://signed.example.com/items/photo.jpg',
+      );
+
+      expect(filesService.getSignedFileUrl).toHaveBeenCalledWith(
+        'items/photo.jpg',
+      );
+    });
+
+    it('should return photoUrl null without signing when the item has no photo', async () => {
+      const itemWithoutPhoto = createMockItem({
+        photo: null,
+      });
+
+      itemRepository.findOne.mockResolvedValue(itemWithoutPhoto);
+
+      const result = await service.findOne('item-1');
+
+      expect(result.photoUrl).toBeNull();
+      expect(filesService.getSignedFileUrl).not.toHaveBeenCalled();
     });
 
     it('should include deleted items when requested', async () => {

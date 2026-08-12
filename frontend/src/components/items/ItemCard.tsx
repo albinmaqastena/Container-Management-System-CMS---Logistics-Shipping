@@ -322,7 +322,7 @@ export const ItemCard = ({
           </Box>
 
           {/* Photo */}
-          {item.photo && (
+          {item.photoUrl && (
             <Box
               sx={{
                 mt: 1.8,
@@ -340,7 +340,7 @@ export const ItemCard = ({
             >
               <Box
                 component="img"
-                src={item.photo}
+                src={item.photoUrl}
                 alt={item.name}
                 sx={{
                   display: 'block',

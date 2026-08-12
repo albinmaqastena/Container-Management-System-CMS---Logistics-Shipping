@@ -119,6 +119,13 @@ export const CreateItemModal = ({
     null,
   );
 
+  const [
+    photoPreviewUrl,
+    setPhotoPreviewUrl,
+  ] = useState<string | null>(
+    null,
+  );
+
   // ==========================================================================
   // CAMERA STATE
   // ==========================================================================
@@ -334,6 +341,7 @@ export const CreateItemModal = ({
       );
 
       setFile(null);
+      setPhotoPreviewUrl(null);
       setError(null);
     };
 
@@ -515,12 +523,19 @@ export const CreateItemModal = ({
           uploaded.path,
         );
 
+        // Store only the permanent S3 object key in the form.
+        // This is what will be sent to the backend and stored in DB.
         setFormData(
           (previous) => ({
             ...previous,
             photo:
-              uploaded.url,
+              uploaded.path,
           }),
+        );
+
+        // Use the temporary presigned URL only for immediate preview.
+        setPhotoPreviewUrl(
+          uploaded.url,
         );
       } catch (
         uploadError: unknown
@@ -536,6 +551,7 @@ export const CreateItemModal = ({
         );
 
         setFile(null);
+        setPhotoPreviewUrl(null);
 
         setFormData(
           (previous) => ({
@@ -884,12 +900,18 @@ export const CreateItemModal = ({
           uploaded.path,
         );
 
+        // Store only the permanent S3 object key in the form.
         setFormData(
           (previous) => ({
             ...previous,
             photo:
-              uploaded.url,
+              uploaded.path,
           }),
+        );
+
+        // Use the temporary presigned URL only for preview.
+        setPhotoPreviewUrl(
+          uploaded.url,
         );
 
         closeCamera();
@@ -907,6 +929,7 @@ export const CreateItemModal = ({
         );
 
         setFile(null);
+        setPhotoPreviewUrl(null);
 
         setFormData(
           (previous) => ({
@@ -1117,6 +1140,7 @@ export const CreateItemModal = ({
         );
 
         setFile(null);
+        setPhotoPreviewUrl(null);
       } finally {
         setLoading(
           false,
@@ -1833,7 +1857,7 @@ export const CreateItemModal = ({
                   {/* PHOTO PREVIEW */}
                   {/* ======================================================== */}
 
-                  {formData.photo && (
+                  {photoPreviewUrl && (
                     <Box
                       sx={{
                         position:
@@ -1864,7 +1888,7 @@ export const CreateItemModal = ({
                       <Box
                         component="img"
                         src={
-                          formData.photo
+                          photoPreviewUrl
                         }
                         alt={`Preview of ${
                           formData.name ||

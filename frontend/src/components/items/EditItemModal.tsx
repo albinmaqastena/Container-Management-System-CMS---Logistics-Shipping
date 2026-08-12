@@ -6,6 +6,7 @@ import {
   Alert,
   Box,
   Button,
+  CircularProgress,
   Dialog,
   DialogActions,
   DialogContent,
@@ -16,6 +17,7 @@ import {
 
 import type { Item } from '../../types';
 import { useItems } from '../../hooks/useItems';
+import { filesService } from '../../services/file.service';
 
 interface EditItemModalProps {
   open: boolean;
@@ -25,6 +27,7 @@ interface EditItemModalProps {
 
 interface FormData {
   name: string;
+  photo: string | null;
   packageQuantity: string;
   productsPerPackage: string;
   packagePrice: string;
@@ -40,6 +43,7 @@ export const EditItemModal = ({
 
   const [formData, setFormData] = useState<FormData>({
     name: item.name ?? '',
+    photo: item.photo ?? null,
     packageQuantity: String(item.packageQuantity ?? ''),
     productsPerPackage: String(item.productsPerPackage ?? ''),
     packagePrice: String(item.packagePrice ?? ''),
@@ -48,6 +52,30 @@ export const EditItemModal = ({
 
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [uploadLoading, setUploadLoading] = useState(false);
+
+  /**
+   * Path of a newly uploaded file that is not yet committed to the item.
+   * If the user cancels, we delete only this temporary upload.
+   */
+  const [uploadedFilePath, setUploadedFilePath] =
+    useState<string | null>(null);
+
+  /**
+   * Temporary presigned URL used only for displaying the image.
+   * Never store this value in the database.
+   */
+  const [photoPreviewUrl, setPhotoPreviewUrl] =
+    useState<string | null>(null);
+
+  /**
+   * Tracks whether the photo field must be included in updateItem().
+   * false -> leave existing photo unchanged
+   * true  -> send either the new S3 object key or null
+   */
+  const [photoChanged, setPhotoChanged] = useState(false);
+
+  const isBusy = loading || uploadLoading;
 
   useEffect(() => {
     if (!open) {
@@ -56,14 +84,123 @@ export const EditItemModal = ({
 
     setFormData({
       name: item.name ?? '',
+      photo: item.photo ?? null,
       packageQuantity: String(item.packageQuantity ?? ''),
       productsPerPackage: String(item.productsPerPackage ?? ''),
       packagePrice: String(item.packagePrice ?? ''),
       volume: String(item.volume ?? ''),
     });
 
+    const itemWithPhotoUrl = item as Item & {
+      photoUrl?: string | null;
+    };
+
+    setPhotoPreviewUrl(
+      itemWithPhotoUrl.photoUrl ?? null,
+    );
+
+    setUploadedFilePath(null);
+    setPhotoChanged(false);
     setError(null);
   }, [open, item]);
+
+  const cleanupUploadedFile = async (): Promise<void> => {
+    if (!uploadedFilePath) {
+      return;
+    }
+
+    try {
+      await filesService.delete(uploadedFilePath);
+      setUploadedFilePath(null);
+    } catch (cleanupError: unknown) {
+      console.error(
+        'Failed to remove temporary uploaded file:',
+        cleanupError,
+      );
+    }
+  };
+
+  const handlePhotoChange = async (
+    event: ChangeEvent<HTMLInputElement>,
+  ): Promise<void> => {
+    const selectedFile = event.target.files?.[0];
+
+    // Allow selecting the same file again later.
+    event.target.value = '';
+
+    if (!selectedFile) {
+      return;
+    }
+
+    setUploadLoading(true);
+    setError(null);
+
+    try {
+      // If the user already uploaded a replacement in this edit session,
+      // remove that temporary object before uploading another one.
+      if (uploadedFilePath) {
+        await cleanupUploadedFile();
+      }
+
+      const uploaded =
+        await filesService.upload(selectedFile);
+
+      setUploadedFilePath(uploaded.path);
+
+      // Permanent value that will be stored in the database.
+      setFormData((current) => ({
+        ...current,
+        photo: uploaded.path,
+      }));
+
+      // Temporary presigned URL used only for preview.
+      setPhotoPreviewUrl(uploaded.url);
+
+      setPhotoChanged(true);
+    } catch (uploadError: unknown) {
+      const message =
+        uploadError instanceof Error
+          ? uploadError.message
+          : 'Failed to upload photo';
+
+      setError(message);
+    } finally {
+      setUploadLoading(false);
+    }
+  };
+
+  const removePhoto = async (): Promise<void> => {
+    if (isBusy) {
+      return;
+    }
+
+    /**
+     * If this is a newly uploaded replacement that has not been saved yet,
+     * remove that temporary object immediately.
+     *
+     * We do NOT delete the original photo here. The backend ItemsService
+     * deletes the old photo only after a successful DB transaction.
+     */
+    if (uploadedFilePath) {
+      await cleanupUploadedFile();
+    }
+
+    setFormData((current) => ({
+      ...current,
+      photo: null,
+    }));
+
+    setPhotoPreviewUrl(null);
+    setPhotoChanged(true);
+  };
+
+  const closeWithCleanup = async (): Promise<void> => {
+    if (uploadedFilePath) {
+      await cleanupUploadedFile();
+    }
+
+    onClose();
+  };
 
   const handleChange = (
     event: ChangeEvent<HTMLInputElement>,
@@ -77,24 +214,24 @@ export const EditItemModal = ({
   };
 
   const handleClose = (): void => {
-    if (loading) {
+    if (isBusy) {
       return;
     }
 
-    onClose();
+    void closeWithCleanup();
   };
 
   const handleDialogClose: NonNullable<
     DialogProps['onClose']
   > = (_, reason): void => {
     if (
-      loading ||
+      isBusy ||
       reason === 'backdropClick'
     ) {
       return;
     }
 
-    onClose();
+    void closeWithCleanup();
   };
 
   const handleSubmit = async (
@@ -156,7 +293,23 @@ export const EditItemModal = ({
         productsPerPackage,
         packagePrice,
         volume,
+
+        /**
+         * Only send photo when the user actually changed it.
+         * If photoChanged is true:
+         * - string => new permanent S3 object key
+         * - null   => remove existing photo
+         */
+        ...(photoChanged
+          ? { photo: formData.photo }
+          : {}),
       });
+
+      /**
+       * The new upload now belongs to the item.
+       * Prevent cancel-cleanup from deleting it.
+       */
+      setUploadedFilePath(null);
 
       onClose();
     } catch (err: unknown) {
@@ -251,7 +404,7 @@ export const EditItemModal = ({
       <Box
         component="form"
         onSubmit={handleSubmit}
-        aria-busy={loading}
+        aria-busy={isBusy}
       >
         <DialogTitle
           sx={{
@@ -385,12 +538,117 @@ export const EditItemModal = ({
               </Typography>
             </Box>
 
+            <Box
+              sx={{
+                p: 1.5,
+                borderRadius: 1.75,
+                backgroundColor: '#f8f8f9',
+                border: '1px solid #dedee2',
+              }}
+            >
+              <Typography
+                sx={{
+                  mb: 1,
+                  color: '#77777c',
+                  fontSize: '0.67rem',
+                  fontWeight: 700,
+                  textTransform: 'uppercase',
+                }}
+              >
+                Item Photo
+              </Typography>
+
+              {photoPreviewUrl && (
+                <Box
+                  component="img"
+                  src={photoPreviewUrl}
+                  alt={`Preview of ${formData.name || item.uniqueNumber}`}
+                  sx={{
+                    display: 'block',
+                    width: '100%',
+                    maxHeight: 260,
+                    mb: 1.25,
+                    objectFit: 'contain',
+                    borderRadius: 1.5,
+                    backgroundColor: '#ffffff',
+                    border: '1px solid #e0e0e3',
+                  }}
+                />
+              )}
+
+              <Box
+                sx={{
+                  display: 'flex',
+                  flexDirection: {
+                    xs: 'column',
+                    sm: 'row',
+                  },
+                  gap: 1,
+                }}
+              >
+                <Button
+                  component="label"
+                  variant="outlined"
+                  disabled={isBusy}
+                  sx={{
+                    flex: 1,
+                    borderRadius: 2,
+                    textTransform: 'none',
+                    fontWeight: 700,
+                  }}
+                >
+                  {uploadLoading ? (
+                    <>
+                      <CircularProgress
+                        size={18}
+                        color="inherit"
+                        sx={{ mr: 1 }}
+                      />
+                      Uploading...
+                    </>
+                  ) : photoPreviewUrl ? (
+                    'Change Photo'
+                  ) : (
+                    'Upload Photo'
+                  )}
+
+                  <input
+                    type="file"
+                    hidden
+                    accept="image/jpeg,image/png,image/webp"
+                    onChange={(event) => {
+                      void handlePhotoChange(event);
+                    }}
+                    disabled={isBusy}
+                  />
+                </Button>
+
+                {photoPreviewUrl && (
+                  <Button
+                    type="button"
+                    variant="outlined"
+                    onClick={() => {
+                      void removePhoto();
+                    }}
+                    disabled={isBusy}
+                    sx={{
+                      borderRadius: 2,
+                      textTransform: 'none',
+                      fontWeight: 700,
+                    }}
+                  >
+                    Remove Photo
+                  </Button>
+                )}
+              </Box>
+            </Box>
+
             <TextField
               name="name"
               label="Item Name"
               value={formData.name}
               onChange={handleChange}
-              disabled={loading}
+              disabled={isBusy}
               required
               fullWidth
               sx={inputSx}
@@ -402,7 +660,7 @@ export const EditItemModal = ({
               type="number"
               value={formData.packageQuantity}
               onChange={handleChange}
-              disabled={loading}
+              disabled={isBusy}
               required
               fullWidth
               sx={inputSx}
@@ -414,7 +672,7 @@ export const EditItemModal = ({
               type="number"
               value={formData.productsPerPackage}
               onChange={handleChange}
-              disabled={loading}
+              disabled={isBusy}
               required
               fullWidth
               sx={inputSx}
@@ -426,7 +684,7 @@ export const EditItemModal = ({
               type="number"
               value={formData.packagePrice}
               onChange={handleChange}
-              disabled={loading}
+              disabled={isBusy}
               required
               fullWidth
               sx={inputSx}
@@ -438,7 +696,7 @@ export const EditItemModal = ({
               type="number"
               value={formData.volume}
               onChange={handleChange}
-              disabled={loading}
+              disabled={isBusy}
               required
               fullWidth
               sx={inputSx}
@@ -465,7 +723,7 @@ export const EditItemModal = ({
           <Button
             type="button"
             onClick={handleClose}
-            disabled={loading}
+            disabled={isBusy}
             sx={{
               color: '#3d3d42',
 
@@ -486,7 +744,7 @@ export const EditItemModal = ({
           <Button
             type="submit"
             variant="contained"
-            disabled={loading}
+            disabled={isBusy}
             sx={{
               backgroundColor: '#202024',
 
