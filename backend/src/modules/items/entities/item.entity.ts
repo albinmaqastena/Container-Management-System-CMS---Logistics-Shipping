@@ -139,7 +139,7 @@ export class Item {
   @BeforeInsert()
   @BeforeUpdate()
   calculateTotalVolume(): void {
-    this.totalVolume = Number((this.packageQuantity * this.volume).toFixed(2));
+    this.totalVolume = Number((this.packageQuantity * this.volume).toFixed(10));
   }
 
   constructor(partial?: Partial<Item>) {
