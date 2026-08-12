@@ -33,7 +33,7 @@ const normalizeOptionalPhoto = (value: unknown): unknown => {
 
 export class CreateItemDto {
   @ApiProperty({
-    example: 'ITEM-001',
+    example: 'RD-1000',
     description: 'Unique item identifier',
   })
   @Transform(({ value }: { value: unknown }): unknown => trimString(value))
@@ -102,7 +102,7 @@ export class CreateItemDto {
     {
       allowNaN: false,
       allowInfinity: false,
-      maxDecimalPlaces: 2,
+      maxDecimalPlaces: 10,
     },
     {
       message: 'Package price must be a valid number with at most 2 decimal places',
@@ -129,7 +129,7 @@ export class CreateItemDto {
       message: 'Volume must be a valid number with at most 2 decimal places',
     },
   )
-  @Min(0.01, {
+  @Min(0.00000000001, {
     message: 'Volume must be greater than 0',
   })
   @Max(10000, {
