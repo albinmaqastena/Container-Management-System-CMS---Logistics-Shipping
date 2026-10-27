@@ -1496,16 +1496,34 @@ export const ContainerDetailPage = () => {
           <Box
             sx={{
               display: 'flex',
+              flexDirection: {
+                xs: 'column',
+                sm: 'row',
+              },
               justifyContent: 'space-between',
               alignItems: 'center',
               flexWrap: 'wrap',
               gap: 2,
               mt: 3,
-              pt: 2,
-              borderTop: '1px solid #e5e5e7',
+              p: 2,
+              border: '1px solid #cbd5e1',
+              borderRadius: 3,
+              backgroundColor: '#f1f5f9',
+              boxShadow: '0 3px 10px rgba(15, 23, 42, 0.08)',
             }}
           >
-            <Typography variant="body2" color="text.secondary">
+            <Typography
+              variant="body2"
+              sx={{
+                color: '#334155',
+                fontWeight: 700,
+                fontSize: '0.875rem',
+                textAlign: {
+                  xs: 'center',
+                  sm: 'left',
+                },
+              }}
+            >
               Showing {(currentPage - 1) * pageSize + 1}–
               {Math.min(currentPage * pageSize, pagination.total)}
               {' of '}
@@ -1513,7 +1531,10 @@ export const ContainerDetailPage = () => {
             </Typography>
 
             <Pagination
-              count={Math.max(1, Math.ceil(pagination.total / pageSize))}
+              count={Math.max(
+                1,
+                Math.ceil(pagination.total / pageSize),
+              )}
               page={currentPage}
               onChange={(_, page) => {
                 pendingScrollRef.current = true;
@@ -1524,6 +1545,36 @@ export const ContainerDetailPage = () => {
               shape="rounded"
               showFirstButton
               showLastButton
+              sx={{
+                '& .MuiPaginationItem-root': {
+                  color: '#334155',
+                  fontWeight: 700,
+                  border: '1px solid #cbd5e1',
+                  backgroundColor: '#ffffff',
+                  minWidth: 36,
+                  height: 36,
+                  '&:hover': {
+                    backgroundColor: '#dbeafe',
+                    borderColor: '#2563eb',
+                  },
+                },
+                '& .MuiPaginationItem-root.Mui-selected': {
+                  backgroundColor: '#1d4ed8',
+                  color: '#ffffff',
+                  borderColor: '#1d4ed8',
+                  '&:hover': {
+                    backgroundColor: '#1e40af',
+                  },
+                },
+                '& .MuiPaginationItem-previousNext, & .MuiPaginationItem-firstLast': {
+                  backgroundColor: '#e2e8f0',
+                  color: '#1e293b',
+                },
+                '& .MuiPaginationItem-root.Mui-disabled': {
+                  color: '#94a3b8',
+                  backgroundColor: '#e2e8f0',
+                },
+              }}
             />
           </Box>
         )}
