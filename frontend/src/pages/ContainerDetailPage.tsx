@@ -5,7 +5,6 @@ import {
   Suspense,
   useCallback,
   useEffect,
-  useMemo,
   useRef,
   useState,
 } from 'react';
@@ -49,7 +48,7 @@ import { useReports } from '../hooks/useReports';
 import { ROLES } from '../utilis/constants';
 
 import { ContainerStatus } from '../types';
-import type { Container } from '../types';
+import type { Container, Item } from '../types';
 
 import { ItemList } from '../components/items/ItemList';
 import { SearchBar } from '../components/common/UI/SearchBar';
@@ -120,6 +119,7 @@ export const ContainerDetailPage = () => {
   const {
     items,
     fetchItems,
+    searchItems,
     softDeleteItem,
     pagination, // ADD THIS
     isFetching: itemsLoading,
@@ -151,6 +151,10 @@ export const ContainerDetailPage = () => {
     searchQuery,
     setSearchQuery,
   ] = useState('');
+
+  const [searchResults, setSearchResults] = useState<Item[]>([]);
+  const [searchTotal, setSearchTotal] = useState(0);
+  const [searchLoading, setSearchLoading] = useState(false);
 
   const [
     deleteDialogOpen,
@@ -219,26 +223,22 @@ export const ContainerDetailPage = () => {
     container?.status ===
     ContainerStatus.ARCHIVED;
 
-  const filteredItems = useMemo(
-    () => {
-      const query =
-        searchQuery
-          .trim()
-          .toLowerCase();
+  const isSearching = searchQuery.trim().length > 0;
 
-      if (!query) return items;
+  const displayedItems = isSearching
+    ? searchResults
+    : items;
 
-      return items.filter(
-        (item) =>
-          item.name
-            .toLowerCase()
-            .includes(query) ||
-          item.uniqueNumber
-            .toLowerCase()
-            .includes(query),
-      );
-    },
-    [items, searchQuery],
+  const displayedLoading = isSearching
+    ? searchLoading
+    : itemsLoading;
+
+  const displayedTotal = isSearching
+    ? searchTotal
+    : pagination.total;
+
+  const totalPages = Math.ceil(
+    displayedTotal / pageSize,
   );
 
   const loadContainerDetails =
@@ -270,8 +270,9 @@ export const ContainerDetailPage = () => {
     void loadContainerDetails();
   }, [loadContainerDetails]);
 
+  // Ngarko listën normale vetëm kur nuk ka kërkim aktiv.
   useEffect(() => {
-    if (!id) {
+    if (!id || searchQuery.trim()) {
       return;
     }
 
@@ -280,7 +281,60 @@ export const ContainerDetailPage = () => {
       limit: pageSize,
       offset: (currentPage - 1) * pageSize,
     });
-  }, [id, fetchItems, currentPage]);
+  }, [id, fetchItems, currentPage, searchQuery]);
+
+  // Kërkimi në backend.
+  useEffect(() => {
+    const query = searchQuery.trim();
+
+    if (!id || !query) {
+      setSearchResults([]);
+      setSearchTotal(0);
+      setSearchLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+
+    const runSearch = async () => {
+      setSearchLoading(true);
+
+      try {
+        const response = await searchItems(query, {
+          containerId: id,
+          limit: pageSize,
+          offset: (currentPage - 1) * pageSize,
+        });
+
+        if (cancelled) return;
+
+        setSearchResults(response.data);
+        setSearchTotal(response.total);
+      } catch {
+        if (cancelled) return;
+
+        setSearchResults([]);
+        setSearchTotal(0);
+        toast.error('Failed to search items');
+      } finally {
+        if (!cancelled) {
+          setSearchLoading(false);
+        }
+      }
+    };
+
+    void runSearch();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    id,
+    searchQuery,
+    currentPage,
+    pageSize,
+    searchItems,
+  ]);
 
   useEffect(() => {
     const wasLoading = previousLoadingRef.current;
@@ -297,16 +351,41 @@ export const ContainerDetailPage = () => {
   }, [itemsLoading]);
 
   useEffect(() => {
-    const totalPages = Math.ceil(
-      pagination.total / pageSize,
-    );
-
     const lastPage = Math.max(1, totalPages);
 
     if (currentPage > lastPage) {
       setCurrentPage(lastPage);
     }
-  }, [pagination.total, currentPage]);
+  }, [totalPages, currentPage]);
+
+  const refreshItems = useCallback(async () => {
+    if (!id) return;
+
+    const query = searchQuery.trim();
+
+    if (query) {
+      const response = await searchItems(query, {
+        containerId: id,
+        limit: pageSize,
+        offset: (currentPage - 1) * pageSize,
+      });
+
+      setSearchResults(response.data);
+      setSearchTotal(response.total);
+    } else {
+      await fetchItems({
+        containerId: id,
+        limit: pageSize,
+        offset: (currentPage - 1) * pageSize,
+      });
+    }
+  }, [
+    id,
+    searchQuery,
+    currentPage,
+    fetchItems,
+    searchItems,
+  ]);
 
   const handleRefresh = useCallback(async () => {
     if (refreshing || !id) return;
@@ -316,15 +395,11 @@ export const ContainerDetailPage = () => {
     try {
       await loadContainerDetails();
 
-      await fetchItems({
-        containerId: id,
-        limit: pageSize,
-        offset: (currentPage - 1) * pageSize,
-      });
+      await refreshItems();
     } finally {
       setRefreshing(false);
     }
-  }, [refreshing, id, loadContainerDetails, fetchItems, currentPage]);
+  }, [refreshing, id, loadContainerDetails, refreshItems]);
 
   const handleExportPdf =
     useCallback(async (): Promise<void> => {
@@ -471,30 +546,20 @@ export const ContainerDetailPage = () => {
 
         await loadContainerDetails();
 
-        await fetchItems({
-          containerId: id,
-          limit: pageSize,
-          offset: (currentPage - 1) * pageSize,
-        });
+        await refreshItems();
       } catch {
         toast.error('Failed to delete item');
       }
     },
-    [id, softDeleteItem, loadContainerDetails, fetchItems, currentPage],
+    [id, softDeleteItem, loadContainerDetails, refreshItems],
   );
 
   const refreshContainerAndItems =
     useCallback(async () => {
       await loadContainerDetails();
 
-      if (id) {
-        await fetchItems({
-          containerId: id,
-          limit: pageSize,
-          offset: (currentPage - 1) * pageSize,
-        });
-      }
-    }, [loadContainerDetails, fetchItems, id, currentPage]);
+      await refreshItems();
+    }, [loadContainerDetails, refreshItems]);
 
   if (isLoading) {
     return (
@@ -1173,7 +1238,7 @@ export const ContainerDetailPage = () => {
               />
 
               <Chip
-                label={`${pagination.total} items`}
+                label={`${displayedTotal} items`}
                 color="primary"
                 size="medium"
                 sx={{
@@ -1421,12 +1486,11 @@ export const ContainerDetailPage = () => {
               }}
             >
               <SearchBar
-                value={
-                  searchQuery
-                }
-                onChange={
-                  setSearchQuery
-                }
+                value={searchQuery}
+                onChange={(value) => {
+                  setSearchQuery(value);
+                  setCurrentPage(1);
+                }}
                 placeholder="Search items..."
               />
             </Box>
@@ -1481,10 +1545,10 @@ export const ContainerDetailPage = () => {
 
         <Box ref={itemsListRef}>
           <ItemList
-            items={filteredItems}
-            loading={itemsLoading}
+            items={displayedItems}
+            loading={displayedLoading}
             emptyMessage={
-              searchQuery
+              isSearching
                 ? 'No items match your search'
                 : 'No items in this container yet'
             }
@@ -1492,7 +1556,7 @@ export const ContainerDetailPage = () => {
           />
         </Box>
 
-        {pagination.total > pageSize && (
+        {totalPages > 1 && (
         <Box
           sx={{
             display: 'flex',
@@ -1539,33 +1603,24 @@ export const ContainerDetailPage = () => {
                 fontWeight: 700,
               }}
             >
-              {(currentPage - 1) * pageSize + 1}
-              {' – '}
-              {Math.min(currentPage * pageSize, pagination.total)}
-              <Box
-                component="span"
-                sx={{
-                  color: 'text.secondary',
-                  fontWeight: 400,
-                }}
-              >
-                {' '}of {pagination.total} items
-              </Box>
+              {displayedTotal === 0
+                ? '0 items'
+                : `${(currentPage - 1) * pageSize + 1} – ${Math.min(
+                    currentPage * pageSize,
+                    displayedTotal,
+                  )} of ${displayedTotal} items`}
             </Typography>
           </Box>
 
           {/* Navigimi i faqeve */}
           <Pagination
-            count={Math.max(
-              1,
-              Math.ceil(pagination.total / pageSize),
-            )}
+            count={Math.max(1, totalPages)}
             page={currentPage}
             onChange={(_, page) => {
               pendingScrollRef.current = true;
               setCurrentPage(page);
             }}
-            disabled={itemsLoading}
+            disabled={displayedLoading}
             color="primary"
             shape="rounded"
             showFirstButton
