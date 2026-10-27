@@ -1499,35 +1499,67 @@ export const ContainerDetailPage = () => {
             flexDirection: { xs: 'column', sm: 'row' },
             justifyContent: 'space-between',
             alignItems: 'center',
-            flexWrap: 'wrap',
             gap: 2,
-            mt: 3,
-            p: 2.5,
-
-            // E dallon seksionin pa ndryshuar temën e aplikacionit
-            backgroundColor: 'action.hover',
+            mt: 4,
+            px: { xs: 2, sm: 3 },
+            py: 2,
+            borderRadius: 3,
             border: '1px solid',
             borderColor: 'divider',
-            borderRadius: 2,
-            boxShadow: '0 2px 8px rgba(0, 0, 0, 0.05)',
+            backgroundColor: 'background.paper',
+            boxShadow: (theme) =>
+              theme.palette.mode === 'dark'
+                ? '0 4px 14px rgba(0, 0, 0, 0.18)'
+                : '0 4px 14px rgba(15, 23, 42, 0.06)',
           }}
         >
-          <Typography
-            variant="body2"
+          {/* Informacioni i rezultateve */}
+          <Box
             sx={{
-              color: 'text.secondary',
-              fontWeight: 600,
-              textAlign: { xs: 'center', sm: 'left' },
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: { xs: 'center', sm: 'flex-start' },
+              gap: 0.5,
             }}
           >
-            Showing {(currentPage - 1) * pageSize + 1}–
-            {Math.min(currentPage * pageSize, pagination.total)}
-            {' of '}
-            {pagination.total} items
-          </Typography>
+            <Typography
+              variant="body2"
+              sx={{
+                color: 'text.secondary',
+                fontWeight: 500,
+              }}
+            >
+              Showing results
+            </Typography>
 
+            <Typography
+              variant="body2"
+              sx={{
+                color: 'text.primary',
+                fontWeight: 700,
+              }}
+            >
+              {(currentPage - 1) * pageSize + 1}
+              {' – '}
+              {Math.min(currentPage * pageSize, pagination.total)}
+              <Box
+                component="span"
+                sx={{
+                  color: 'text.secondary',
+                  fontWeight: 400,
+                }}
+              >
+                {' '}of {pagination.total} items
+              </Box>
+            </Typography>
+          </Box>
+
+          {/* Navigimi i faqeve */}
           <Pagination
-            count={Math.max(1, Math.ceil(pagination.total / pageSize))}
+            count={Math.max(
+              1,
+              Math.ceil(pagination.total / pageSize),
+            )}
             page={currentPage}
             onChange={(_, page) => {
               pendingScrollRef.current = true;
@@ -1538,18 +1570,28 @@ export const ContainerDetailPage = () => {
             shape="rounded"
             showFirstButton
             showLastButton
+            siblingCount={1}
+            boundaryCount={1}
             sx={{
+              '& .MuiPagination-ul': {
+                gap: 0.5,
+                flexWrap: 'wrap',
+                justifyContent: 'center',
+              },
+
               '& .MuiPaginationItem-root': {
-                borderRadius: 1.5,
-                fontWeight: 600,
+                minWidth: 36,
+                height: 36,
+                borderRadius: 2,
                 border: '1px solid',
                 borderColor: 'divider',
-                backgroundColor: 'background.paper',
                 color: 'text.primary',
-                transition: 'background-color 0.2s ease',
+                fontWeight: 600,
+                backgroundColor: 'background.paper',
+                transition: 'all 0.2s ease',
 
                 '&:hover': {
-                  backgroundColor: 'action.selected',
+                  backgroundColor: 'action.hover',
                   borderColor: 'primary.main',
                 },
               },
@@ -1558,6 +1600,8 @@ export const ContainerDetailPage = () => {
                 backgroundColor: 'primary.main',
                 color: 'primary.contrastText',
                 borderColor: 'primary.main',
+                boxShadow: (theme) =>
+                  `0 2px 6px ${theme.palette.primary.main}40`,
 
                 '&:hover': {
                   backgroundColor: 'primary.dark',
@@ -1565,9 +1609,13 @@ export const ContainerDetailPage = () => {
               },
 
               '& .MuiPaginationItem-root.Mui-disabled': {
-                color: 'text.disabled',
+                opacity: 0.45,
                 backgroundColor: 'action.hover',
-                borderColor: 'divider',
+              },
+
+              '& .MuiPaginationItem-ellipsis': {
+                border: 'none',
+                backgroundColor: 'transparent',
               },
             }}
           />

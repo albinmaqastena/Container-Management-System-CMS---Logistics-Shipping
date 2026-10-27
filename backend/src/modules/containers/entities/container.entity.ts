@@ -50,7 +50,7 @@ export class Container {
   @ApiProperty()
   @Column('decimal', {
     precision: 12,
-    scale: 2,
+    scale: 10,
     transformer: decimalTransformer,
   })
   totalVolume!: number;
@@ -58,7 +58,7 @@ export class Container {
   @ApiProperty()
   @Column('decimal', {
     precision: 12,
-    scale: 2,
+    scale: 10,
     default: 0,
     transformer: decimalTransformer,
   })
