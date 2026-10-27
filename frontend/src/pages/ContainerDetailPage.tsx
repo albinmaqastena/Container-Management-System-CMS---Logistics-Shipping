@@ -1,11 +1,12 @@
 // src/pages/ContainerDetailPage.tsx
 
 import {
-    lazy,
-    Suspense,
+  lazy,
+  Suspense,
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from 'react';
 
@@ -121,11 +122,15 @@ export const ContainerDetailPage = () => {
     fetchItems,
     softDeleteItem,
     pagination, // ADD THIS
-    isLoading: itemsLoading,
+    isFetching: itemsLoading,
   } = useItems();
 
   const [currentPage, setCurrentPage] = useState(1);
   const pageSize = 10;
+
+  const itemsListRef = useRef<HTMLDivElement | null>(null);
+  const pendingScrollRef = useRef(false);
+  const previousLoadingRef = useRef(itemsLoading);
 
   const [
     container,
@@ -278,6 +283,20 @@ export const ContainerDetailPage = () => {
   }, [id, fetchItems, currentPage]);
 
   useEffect(() => {
+    const wasLoading = previousLoadingRef.current;
+    previousLoadingRef.current = itemsLoading;
+
+    if (pendingScrollRef.current && wasLoading && !itemsLoading) {
+      itemsListRef.current?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'start',
+      });
+
+      pendingScrollRef.current = false;
+    }
+  }, [itemsLoading]);
+
+  useEffect(() => {
     const totalPages = Math.ceil(
       pagination.total / pageSize,
     );
@@ -289,29 +308,23 @@ export const ContainerDetailPage = () => {
     }
   }, [pagination.total, currentPage]);
 
-  const handleRefresh =
-    useCallback(async () => {
-      if (refreshing) return;
+  const handleRefresh = useCallback(async () => {
+    if (refreshing || !id) return;
 
-      setRefreshing(true);
+    setRefreshing(true);
 
-      try {
-        await loadContainerDetails();
-        await fetchItems({
-          containerId: id,
-          limit: pageSize,
-          offset: (currentPage - 1) * pageSize,
-        });
-      } finally {
-        setRefreshing(false);
-      }
-    }, [
-      refreshing,
-      loadContainerDetails,
-      fetchItems,
-      id,
-      currentPage,
-    ]);
+    try {
+      await loadContainerDetails();
+
+      await fetchItems({
+        containerId: id,
+        limit: pageSize,
+        offset: (currentPage - 1) * pageSize,
+      });
+    } finally {
+      setRefreshing(false);
+    }
+  }, [refreshing, id, loadContainerDetails, fetchItems, currentPage]);
 
   const handleExportPdf =
     useCallback(async (): Promise<void> => {
@@ -449,39 +462,26 @@ export const ContainerDetailPage = () => {
       setDeleteDialogOpen(false);
     }, []);
 
-  const handleItemDeleted =
-    useCallback(
-      async (itemId: string) => {
-        try {
-          await softDeleteItem(
-            itemId,
-          );
+  const handleItemDeleted = useCallback(
+    async (itemId: string) => {
+      if (!id) return;
 
-          await loadContainerDetails();
+      try {
+        await softDeleteItem(itemId);
 
-          await fetchItems({
-            containerId: id,
-            limit: pageSize,
-            offset: (currentPage - 1) * pageSize,
-          });
+        await loadContainerDetails();
 
-          toast.success(
-            'Item deleted',
-          );
-        } catch {
-          toast.error(
-            'Failed to delete item',
-          );
-        }
-      },
-      [
-        softDeleteItem,
-        loadContainerDetails,
-        fetchItems,
-        id,
-        currentPage,
-      ],
-    );
+        await fetchItems({
+          containerId: id,
+          limit: pageSize,
+          offset: (currentPage - 1) * pageSize,
+        });
+      } catch {
+        toast.error('Failed to delete item');
+      }
+    },
+    [id, softDeleteItem, loadContainerDetails, fetchItems, currentPage],
+  );
 
   const refreshContainerAndItems =
     useCallback(async () => {
@@ -1479,18 +1479,18 @@ export const ContainerDetailPage = () => {
           </Box>
         </Box>
 
-        <ItemList
-          items={filteredItems}
-          loading={itemsLoading}
-          emptyMessage={
-            searchQuery
-              ? 'No items match your search'
-              : 'No items in this container yet'
-          }
-          onDelete={
-            handleItemDeleted
-          }
-        />
+        <Box ref={itemsListRef}>
+          <ItemList
+            items={filteredItems}
+            loading={itemsLoading}
+            emptyMessage={
+              searchQuery
+                ? 'No items match your search'
+                : 'No items in this container yet'
+            }
+            onDelete={handleItemDeleted}
+          />
+        </Box>
 
         {pagination.total > pageSize && (
           <Box
@@ -1513,9 +1513,12 @@ export const ContainerDetailPage = () => {
             </Typography>
 
             <Pagination
-              count={Math.ceil(pagination.total / pageSize)}
+              count={Math.max(1, Math.ceil(pagination.total / pageSize))}
               page={currentPage}
-              onChange={(_, page) => setCurrentPage(page)}
+              onChange={(_, page) => {
+                pendingScrollRef.current = true;
+                setCurrentPage(page);
+              }}
               disabled={itemsLoading}
               color="primary"
               shape="rounded"

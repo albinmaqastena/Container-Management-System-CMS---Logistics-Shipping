@@ -125,6 +125,9 @@ export const ItemProvider = ({ children }: ItemProviderProps) => {
   const fetchCountRef = useRef(0);
   const loadingCountRef = useRef(0);
 
+  // Identifikon kërkesën më të fundit për listën e artikujve.
+  const latestItemsRequestRef = useRef(0);
+
   // Ref për të mbajtur parametrat më të fundit të kërkesës për refetch
   const itemQueryRef = useRef<ItemQueryParams | undefined>(undefined);
   const deletedQueryRef = useRef<PaginationParams | undefined>(undefined);
@@ -188,7 +191,21 @@ export const ItemProvider = ({ children }: ItemProviderProps) => {
       if (params !== undefined) {
         itemQueryRef.current = params;
       }
-      const response = await itemService.getAll(itemQueryRef.current);
+
+      // Ruaj parametrat e kësaj kërkese.
+      const requestParams = itemQueryRef.current;
+
+      // Krijo ID unike për kërkesën.
+      const requestId = ++latestItemsRequestRef.current;
+
+      const response = await itemService.getAll(requestParams);
+
+      // Nëse ndërkohë ka nisur kërkesë tjetër,
+      // mos lejo që përgjigjja e vjetër ta ndryshojë listën.
+      if (requestId !== latestItemsRequestRef.current) {
+        return;
+      }
+
       setItems(response.data);
       setPagination(createPaginationState(response));
     },
