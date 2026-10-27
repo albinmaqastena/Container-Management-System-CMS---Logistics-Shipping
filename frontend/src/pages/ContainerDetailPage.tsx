@@ -1493,91 +1493,86 @@ export const ContainerDetailPage = () => {
         </Box>
 
         {pagination.total > pageSize && (
-          <Box
+        <Box
+          sx={{
+            display: 'flex',
+            flexDirection: { xs: 'column', sm: 'row' },
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            flexWrap: 'wrap',
+            gap: 2,
+            mt: 3,
+            p: 2.5,
+
+            // E dallon seksionin pa ndryshuar temën e aplikacionit
+            backgroundColor: 'action.hover',
+            border: '1px solid',
+            borderColor: 'divider',
+            borderRadius: 2,
+            boxShadow: '0 2px 8px rgba(0, 0, 0, 0.05)',
+          }}
+        >
+          <Typography
+            variant="body2"
             sx={{
-              display: 'flex',
-              flexDirection: {
-                xs: 'column',
-                sm: 'row',
-              },
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              flexWrap: 'wrap',
-              gap: 2,
-              mt: 3,
-              p: 2,
-              border: '1px solid #cbd5e1',
-              borderRadius: 3,
-              backgroundColor: '#f1f5f9',
-              boxShadow: '0 3px 10px rgba(15, 23, 42, 0.08)',
+              color: 'text.secondary',
+              fontWeight: 600,
+              textAlign: { xs: 'center', sm: 'left' },
             }}
           >
-            <Typography
-              variant="body2"
-              sx={{
-                color: '#334155',
-                fontWeight: 700,
-                fontSize: '0.875rem',
-                textAlign: {
-                  xs: 'center',
-                  sm: 'left',
-                },
-              }}
-            >
-              Showing {(currentPage - 1) * pageSize + 1}–
-              {Math.min(currentPage * pageSize, pagination.total)}
-              {' of '}
-              {pagination.total} items
-            </Typography>
+            Showing {(currentPage - 1) * pageSize + 1}–
+            {Math.min(currentPage * pageSize, pagination.total)}
+            {' of '}
+            {pagination.total} items
+          </Typography>
 
-            <Pagination
-              count={Math.max(
-                1,
-                Math.ceil(pagination.total / pageSize),
-              )}
-              page={currentPage}
-              onChange={(_, page) => {
-                pendingScrollRef.current = true;
-                setCurrentPage(page);
-              }}
-              disabled={itemsLoading}
-              color="primary"
-              shape="rounded"
-              showFirstButton
-              showLastButton
-              sx={{
-                '& .MuiPaginationItem-root': {
-                  color: '#334155',
-                  fontWeight: 700,
-                  border: '1px solid #cbd5e1',
-                  backgroundColor: '#ffffff',
-                  minWidth: 36,
-                  height: 36,
-                  '&:hover': {
-                    backgroundColor: '#dbeafe',
-                    borderColor: '#2563eb',
-                  },
+          <Pagination
+            count={Math.max(1, Math.ceil(pagination.total / pageSize))}
+            page={currentPage}
+            onChange={(_, page) => {
+              pendingScrollRef.current = true;
+              setCurrentPage(page);
+            }}
+            disabled={itemsLoading}
+            color="primary"
+            shape="rounded"
+            showFirstButton
+            showLastButton
+            sx={{
+              '& .MuiPaginationItem-root': {
+                borderRadius: 1.5,
+                fontWeight: 600,
+                border: '1px solid',
+                borderColor: 'divider',
+                backgroundColor: 'background.paper',
+                color: 'text.primary',
+                transition: 'background-color 0.2s ease',
+
+                '&:hover': {
+                  backgroundColor: 'action.selected',
+                  borderColor: 'primary.main',
                 },
-                '& .MuiPaginationItem-root.Mui-selected': {
-                  backgroundColor: '#1d4ed8',
-                  color: '#ffffff',
-                  borderColor: '#1d4ed8',
-                  '&:hover': {
-                    backgroundColor: '#1e40af',
-                  },
+              },
+
+              '& .MuiPaginationItem-root.Mui-selected': {
+                backgroundColor: 'primary.main',
+                color: 'primary.contrastText',
+                borderColor: 'primary.main',
+
+                '&:hover': {
+                  backgroundColor: 'primary.dark',
                 },
-                '& .MuiPaginationItem-previousNext, & .MuiPaginationItem-firstLast': {
-                  backgroundColor: '#e2e8f0',
-                  color: '#1e293b',
-                },
-                '& .MuiPaginationItem-root.Mui-disabled': {
-                  color: '#94a3b8',
-                  backgroundColor: '#e2e8f0',
-                },
-              }}
-            />
-          </Box>
-        )}
+              },
+
+              '& .MuiPaginationItem-root.Mui-disabled': {
+                color: 'text.disabled',
+                backgroundColor: 'action.hover',
+                borderColor: 'divider',
+              },
+            }}
+          />
+        </Box>
+      )}
       </Paper>
 
       {isCreateItemModalOpen && (
