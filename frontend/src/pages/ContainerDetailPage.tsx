@@ -24,6 +24,7 @@ import {
   IconButton,
   Alert,
   CircularProgress,
+  Pagination, // ADD THIS
 } from '@mui/material';
 
 import {
@@ -119,8 +120,12 @@ export const ContainerDetailPage = () => {
     items,
     fetchItems,
     softDeleteItem,
+    pagination, // ADD THIS
     isLoading: itemsLoading,
   } = useItems();
+
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 10;
 
   const [
     container,
@@ -240,13 +245,7 @@ export const ContainerDetailPage = () => {
         setError(null);
 
         try {
-        const [data] =
-            await Promise.all([
-            getContainer(id),
-            fetchItems({
-                containerId: id,
-            }),
-            ]);
+        const data = await getContainer(id);
 
         setContainer(data);
         } catch (err: unknown) {
@@ -260,12 +259,35 @@ export const ContainerDetailPage = () => {
     }, [
         id,
         getContainer,
-        fetchItems,
     ]);
 
   useEffect(() => {
     void loadContainerDetails();
   }, [loadContainerDetails]);
+
+  useEffect(() => {
+    if (!id) {
+      return;
+    }
+
+    void fetchItems({
+      containerId: id,
+      limit: pageSize,
+      offset: (currentPage - 1) * pageSize,
+    });
+  }, [id, fetchItems, currentPage]);
+
+  useEffect(() => {
+    const totalPages = Math.ceil(
+      pagination.total / pageSize,
+    );
+
+    const lastPage = Math.max(1, totalPages);
+
+    if (currentPage > lastPage) {
+      setCurrentPage(lastPage);
+    }
+  }, [pagination.total, currentPage]);
 
   const handleRefresh =
     useCallback(async () => {
@@ -275,12 +297,20 @@ export const ContainerDetailPage = () => {
 
       try {
         await loadContainerDetails();
+        await fetchItems({
+          containerId: id,
+          limit: pageSize,
+          offset: (currentPage - 1) * pageSize,
+        });
       } finally {
         setRefreshing(false);
       }
     }, [
-      loadContainerDetails,
       refreshing,
+      loadContainerDetails,
+      fetchItems,
+      id,
+      currentPage,
     ]);
 
   const handleExportPdf =
@@ -429,6 +459,12 @@ export const ContainerDetailPage = () => {
 
           await loadContainerDetails();
 
+          await fetchItems({
+            containerId: id,
+            limit: pageSize,
+            offset: (currentPage - 1) * pageSize,
+          });
+
           toast.success(
             'Item deleted',
           );
@@ -441,8 +477,24 @@ export const ContainerDetailPage = () => {
       [
         softDeleteItem,
         loadContainerDetails,
+        fetchItems,
+        id,
+        currentPage,
       ],
     );
+
+  const refreshContainerAndItems =
+    useCallback(async () => {
+      await loadContainerDetails();
+
+      if (id) {
+        await fetchItems({
+          containerId: id,
+          limit: pageSize,
+          offset: (currentPage - 1) * pageSize,
+        });
+      }
+    }, [loadContainerDetails, fetchItems, id, currentPage]);
 
   if (isLoading) {
     return (
@@ -1121,7 +1173,7 @@ export const ContainerDetailPage = () => {
               />
 
               <Chip
-                label={`${items.length} items`}
+                label={`${pagination.total} items`}
                 color="primary"
                 size="medium"
                 sx={{
@@ -1439,6 +1491,39 @@ export const ContainerDetailPage = () => {
             handleItemDeleted
           }
         />
+
+        {pagination.total > pageSize && (
+          <Box
+            sx={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              flexWrap: 'wrap',
+              gap: 2,
+              mt: 3,
+              pt: 2,
+              borderTop: '1px solid #e5e5e7',
+            }}
+          >
+            <Typography variant="body2" color="text.secondary">
+              Showing {(currentPage - 1) * pageSize + 1}–
+              {Math.min(currentPage * pageSize, pagination.total)}
+              {' of '}
+              {pagination.total} items
+            </Typography>
+
+            <Pagination
+              count={Math.ceil(pagination.total / pageSize)}
+              page={currentPage}
+              onChange={(_, page) => setCurrentPage(page)}
+              disabled={itemsLoading}
+              color="primary"
+              shape="rounded"
+              showFirstButton
+              showLastButton
+            />
+          </Box>
+        )}
       </Paper>
 
       {isCreateItemModalOpen && (
@@ -1449,9 +1534,7 @@ export const ContainerDetailPage = () => {
                 setIsCreateItemModalOpen(false)
             }
             containerId={container.id}
-            onItemCreated={
-                loadContainerDetails
-            }
+            onItemCreated={refreshContainerAndItems}
             />
         </Suspense>
         )}
