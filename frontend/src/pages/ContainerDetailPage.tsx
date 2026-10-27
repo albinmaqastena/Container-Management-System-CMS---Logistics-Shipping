@@ -1579,43 +1579,48 @@ export const ContainerDetailPage = () => {
                 justifyContent: 'center',
               },
 
+              // Faqet e tjera: numër i bardhë, sfond i zi
               '& .MuiPaginationItem-root': {
                 minWidth: 36,
                 height: 36,
                 borderRadius: 2,
-                border: '1px solid',
-                borderColor: 'divider',
-                color: 'text.primary',
+                border: '1px solid #333333',
+                color: '#ffffff',
                 fontWeight: 600,
-                backgroundColor: 'background.paper',
+                backgroundColor: '#222222',
                 transition: 'all 0.2s ease',
 
                 '&:hover': {
-                  backgroundColor: 'action.hover',
-                  borderColor: 'primary.main',
+                  backgroundColor: '#444444',
+                  borderColor: '#555555',
                 },
               },
 
+              // Faqja aktuale: numër i zi, sfond i bardhë
               '& .MuiPaginationItem-root.Mui-selected': {
-                backgroundColor: 'primary.main',
-                color: 'primary.contrastText',
-                borderColor: 'primary.main',
-                boxShadow: (theme) =>
-                  `0 2px 6px ${theme.palette.primary.main}40`,
+                backgroundColor: '#ffffff',
+                color: '#000000',
+                border: '2px solid #222222',
+                fontWeight: 800,
 
                 '&:hover': {
-                  backgroundColor: 'primary.dark',
+                  backgroundColor: '#f1f1f1',
+                  color: '#000000',
                 },
               },
 
+              // Butonat e çaktivizuar
               '& .MuiPaginationItem-root.Mui-disabled': {
-                opacity: 0.45,
-                backgroundColor: 'action.hover',
+                color: '#888888',
+                backgroundColor: '#e5e5e5',
+                borderColor: '#cccccc',
               },
 
+              // Tri pikat (...)
               '& .MuiPaginationItem-ellipsis': {
-                border: 'none',
+                color: 'text.secondary',
                 backgroundColor: 'transparent',
+                border: 'none',
               },
             }}
           />
